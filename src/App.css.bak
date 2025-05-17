@@ -1,0 +1,836 @@
+:root {
+  /* Postman's exact font stack */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 400;
+
+  /* Postman's exact colors */
+  --postman-background: #FFFFFF;
+  --postman-surface: #F8F9FA;
+  --postman-foreground: #1A1A1A;
+  --postman-primary: #FF6C37;
+  --postman-secondary: #50556B;
+  --postman-accent: #6B6B6B;
+  
+  /* Method colors exactly like Postman */
+  --get-color: #00BA8F;
+  --post-color: #FF6C37;
+  --put-color: #0971F1;
+  --patch-color: #4B24C4;
+  --delete-color: #E7384A;
+  --head-color: #9747FF;
+  --options-color: #6B6B6B;
+  
+  /* Postman's UI elements */
+  --sidebar-bg: #F8F9FA;
+  --header-bg: #FFFFFF;
+  --panel-bg: #FFFFFF;
+  --border-color: #E6E6E6;
+  --border-radius: 4px;
+  --box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  
+  /* Font smoothing */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  
+  /* Method colors */
+  --success-color: #10B981;
+  --warning-color: #F59E0B; 
+  --danger-color: #EF4444;
+  --info-color: #3B82F6;
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: var(--postman-background);
+}
+
+h1 {
+  margin: 0;
+  padding: 0.75rem 1.5rem;
+  background-color: var(--header-bg);
+  color: var(--postman-foreground);
+  font-size: 1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  letter-spacing: 0.3px;
+}
+
+.main-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 250px;
+  background-color: var(--sidebar-bg);
+  padding: 1.25rem;
+  overflow-y: auto;
+  border-right: 1px solid var(--border-color);
+  z-index: 10;
+}
+
+.workspace-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--postman-background);
+}
+
+.environment-toggle {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 0.5rem;
+  margin-bottom: 1.5rem;
+  color: #94a3b8;
+}
+
+.environment-toggle span {
+  margin-right: 1rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.toggle-container {
+  display: flex;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: rgba(255,255,255,0.05);
+}
+
+.toggle-container button {
+  border: none;
+  background-color: transparent;
+  color: #94a3b8;
+  padding: 0.5em 1.25em;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border-right: 1px solid rgba(255,255,255,0.05);
+  margin: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.toggle-container button:last-child {
+  border-right: none;
+}
+
+.toggle-container button.active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.url-settings {
+  background-color: var(--postman-background);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.url-settings .method-selector {
+  width: auto;
+  margin: 0;
+}
+
+.url-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background-color: var(--postman-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 4px;
+  margin-right: 8px;
+}
+
+.url-input {
+  flex: 1;
+  height: 32px;
+  background-color: transparent;
+  color: var(--postman-foreground);
+  font-size: 13px;
+  border: none;
+  padding: 0 8px;
+  box-shadow: none;
+}
+
+.url-input:focus {
+  outline: none;
+  box-shadow: none;
+  border: none;
+}
+
+.url-field label {
+  margin-right: 0.5rem;
+  font-weight: 500;
+  color: var(--postman-accent);
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+input,
+button,
+textarea {
+  border-radius: var(--border-radius);
+  border: 1px solid var(--border-color);
+  padding: 0.75em 1em;
+  font-size: 1em;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+input:focus,
+textarea:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  outline: none;
+}
+
+textarea {
+  min-height: 100px;
+  resize: vertical;
+  font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+}
+
+.request-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.request-form-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.request-tabs {
+  display: flex;
+  background-color: #ECECEC;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.request-tabs button {
+  padding: 0.8rem 1.2rem;
+  background: none;
+  border: none;
+  border-right: 1px solid var(--border-color);
+  border-radius: 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.request-tabs button.active {
+  background-color: white;
+  border-bottom: 3px solid var(--postman-orange);
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.form-row label,
+.form-row span {
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #444;
+}
+
+.method-selector .button-group {
+  display: flex;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  background-color: white;
+}
+
+.method-selector button {
+  flex: 1;
+  border: none;
+  background-color: #fff;
+  padding: 0.6em 0.8em;
+  font-size: 0.875em;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  border-right: 1px solid var(--border-color);
+  margin: 0;
+  box-shadow: none;
+  border-radius: 0;
+  min-width: 60px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.method-selector button:last-child {
+  border-right: none;
+}
+
+.method-selector button.active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.method-selector button.get.active {
+  background-color: var(--info-color);
+}
+
+.method-selector button.post.active {
+  background-color: var(--success-color);
+}
+
+.method-selector button.put.active {
+  background-color: var(--warning-color);
+}
+
+.method-selector button.patch.active,
+.method-selector button.delete.active {
+  background-color: var(--danger-color);
+}
+
+.url-input {
+  flex: 1;
+  height: 44px;
+  background-color: white;
+  color: #1e293b;
+  font-size: 0.95rem;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  transition: all 0.2s ease;
+}
+
+.action-buttons {
+  padding: 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  background-color: #ffffff;
+  border-top: 1px solid var(--border-color);
+}
+
+.send-button {
+  background-color: var(--primary-color);
+  background-image: linear-gradient(to right, var(--primary-color), #6366F1);
+  color: white;
+  font-weight: 600;
+  padding: 0.7em 1.5em;
+  cursor: pointer;
+  border: none;
+  font-size: 0.95em;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2), 0 2px 4px -1px rgba(79, 70, 229, 0.1);
+  transition: all 0.2s ease;
+  letter-spacing: 0.3px;
+}
+
+.send-button:hover {
+  background-color: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 10px -1px rgba(79, 70, 229, 0.25), 0 2px 4px -1px rgba(79, 70, 229, 0.15);
+}
+
+.send-button:disabled {
+  background-color: #cbd5e1;
+  background-image: none;
+  color: #64748b;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.secondary-button {
+  background-color: white;
+  border: 1px solid var(--border-color);
+  color: #475569;
+  font-weight: 500;
+  padding: 0.7em 1.5em;
+  border-radius: var(--border-radius);
+  transition: all 0.2s ease;
+}
+
+.secondary-button:hover {
+  border-color: #cbd5e1;
+  background-color: #f8fafc;
+  color: var(--primary-color);
+}
+
+.tabs-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.response-tabs {
+  display: flex;
+  background-color: #ECECEC;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.response-tabs button {
+  padding: 0.8rem 1.2rem;
+  background: none;
+  border: none;
+  border-right: 1px solid var(--border-color);
+  border-radius: 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.response-tabs button.active {
+  background-color: white;
+  border-bottom: 3px solid var(--postman-orange);
+}
+
+.result-section {
+  flex: 1;
+  overflow: auto;
+  border-top: 1px solid var(--border-color);
+  background-color: white;
+  display: flex;
+  flex-direction: column;
+}
+
+.result-section h3 {
+  margin: 0;
+  padding: 1rem;
+  color: #444;
+  background-color: #F8F8F8;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.response-details {
+  padding: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.response-header {
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  background-color: #F8F8F8;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.status-code {
+  padding: 0.3em 0.6em;
+  border-radius: 4px;
+  font-weight: 600;
+  margin-right: 1rem;
+}
+
+.status-2xx {
+  background-color: var(--success-color);
+  color: white;
+}
+
+.status-3xx {
+  background-color: var(--warning-color);
+  color: white;
+}
+
+.status-4xx,
+.status-5xx {
+  background-color: var(--danger-color);
+  color: white;
+}
+
+.response-time {
+  font-size: 0.9em;
+  color: #666;
+  margin-left: auto;
+}
+
+.response-section {
+  padding: 0;
+}
+
+.response-section h4 {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background-color: #F8F8F8;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.error-message {
+  padding: 1rem;
+  background-color: #f8d7da;
+  color: #721c24;
+  border-bottom: 1px solid #f5c6cb;
+}
+
+.code-block {
+  background-color: white;
+  padding: 1rem;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  overflow: auto;
+  height: 100%;
+  font-size: 0.9rem;
+}
+
+.code-container {
+  position: relative;
+  margin: 0;
+}
+
+.copy-button {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background-color: #F0F0F0;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 0.3em 0.5em;
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+.copy-button:hover {
+  opacity: 1;
+}
+
+.editor-container {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+  height: 200px;
+}
+
+.response-editor {
+  height: 300px;
+  border: none;
+}
+
+/* Header styles */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.small-button {
+  background-color: white;
+  border: 1px solid var(--border-color);
+  color: #333;
+  padding: 0.3em 0.6em;
+  font-size: 0.8em;
+  font-weight: normal;
+}
+
+.headers-list {
+  background-color: #F8F8F8;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.header-item {
+  display: flex;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  align-items: center;
+}
+
+.header-item:last-child {
+  border-bottom: none;
+}
+
+.header-name {
+  font-weight: 600;
+  margin-right: 1rem;
+  flex: 0 0 30%;
+}
+
+.header-value {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #666;
+}
+
+.header-editor {
+  margin-top: 0.5rem;
+}
+
+.header-input-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.header-input-group input {
+  flex: 1;
+}
+
+.header-input-group button {
+  background-color: white;
+  border: 1px solid var(--border-color);
+  color: #333;
+}
+
+.no-headers {
+  padding: 1rem;
+  color: #999;
+  text-align: center;
+  font-style: italic;
+}
+
+.delete-button {
+  background-color: transparent;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  padding: 0.2em 0.4em;
+  font-size: 1em;
+}
+
+.delete-button:hover {
+  color: var(--danger-color);
+}
+
+.auth-settings {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.auth-toggle {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.auth-toggle label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.auth-toggle input[type="checkbox"] {
+  margin-right: 0.5rem;
+}
+
+.auth-form {
+  background-color: #F8F8F8;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1rem;
+}
+
+.auth-form h4 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #444;
+  font-size: 0.9rem;
+}
+
+.auth-prod textarea {
+  width: 100%;
+  min-height: 80px;
+  background-color: white;
+}
+
+/* Modal styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  width: 90%;
+  max-width: 600px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.modal-content h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #444;
+}
+
+.modal-content textarea {
+  width: 100%;
+  margin-bottom: 1rem;
+  min-height: 150px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.modal-actions button:last-child {
+  background-color: var(--postman-orange);
+  color: white;
+  border: none;
+}
+
+/* Media query for dark mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #f6f6f6;
+    background-color: #2f2f2f;
+  }
+  
+  .app-container {
+    background-color: #333;
+  }
+  
+  input, textarea {
+    background-color: #444;
+    color: #fff;
+    border-color: #555;
+  }
+  
+  .result-section, .form-row, .header-item {
+    background-color: #333;
+    border-color: #555;
+  }
+  
+  .code-block {
+    background-color: #2d2d2d;
+    color: #eee;
+  }
+  
+  .headers-list, .auth-form {
+    background-color: #3a3a3a;
+  }
+  
+  button {
+    background-color: #444;
+    color: #eee;
+  }
+  
+  .method-selector button.active {
+    color: white;
+  }
+  
+  h3, h4, label {
+    color: #eee;
+  }
+}
+
+.method-dropdown {
+  position: relative;
+  width: 110px;
+}
+
+.method-button {
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: white;
+  font-weight: 600;
+  font-size: 12px;
+  text-align: left;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.method-button::after {
+  content: '▾';
+  margin-left: 8px;
+  font-size: 14px;
+  color: var(--postman-accent);
+}
+
+.method-button:hover {
+  background-color: var(--postman-surface);
+}
+
+.method-button.get { color: var(--get-color); }
+.method-button.post { color: var(--post-color); }
+.method-button.put { color: var(--put-color); }
+.method-button.patch { color: var(--patch-color); }
+.method-button.delete { color: var(--delete-color); }
+.method-button.head { color: var(--head-color); }
+.method-button.options { color: var(--options-color); }
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  margin-top: 4px;
+  box-shadow: var(--box-shadow);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.dropdown-item {
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.dropdown-item:hover {
+  background-color: var(--postman-surface);
+}
+
+.dropdown-item.get { color: var(--get-color); }
+.dropdown-item.post { color: var(--post-color); }
+.dropdown-item.put { color: var(--put-color); }
+.dropdown-item.patch { color: var(--patch-color); }
+.dropdown-item.delete { color: var(--delete-color); }
+.dropdown-item.head { color: var(--head-color); }
+.dropdown-item.options { color: var(--options-color); }
