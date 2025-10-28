@@ -1,6 +1,4 @@
-import { useState } from "react";
-import { AuthType, ApiKeyLocation } from "../types";
-import { parseJwt } from "../utils";
+import { AuthType, ApiKeyLocation, CookieType } from "../types";
 import Editor from "@monaco-editor/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +24,12 @@ interface AuthenticationProps {
   onApiKeyLocationChange: (location: ApiKeyLocation) => void;
   userDetail: string;
   onJwtTokenChange: (token: string) => void;
+  cookieString: string;
+  onCookieStringChange: (cookies: string) => void;
+  cookies: CookieType[];
+  onAddCookie: () => void;
+  onCookieChange: (id: string, field: 'name' | 'value' | 'enabled', value: string | boolean) => void;
+  onRemoveCookie: (id: string) => void;
 }
 
 export function Authentication({
@@ -44,7 +48,13 @@ export function Authentication({
   apiKeyLocation,
   onApiKeyLocationChange,
   userDetail,
-  onJwtTokenChange
+  onJwtTokenChange,
+  cookieString,
+  onCookieStringChange,
+  cookies,
+  onAddCookie,
+  onCookieChange,
+  onRemoveCookie
 }: AuthenticationProps) {
   return (
     <Card>
@@ -65,6 +75,7 @@ export function Authentication({
             <SelectItem value="bearer">Bearer Token</SelectItem>
             <SelectItem value="apikey">API Key</SelectItem>
             <SelectItem value="jwt-user">JWT to x-user-detail</SelectItem>
+            <SelectItem value="cookie">Cookies</SelectItem>
           </SelectContent>
         </Select>
 
@@ -148,6 +159,91 @@ export function Authentication({
                 }}
               />
             </div>
+          </div>
+        )}
+
+        {authType === 'cookie' && (
+          <div className="space-y-4">
+            <div>
+              <Label>Cookie String</Label>
+              <Textarea 
+                placeholder="Paste cookie string from browser or cURL (e.g., name1=value1; name2=value2)" 
+                value={cookieString} 
+                onChange={e => onCookieStringChange(e.target.value)}
+                className="font-mono mt-1 min-h-[100px]"
+              />
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label>Individual Cookies</Label>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={onAddCookie}
+                >
+                  Add Cookie
+                </Button>
+              </div>
+              <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                {cookies.map((cookie) => (
+                  <div key={cookie.id} className="flex items-center gap-2">
+                    <Input
+                      placeholder="Name"
+                      value={cookie.name}
+                      onChange={(e) => onCookieChange(cookie.id, 'name', e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="Value"
+                      value={cookie.value}
+                      onChange={(e) => onCookieChange(cookie.id, 'value', e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="checkbox"
+                      checked={cookie.enabled}
+                      onChange={(e) => onCookieChange(cookie.id, 'enabled', e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onRemoveCookie(cookie.id)}
+                    >
+                      ✕
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {bearerToken && (
+              <div>
+                <Label>Extracted Access Token</Label>
+                <Textarea 
+                  value={bearerToken} 
+                  readOnly
+                  className="font-mono mt-1 bg-muted text-muted-foreground"
+                />
+              </div>
+            )}
+            {userDetail && (
+              <div>
+                <Label>Parsed JWT Details</Label>
+                <Editor 
+                  height="150px" 
+                  language="json" 
+                  value={userDetail} 
+                  theme="vs-dark"
+                  options={{
+                    readOnly: true,
+                    minimap: { enabled: false },
+                    lineNumbers: 'off'
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
 

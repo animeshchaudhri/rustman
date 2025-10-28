@@ -15,7 +15,9 @@ import {
   enhancedFetch, 
   parseJwt, 
   parseCurlCommand, 
-  generateJsCode
+  generateJsCode,
+  parseCookies,
+  extractAccessTokenFromCookies
 } from "./utils";
 import { 
   HeaderType, 
@@ -26,7 +28,8 @@ import {
   RequestBodyType,
   AuthType,
   ApiKeyLocation,
-  ParsedCurl
+  ParsedCurl,
+  CookieType
 } from "./types";
 import { ChevronRight, Clock, Folder, Plus, Settings } from "lucide-react";
 import { Separator } from "@radix-ui/react-select";
@@ -56,6 +59,9 @@ export default function ApiTester() {
   const [params, setParams] = useState<HeaderType[]>([
     { id: crypto.randomUUID(), key: "", value: "", enabled: true },
   ]);
+  const [cookies, setCookies] = useState<CookieType[]>([
+    { id: crypto.randomUUID(), name: "", value: "", enabled: true },
+  ]);
 
   // Authentication state
   const [authType, setAuthType] = useState<AuthType>('none');
@@ -66,6 +72,7 @@ export default function ApiTester() {
   const [apiKeyValue, setApiKeyValue] = useState<string>("");
   const [apiKeyLocation, setApiKeyLocation] = useState<ApiKeyLocation>('header');
   const [userDetail, setUserDetail] = useState<string>("");
+  const [cookieString, setCookieString] = useState<string>("");
 
   // UI state
   const [activeRequestTab, setActiveRequestTab] = useState<RequestTabType>("params");
@@ -227,33 +234,89 @@ export default function ApiTester() {
     return fullUrl;
   }, [currentBaseUrl, endpoint, params, urlInput]);
 
-  // --- Event Handlers for Key-Value inputs (Headers, Params) ---
-  const handleAddItem = (type: "header" | "param") => {
+  // --- Event Handlers for Key-Value inputs (Headers, Params, Cookies) ---
+  const handleAddItem = (type: "header" | "param" | "cookie") => {
     const newItem = { id: crypto.randomUUID(), key: "", value: "", enabled: true };
+    const newCookie = { id: crypto.randomUUID(), name: "", value: "", enabled: true };
     if (type === "header") setHeaders([...headers, newItem]);
-    else setParams([...params, newItem]);
+    else if (type === "param") setParams([...params, newItem]);
+    else if (type === "cookie") setCookies([...cookies, newCookie]);
   };
 
   const handleItemChange = (
-    type: "header" | "param",
+    type: "header" | "param" | "cookie",
     id: string,
-    field: "key" | "value" | "enabled",
+    field: "key" | "value" | "enabled" | "name",
     value: string | boolean
   ) => {
-    const updater = type === "header" ? setHeaders : setParams;
-    updater((prevItems) =>
-      prevItems.map((item) =>
-        item.id === id ? { ...item, [field]: value } : item
-      )
-    );
+    if (type === "header") {
+      setHeaders((prevItems) =>
+        prevItems.map((item) =>
+          item.id === id ? { ...item, [field]: value } : item
+        )
+      );
+    } else if (type === "param") {
+      setParams((prevItems) =>
+        prevItems.map((item) =>
+          item.id === id ? { ...item, [field]: value } : item
+        )
+      );
+    } else if (type === "cookie") {
+      setCookies((prevItems) =>
+        prevItems.map((item) =>
+          item.id === id ? { ...item, [field]: value } : item
+        )
+      );
+    }
   };
 
-  const handleRemoveItem = (type: "header" | "param", id: string) => {
-    const updater = type === "header" ? setHeaders : setParams;
-    updater((prevItems) => prevItems.filter((item) => item.id !== id));
+  const handleRemoveItem = (type: "header" | "param" | "cookie", id: string) => {
+    if (type === "header") {
+      setHeaders((prevItems) => prevItems.filter((item) => item.id !== id));
+    } else if (type === "param") {
+      setParams((prevItems) => prevItems.filter((item) => item.id !== id));
+    } else if (type === "cookie") {
+      setCookies((prevItems) => prevItems.filter((item) => item.id !== id));
+    }
   };
 
-  // Code generation functions
+  // Handle cookie string changes and extract access token
+  const handleCookieStringChange = useCallback((newCookieString: string) => {
+    setCookieString(newCookieString);
+    
+    // Parse cookies and set them in the cookies state
+    const parsedCookies = parseCookies(newCookieString);
+    const cookieItems: CookieType[] = Object.entries(parsedCookies).map(([name, value]) => ({
+      id: crypto.randomUUID(),
+      name,
+      value,
+      enabled: true
+    }));
+    setCookies(cookieItems);
+
+    // Extract access token if present
+    const accessToken = extractAccessTokenFromCookies(newCookieString);
+    if (accessToken) {
+      setBearerToken(accessToken);
+      // Try to parse JWT if it's a JWT token
+      try {
+        const parsedJwt = parseJwt(accessToken);
+        if (parsedJwt) {
+          setUserDetail(JSON.stringify(parsedJwt, null, 2));
+        }
+      } catch (error) {
+        console.log('Token is not a JWT or could not be parsed');
+      }
+    }
+  }, []);
+
+  // Generate cookie header string from cookies state
+  const getCookieHeaderValue = useCallback(() => {
+    return cookies
+      .filter(cookie => cookie.name && cookie.enabled)
+      .map(cookie => `${cookie.name}=${cookie.value}`)
+      .join('; ');
+  }, [cookies]);
   const generateCurl = useCallback(() => {
     const fullUrl = getFullUrl();
     if (!fullUrl) {
@@ -271,6 +334,14 @@ export default function ApiTester() {
       activeHeaders.push({ id: "auth", key: "Authorization", value: `Basic ${btoa(`${basicUser}:${basicPass}`)}`, enabled: true });
     } else if (authType === "apikey" && apiKeyName && apiKeyValue && apiKeyLocation === 'header') {
       activeHeaders.push({ id: "auth", key: apiKeyName, value: apiKeyValue, enabled: true });
+    }
+
+    // Add cookie header if using cookie auth
+    if (authType === "cookie" && cookies.length > 0) {
+      const cookieHeader = getCookieHeaderValue();
+      if (cookieHeader) {
+        cmd += `  -b "${cookieHeader}" \\\n`;
+      }
     }
 
     activeHeaders.forEach((header) => {
@@ -302,7 +373,9 @@ export default function ApiTester() {
     basicPass, 
     apiKeyName, 
     apiKeyValue, 
-    apiKeyLocation
+    apiKeyLocation,
+    cookies,
+    getCookieHeaderValue
   ]);
 
   const prepareJsCode = useCallback(() => {
@@ -403,6 +476,38 @@ export default function ApiTester() {
         {id: crypto.randomUUID(), key: "Content-Type", value: "application/json", enabled: true}
       ]); 
 
+      // Handle cookies from cURL
+      if (parsed.cookies && Object.keys(parsed.cookies).length > 0) {
+        setAuthType("cookie");
+        const cookieItems: CookieType[] = Object.entries(parsed.cookies).map(([name, value]) => ({
+          id: crypto.randomUUID(),
+          name,
+          value,
+          enabled: true
+        }));
+        setCookies(cookieItems);
+        
+        // Create cookie string for display
+        const cookieStr = Object.entries(parsed.cookies)
+          .map(([name, value]) => `${name}=${value}`)
+          .join('; ');
+        setCookieString(cookieStr);
+
+        // Extract access token if present
+        const accessToken = extractAccessTokenFromCookies(cookieStr);
+        if (accessToken) {
+          setBearerToken(accessToken);
+          try {
+            const parsedJwt = parseJwt(accessToken);
+            if (parsedJwt) {
+              setUserDetail(JSON.stringify(parsedJwt, null, 2));
+            }
+          } catch (error) {
+            console.log('Access token is not a JWT or could not be parsed');
+          }
+        }
+      }
+
       if (parsed.body) {
         setRequestBody(parsed.body);
         // Try to guess body type
@@ -476,6 +581,12 @@ export default function ApiTester() {
       headerObj["Authorization"] = `Basic ${btoa(`${basicUser}:${basicPass}`)}`;
     } else if (authType === "apikey" && apiKeyName && apiKeyValue && apiKeyLocation === 'header') {
       headerObj[apiKeyName] = apiKeyValue;
+    } else if (authType === "cookie" && cookies.length > 0) {
+      // Add cookie header
+      const cookieHeader = getCookieHeaderValue();
+      if (cookieHeader) {
+        headerObj["Cookie"] = cookieHeader;
+      }
     }
     // API Key in query params is handled by getFullUrl logic if params were updated by auth UI
 
@@ -649,6 +760,12 @@ export default function ApiTester() {
                 onApiKeyLocationChange={setApiKeyLocation}
                 userDetail={userDetail}
                 onJwtTokenChange={handleJwtChange}
+                cookieString={cookieString}
+                onCookieStringChange={handleCookieStringChange}
+                cookies={cookies}
+                onAddCookie={() => handleAddItem("cookie")}
+                onCookieChange={(id, field, value) => handleItemChange("cookie", id, field, value)}
+                onRemoveCookie={(id) => handleRemoveItem("cookie", id)}
               />
             </TabsContent>
           </Tabs>

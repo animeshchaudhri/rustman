@@ -4,6 +4,7 @@ export interface ParsedCurl {
   url?: string;
   header?: Record<string, string>;
   body?: string;
+  cookies?: Record<string, string>;
 }
 
 export interface Environment {
@@ -20,7 +21,14 @@ export interface HeaderType {
   enabled: boolean;
 }
 
-export type AuthType = 'none' | 'basic' | 'bearer' | 'apikey' | 'jwt-user';
+export interface CookieType {
+  id: string;
+  name: string;
+  value: string;
+  enabled: boolean;
+}
+
+export type AuthType = 'none' | 'basic' | 'bearer' | 'apikey' | 'jwt-user' | 'cookie';
 export type RequestBodyType = 'json' | 'text' | 'form-data' | 'none';
 export type ApiKeyLocation = 'header' | 'query';
 export type ResponseBodyView = 'pretty' | 'raw';

@@ -23,10 +23,35 @@ export function parseJwt(token: string) {
 }
 
 /**
- * Parses a cURL command and returns an object with method, URL, headers, and body
+ * Parses cookies from a cookie string and returns an object
+ */
+export function parseCookies(cookieString: string): Record<string, string> {
+  const cookies: Record<string, string> = {};
+  if (!cookieString) return cookies;
+  
+  cookieString.split(';').forEach(cookie => {
+    const [name, ...rest] = cookie.trim().split('=');
+    if (name && rest.length > 0) {
+      cookies[name.trim()] = rest.join('=').trim();
+    }
+  });
+  
+  return cookies;
+}
+
+/**
+ * Extracts access token from cookies
+ */
+export function extractAccessTokenFromCookies(cookieString: string): string | null {
+  const cookies = parseCookies(cookieString);
+  return cookies.accessToken || null;
+}
+
+/**
+ * Parses a cURL command and returns an object with method, URL, headers, body, and cookies
  */
 export function parseCurlCommand(curlCmd: string): ParsedCurl {
-  const result: ParsedCurl = { header: {} };
+  const result: ParsedCurl = { header: {}, cookies: {} };
   let cmd = curlCmd.trim();
   if (cmd.startsWith('curl ')) {
     cmd = cmd.substring(5);
@@ -49,7 +74,7 @@ export function parseCurlCommand(curlCmd: string): ParsedCurl {
     if (part.startsWith('-')) {
       // Skip flags and their potential values if they are known to take one
       const flag = part.match(/^(-[a-zA-Z]|--[a-zA-Z-]+)/)?.[0];
-      const flagsWithValue = ['-X', '--request', '-H', '--header', '-d', '--data', '--data-raw', '-u', '--user', '--url'];
+      const flagsWithValue = ['-X', '--request', '-H', '--header', '-d', '--data', '--data-raw', '-u', '--user', '--url', '-b', '--cookie'];
       if (flag && flagsWithValue.includes(flag) && i + 1 < parts.length) {
         i++; // Skip next part as it's a value for this flag
       }
@@ -79,6 +104,15 @@ export function parseCurlCommand(curlCmd: string): ParsedCurl {
     if (name && value && result.header) {
       result.header[name.trim()] = value;
     }
+  }
+
+  // Parse cookies from -b or --cookie flag
+  const cookieRegex = /(-b|--cookie)\s*(['"])(.+?)\2/g;
+  let cookieMatch;
+  while ((cookieMatch = cookieRegex.exec(cmd)) !== null) {
+    const cookieString = cookieMatch[3];
+    const cookies = parseCookies(cookieString);
+    result.cookies = { ...result.cookies, ...cookies };
   }
 
   const dataMatch = cmd.match(/(-d|--data|--data-raw)\s*(['"])([\s\S]*?)\2/s) || cmd.match(/(-d|--data|--data-raw)\s+'([\s\S]*?)'/s) || cmd.match(/(-d|--data|--data-raw)\s+([^'"\s][\s\S]*)/s) ;
