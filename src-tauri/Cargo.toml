@@ -1,5 +1,5 @@
 [package]
-name = "api-tester"
+name = "rustman"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
@@ -27,4 +27,5 @@ tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
 thiserror = "1.0"
 http = "0.2"
+rusqlite = { version = "0.31", features = ["bundled"] }
 

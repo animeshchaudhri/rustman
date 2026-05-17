@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "api-tester",
+  "productName": "Rustman",
   "version": "0.1.0",
-  "identifier": "Automator",
+  "identifier": "com.rustman.app",
   "build": {
     "beforeDevCommand": "yarn dev",
     "devUrl": "http://localhost:1420",
@@ -12,9 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "api-tester",
-        "width": 800,
-        "height": 600
+        "title": "Rustman",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600
       }
     ],
     "security": {

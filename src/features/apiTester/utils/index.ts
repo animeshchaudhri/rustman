@@ -6,6 +6,14 @@ import { tauriProxyFetch } from "./tauriProxy";
 export { tauriProxyFetch };
 
 /**
+ * Replaces {{variable}} placeholders with values from an env vars map.
+ * Unresolved variables are left as-is.
+ */
+export function replaceVariables(str: string, vars: Record<string, string>): string {
+  return str.replace(/\{\{(\w+)\}\}/g, (match, key) => vars[key] ?? match);
+}
+
+/**
  * Parses a JWT token and returns the payload as an object
  */
 export function parseJwt(token: string) {
@@ -48,84 +56,174 @@ export function extractAccessTokenFromCookies(cookieString: string): string | nu
 }
 
 /**
- * Parses a cURL command and returns an object with method, URL, headers, body, and cookies
+ * Tokenizes a shell-like string respecting single-quoted, double-quoted, and
+ * unquoted tokens. Returns an array of unquoted token strings.
+ */
+function shellTokenize(str: string): string[] {
+  const tokens: string[] = [];
+  let i = 0;
+  const len = str.length;
+
+  while (i < len) {
+    // Skip whitespace
+    while (i < len && /\s/.test(str[i])) i++;
+    if (i >= len) break;
+
+    const q = str[i];
+    if (q === "'" || q === '"') {
+      i++; // skip opening quote
+      let token = "";
+      while (i < len && str[i] !== q) {
+        if (q === '"' && str[i] === '\\' && i + 1 < len) {
+          i++;
+          token += str[i++];
+        } else {
+          token += str[i++];
+        }
+      }
+      if (i < len) i++; // skip closing quote
+      tokens.push(token);
+    } else {
+      let token = "";
+      while (i < len && !/\s/.test(str[i])) {
+        if (str[i] === '\\' && i + 1 < len) {
+          i++;
+          token += str[i++];
+        } else {
+          token += str[i++];
+        }
+      }
+      tokens.push(token);
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Parses a cURL command (including multi-line with \ continuations) and returns
+ * an object with method, URL, headers, body, and cookies.
  */
 export function parseCurlCommand(curlCmd: string): ParsedCurl {
   const result: ParsedCurl = { header: {}, cookies: {} };
-  let cmd = curlCmd.trim();
-  if (cmd.startsWith('curl ')) {
-    cmd = cmd.substring(5);
-  }
 
-  const methodMatch = cmd.match(/-X\s+([^\s]+)/i);
-  if (methodMatch) {
-    result.method = methodMatch[1].toUpperCase();
-  } else if (cmd.includes(' --data') || cmd.includes(' -d ') || cmd.includes('--data-raw')) {
-    result.method = 'POST';
-  } else {
-    result.method = 'GET';
-  }
+  // 1. Collapse backslash-newline continuations (handles both \n and \r\n)
+  let cmd = curlCmd
+    .replace(/\\\r\n/g, " ")
+    .replace(/\\\n/g, " ")
+    .trim();
 
-  // URL: Find the first argument that is not a flag or a value for a flag that expects one
-  const parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
-  let urlFound = false;
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    if (part.startsWith('-')) {
-      // Skip flags and their potential values if they are known to take one
-      const flag = part.match(/^(-[a-zA-Z]|--[a-zA-Z-]+)/)?.[0];
-      const flagsWithValue = ['-X', '--request', '-H', '--header', '-d', '--data', '--data-raw', '-u', '--user', '--url', '-b', '--cookie'];
-      if (flag && flagsWithValue.includes(flag) && i + 1 < parts.length) {
-        i++; // Skip next part as it's a value for this flag
+  // 2. Strip leading "curl" token
+  if (/^curl\s/i.test(cmd)) cmd = cmd.replace(/^curl\s+/i, "");
+
+  // 3. Tokenize (respects quoted strings)
+  const tokens = shellTokenize(cmd);
+
+  // 4. Walk token pairs
+  let i = 0;
+  const next = () => tokens[++i];
+
+  while (i < tokens.length) {
+    const tok = tokens[i];
+
+    // Method
+    if (tok === "-X" || tok === "--request") {
+      result.method = next()?.toUpperCase();
+      i++;
+      continue;
+    }
+
+    // URL via --url flag
+    if (tok === "--url") {
+      result.url = next();
+      i++;
+      continue;
+    }
+
+    // Headers
+    if (tok === "-H" || tok === "--header") {
+      const raw = next() ?? "";
+      i++;
+      const colon = raw.indexOf(":");
+      if (colon !== -1) {
+        const key = raw.slice(0, colon).trim();
+        const value = raw.slice(colon + 1).trim();
+        if (key && result.header) result.header[key] = value;
       }
       continue;
     }
-    if (part.includes('://') || (part.startsWith('http') && !parts[i-1]?.startsWith('-'))) {
-      result.url = part.replace(/^["']|["']$/g, '');
-      urlFound = true;
-      break;
-    }
-  }
-   if (!urlFound) { // Fallback for URLs without protocol, assuming it's the first non-flag
-    for (const part of parts) {
-        if (!part.startsWith('-')) {
-            result.url = part.replace(/^["']|["']$/g, '');
-            break;
-        }
-    }
-   }
 
-  const headerRegex = /(-H|--header)\s*(['"])(.+?)\2/g;
-  let match;
-  while ((match = headerRegex.exec(cmd)) !== null) {
-    const headerLine = match[3];
-    const [name, ...valueParts] = headerLine.split(/:\s*/);
-    const value = valueParts.join(':').trim();
-    if (name && value && result.header) {
-      result.header[name.trim()] = value;
+    // Cookies  (-b / --cookie)
+    if (tok === "-b" || tok === "--cookie") {
+      const raw = next() ?? "";
+      i++;
+      const parsed = parseCookies(raw);
+      result.cookies = { ...result.cookies, ...parsed };
+      continue;
     }
-  }
 
-  // Parse cookies from -b or --cookie flag
-  const cookieRegex = /(-b|--cookie)\s*(['"])(.+?)\2/g;
-  let cookieMatch;
-  while ((cookieMatch = cookieRegex.exec(cmd)) !== null) {
-    const cookieString = cookieMatch[3];
-    const cookies = parseCookies(cookieString);
-    result.cookies = { ...result.cookies, ...cookies };
-  }
-
-  const dataMatch = cmd.match(/(-d|--data|--data-raw)\s*(['"])([\s\S]*?)\2/s) || cmd.match(/(-d|--data|--data-raw)\s+'([\s\S]*?)'/s) || cmd.match(/(-d|--data|--data-raw)\s+([^'"\s][\s\S]*)/s) ;
-
-  if (dataMatch) {
-    result.body = dataMatch[3] || dataMatch[2] || dataMatch[1];
-    if (dataMatch[0].includes("--data-raw")){
-        // keep as is
-    } else if (dataMatch[0].includes("-d") || dataMatch[0].includes("--data")){
-        // if it's urlencoded, it might need decoding, but for now, we'll keep it as is
-        // as Postman also imports it as raw if it's not clearly JSON.
+    // Body  (-d / --data / --data-raw / --data-binary / --data-urlencode)
+    if (
+      tok === "-d" ||
+      tok === "--data" ||
+      tok === "--data-raw" ||
+      tok === "--data-binary" ||
+      tok === "--data-urlencode"
+    ) {
+      result.body = next() ?? "";
+      i++;
+      continue;
     }
+
+    // User (-u / --user) — skip value
+    if (tok === "-u" || tok === "--user") {
+      next();
+      i++;
+      continue;
+    }
+
+    // Form data (-F / --form) — skip value for now
+    if (tok === "-F" || tok === "--form") {
+      next();
+      i++;
+      continue;
+    }
+
+    // Flags without values that we safely skip
+    if (tok === "-s" || tok === "--silent" ||
+        tok === "-v" || tok === "--verbose" ||
+        tok === "-L" || tok === "--location" ||
+        tok === "-k" || tok === "--insecure" ||
+        tok === "-i" || tok === "--include" ||
+        tok === "--compressed") {
+      i++;
+      continue;
+    }
+
+    // Any unrecognised flag with = syntax (e.g. --output=file) — skip
+    if (tok.startsWith("-") && tok.includes("=")) {
+      i++;
+      continue;
+    }
+
+    // Any other unrecognised flag — skip (and its potential value)
+    if (tok.startsWith("-")) {
+      i++;
+      continue;
+    }
+
+    // Bare token — treat as URL if it looks like one and we don't have a URL yet
+    if (!result.url && (tok.includes("://") || tok.startsWith("http"))) {
+      result.url = tok;
+    }
+
+    i++;
   }
+
+  // 5. Infer method
+  if (!result.method) {
+    result.method = result.body ? "POST" : "GET";
+  }
+
   return result;
 }
 

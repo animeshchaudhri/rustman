@@ -32,7 +32,7 @@ export const tauriProxyFetch = async (url: string, options: RequestInit = {}) =>
     const proxyRequest: ProxyRequest = {
       url,
       method: options.method || 'GET',
-      timeout: options.signal instanceof AbortSignal ? undefined : 30000, // 30s default timeout
+      timeout: options.signal instanceof AbortSignal ? undefined : 90000000, // 30s default timeout
     };
 
     // Convert headers from Headers or object to simple Record
@@ -121,19 +121,4 @@ export const tauriProxyFetch = async (url: string, options: RequestInit = {}) =>
   }
 };
 
-// Helper function to get status text from status code
-function getStatusText(status: number): string {
-  const statusTexts: Record<number, string> = {
-    200: 'OK',
-    201: 'Created',
-    204: 'No Content',
-    400: 'Bad Request',
-    401: 'Unauthorized',
-    403: 'Forbidden',
-    404: 'Not Found',
-    500: 'Internal Server Error',
-    // Add more as needed
-  };
-  
-  return statusTexts[status] || 'Unknown Status';
-}
+

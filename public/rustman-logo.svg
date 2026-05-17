@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#18181b"/>
+      <stop offset="100%" stop-color="#09090b"/>
+    </linearGradient>
+    <linearGradient id="orangeGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fb923c"/>
+      <stop offset="100%" stop-color="#ea580c"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fdba74"/>
+      <stop offset="100%" stop-color="#fb923c"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="roundedSquare">
+      <rect width="200" height="200" rx="44"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect width="200" height="200" rx="44" fill="url(#bgGrad)"/>
+
+  <!-- Subtle grid lines -->
+  <g opacity="0.06" stroke="#fb923c" stroke-width="0.8">
+    <line x1="40" y1="0" x2="40" y2="200"/>
+    <line x1="80" y1="0" x2="80" y2="200"/>
+    <line x1="120" y1="0" x2="120" y2="200"/>
+    <line x1="160" y1="0" x2="160" y2="200"/>
+    <line x1="0" y1="40" x2="200" y2="40"/>
+    <line x1="0" y1="80" x2="200" y2="80"/>
+    <line x1="0" y1="120" x2="200" y2="120"/>
+    <line x1="0" y1="160" x2="200" y2="160"/>
+  </g>
+
+  <!-- Orange glow blob behind R -->
+  <ellipse cx="100" cy="96" rx="52" ry="48" fill="#ea580c" opacity="0.12" filter="url(#glow)"/>
+
+  <!-- The R letterform — bold geometric -->
+  <!-- Vertical stem -->
+  <rect x="55" y="42" width="20" height="104" rx="3" fill="url(#orangeGrad)"/>
+  <!-- Top bowl horizontal bar -->
+  <rect x="55" y="42" width="58" height="18" rx="3" fill="url(#orangeGrad)"/>
+  <!-- Bowl bottom bar (mid) -->
+  <rect x="55" y="88" width="58" height="18" rx="3" fill="url(#orangeGrad)"/>
+  <!-- Bowl right curve cap top -->
+  <rect x="113" y="42" width="18" height="20" rx="3" fill="url(#orangeGrad)"/>
+  <!-- Bowl right curve cap bottom -->
+  <rect x="113" y="86" width="18" height="20" rx="3" fill="url(#orangeGrad)"/>
+  <!-- Bowl right vertical connector -->
+  <rect x="113" y="58" width="14" height="34" rx="0" fill="url(#orangeGrad)"/>
+
+  <!-- Leg diagonal — from mid-right going down-right -->
+  <polygon points="75,106 95,106 135,146 135,146 115,146" fill="url(#orangeGrad)" rx="2"/>
+  <rect x="115" y="126" width="20" height="20" rx="3" fill="url(#orangeGrad)"/>
+
+  <!-- Small API dot accent — bottom right -->
+  <circle cx="152" cy="152" r="7" fill="url(#accentGrad)" opacity="0.9"/>
+  <circle cx="152" cy="152" r="3.5" fill="#fff" opacity="0.9"/>
+
+  <!-- Border ring -->
+  <rect width="200" height="200" rx="44" stroke="url(#orangeGrad)" stroke-width="1.5" stroke-opacity="0.25" fill="none"/>
+</svg>
