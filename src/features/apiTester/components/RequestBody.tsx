@@ -1,9 +1,9 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import type { FormDataField, RequestBodyType } from "../types";
 import { beautifyJson } from "../utils";
 import Editor from "@monaco-editor/react";
 import { cn } from "@/lib/utils";
-import { Braces, FileUp, Plus, Trash2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Braces, FileUp, Trash2, AlertCircle, CheckCircle2 } from "lucide-react";
 
 interface RequestBodyProps {
   bodyType: RequestBodyType;
@@ -42,7 +42,6 @@ function JsonStatus({ json }: { json: string }) {
 
 export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, formDataFields, onFormDataChange }: RequestBodyProps) {
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const [editorMounted, setEditorMounted] = useState(false);
 
   const addFormField = () => {
     onFormDataChange([...formDataFields, { id: crypto.randomUUID(), key: "", value: "", type: "text", enabled: true }]);
@@ -126,7 +125,6 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
               language={bodyType === "json" ? "json" : "plaintext"}
               value={body}
               onChange={v => onBodyChange(v ?? "")}
-              onMount={() => setEditorMounted(true)}
               theme="vs-dark"
               options={{
                 minimap: { enabled: false },
