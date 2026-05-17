@@ -16,8 +16,6 @@ jobs:
     runs-on: macos-latest
     permissions:
       contents: write
-    env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.tag_name != '' && github.event.inputs.tag_name || format('manual-v{0}', github.run_number)) || github.ref_name }}
 
     steps:
       - name: Checkout
@@ -57,12 +55,29 @@ jobs:
             src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
           if-no-files-found: error
 
+      - name: Resolve release tag
+        id: resolve_release_tag
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        env:
+          INPUT_TAG_NAME: ${{ github.event.inputs.tag_name }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "$INPUT_TAG_NAME" ]; then
+              SAFE_TAG=$(printf '%s' "$INPUT_TAG_NAME" | tr -d '\r\n')
+              echo "tag=$SAFE_TAG" >> "$GITHUB_OUTPUT"
+            else
+              echo "tag=manual-v${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          name: ${{ env.RELEASE_TAG }}
+          tag_name: ${{ steps.resolve_release_tag.outputs.tag }}
+          name: ${{ steps.resolve_release_tag.outputs.tag }}
           files: |
             src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
             src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
