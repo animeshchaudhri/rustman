@@ -64,6 +64,10 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ -n "$INPUT_TAG_NAME" ]; then
               SAFE_TAG=$(printf '%s' "$INPUT_TAG_NAME" | tr -d '\r\n')
+              if [ -z "$SAFE_TAG" ] || ! printf '%s' "$SAFE_TAG" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
+                echo "Invalid tag_name input. Use only letters, numbers, dot, underscore, or hyphen."
+                exit 1
+              fi
               echo "tag=$SAFE_TAG" >> "$GITHUB_OUTPUT"
             else
               echo "tag=manual-v${{ github.run_number }}" >> "$GITHUB_OUTPUT"
