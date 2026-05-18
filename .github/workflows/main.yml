@@ -62,21 +62,21 @@ jobs:
           INPUT_TAG_NAME: ${{ github.event.inputs.tag_name }}
         shell: pwsh
         run: |
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+          if ("${{ github.event_name }}" -ceq "workflow_dispatch") {
             if (-not [string]::IsNullOrEmpty($env:INPUT_TAG_NAME)) {
               $SafeTag = $env:INPUT_TAG_NAME.Replace("`r", "").Replace("`n", "")
               if (-not $SafeTag -or -not ($SafeTag -match '^[A-Za-z0-9][A-Za-z0-9._-]*$')) {
                 Write-Host "Invalid tag_name input. Use only letters, numbers, dot, underscore, or hyphen."
                 exit 1
               }
-              "tag=$SafeTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+              "tag=$SafeTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             }
             else {
-              "tag=manual-v${{ github.run_number }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+              "tag=manual-v${{ github.run_number }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             }
           }
           else {
-            "tag=$env:GITHUB_REF_NAME" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            "tag=$env:GITHUB_REF_NAME" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           }
 
       - name: Create GitHub Release
