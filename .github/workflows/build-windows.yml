@@ -62,7 +62,7 @@ jobs:
           INPUT_TAG_NAME: ${{ github.event.inputs.tag_name }}
         shell: pwsh
         run: |
-          if ("${{ github.event_name }}" -ceq "workflow_dispatch") {
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
             if (-not [string]::IsNullOrEmpty($env:INPUT_TAG_NAME)) {
               $SafeTag = $env:INPUT_TAG_NAME.Replace("`r", "").Replace("`n", "")
               if (-not $SafeTag -or -not ($SafeTag -match '^[A-Za-z0-9][A-Za-z0-9._-]*$')) {
