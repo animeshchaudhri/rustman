@@ -29,6 +29,8 @@ export interface FormDataField {
   type: "text" | "file";
   enabled: boolean;
   fileName?: string;
+  fileData?: string;   // base64 encoded file content
+  mimeType?: string;   // MIME type from File.type
 }
 
 export type AuthType = "none" | "basic" | "bearer" | "apikey" | "jwt-user" | "cookie";

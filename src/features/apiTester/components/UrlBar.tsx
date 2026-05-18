@@ -81,9 +81,9 @@ export function UrlBar({
 
   return (
     <>
-      {/* URL bar row */}
+      { }
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm">
-        {/* Method selector */}
+        { }
         <div className="relative shrink-0">
           <select
             ref={selectRef}
@@ -106,7 +106,7 @@ export function UrlBar({
           </span>
         </div>
 
-        {/* URL input */}
+        { }
         <input
           type="text"
           value={urlInput}
@@ -123,7 +123,7 @@ export function UrlBar({
           )}
         />
 
-        {/* Generate code button */}
+        { }
         <button
           onClick={handleOpenCode}
           disabled={disabled}
@@ -137,7 +137,7 @@ export function UrlBar({
           <Code className="h-3.5 w-3.5" />
         </button>
 
-        {/* Save button */}
+        { }
         <button
           onClick={onSaveRequest}
           disabled={disabled || isLoading}
@@ -151,7 +151,7 @@ export function UrlBar({
           <Save className="h-3.5 w-3.5" />
         </button>
 
-        {/* Send button */}
+        { }
         <button
           onClick={onSendRequest}
           disabled={disabled || isLoading || !urlInput.trim()}
@@ -172,19 +172,19 @@ export function UrlBar({
         </button>
       </div>
 
-      {/* Code modal */}
+      { }
       {codeOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setCodeOpen(false)} />
           <div className="relative bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-[720px] max-w-[95vw] overflow-hidden flex flex-col" style={{ height: "min(80vh, 600px)" }}>
-            {/* Header */}
+            { }
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800 shrink-0">
               <div className="flex items-center gap-2">
                 <Code className="h-4 w-4 text-orange-400" />
                 <span className="text-sm font-semibold text-zinc-100">Generated Code</span>
               </div>
               <div className="flex items-center gap-2">
-                {/* Tabs */}
+                { }
                 <div className="flex bg-zinc-800 rounded-lg p-0.5 gap-0.5">
                   {(["curl", "js"] as const).map((t) => (
                     <button
@@ -216,7 +216,7 @@ export function UrlBar({
                 </button>
               </div>
             </div>
-            {/* Editor — needs explicit pixel height for Monaco to render */}
+            { }
             <div className="flex-1 min-h-0">
               <Editor
                 height="100%"

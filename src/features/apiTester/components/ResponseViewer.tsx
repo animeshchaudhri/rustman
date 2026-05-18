@@ -30,7 +30,7 @@ function prettyBody(data: unknown): string {
     return JSON.stringify(data, null, 2);
   }
   if (typeof data === "string") {
-    try { return JSON.stringify(JSON.parse(data), null, 2); } catch { /* not json */ }
+    try { return JSON.stringify(JSON.parse(data), null, 2); } catch {   }
   }
   return String(data ?? "");
 }
@@ -40,7 +40,6 @@ function rawBody(data: unknown): string {
   return String(data ?? "");
 }
 
-// Minimal JSON syntax highlighter — renders colored spans
 function HighlightedJson({ text, search }: { text: string; search: string }) {
   const lines = text.split("\n");
   const lsearch = search.toLowerCase();
@@ -48,7 +47,7 @@ function HighlightedJson({ text, search }: { text: string; search: string }) {
   return (
     <code className="block font-mono text-xs leading-[1.7] select-text">
       {lines.map((line, li) => {
-        // Tokenize each line
+        
         const tokens: { type: string; value: string }[] = [];
         const re = /("(?:[^"\\]|\\.)*")\s*:|("(?:[^"\\]|\\.)*")|(true|false|null)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([{}\[\],:])|(\s+)/g;
         let last = 0;
@@ -145,7 +144,7 @@ export function ResponseViewer({
 
   return (
     <div className="flex flex-col bg-zinc-950 h-full overflow-hidden">
-      {/* Status bar */}
+      { }
       <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900/80 shrink-0 gap-3">
         <div className="flex items-center gap-3 min-w-0">
           {isLoading ? (
@@ -187,7 +186,7 @@ export function ResponseViewer({
         )}
       </div>
 
-      {/* Content */}
+      { }
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
         {isLoading && (
           <div className="flex-1 flex items-center justify-center">
@@ -222,7 +221,7 @@ export function ResponseViewer({
             onValueChange={onTabChange as (v: string) => void}
             className="flex flex-col h-full min-h-0"
           >
-            {/* Tab bar with toolbar */}
+            { }
             <div className="shrink-0 flex items-center border-b border-zinc-800 bg-zinc-900 px-2 gap-1">
               <TabsList className="bg-transparent rounded-none h-8 gap-0 p-0">
                 {(["body", "headers", "cookies"] as ResponseTabType[]).map((t) => (
@@ -245,10 +244,10 @@ export function ResponseViewer({
                 ))}
               </TabsList>
 
-              {/* Body toolbar — only on body tab */}
+              { }
               {activeTab === "body" && (
                 <div className="ml-auto flex items-center gap-1">
-                  {/* View toggle */}
+                  { }
                   <div className="flex bg-zinc-800 rounded-md p-0.5 gap-0.5">
                     {(["pretty", "raw"] as ResponseBodyView[]).map((v) => (
                       <button
@@ -264,7 +263,7 @@ export function ResponseViewer({
                     ))}
                   </div>
 
-                  {/* Word wrap toggle */}
+                  { }
                   <button
                     onClick={() => setWordWrap(v => !v)}
                     title="Toggle word wrap"
@@ -276,7 +275,7 @@ export function ResponseViewer({
                     <WrapText className="h-3.5 w-3.5" />
                   </button>
 
-                  {/* Search toggle */}
+                  { }
                   <button
                     onClick={handleSearchToggle}
                     title="Search in response"
@@ -288,7 +287,7 @@ export function ResponseViewer({
                     <Search className="h-3.5 w-3.5" />
                   </button>
 
-                  {/* Copy */}
+                  { }
                   <button
                     onClick={handleCopy}
                     title="Copy response body"
@@ -301,7 +300,7 @@ export function ResponseViewer({
               )}
             </div>
 
-            {/* Search bar */}
+            { }
             {activeTab === "body" && showSearch && (
               <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800 bg-zinc-900/60">
                 <Search className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
@@ -325,7 +324,7 @@ export function ResponseViewer({
               </div>
             )}
 
-            {/* Body */}
+            { }
             <TabsContent value="body" className="flex-1 overflow-auto m-0 p-0 min-h-0 data-[state=active]:flex data-[state=active]:flex-col">
               {bodyText ? (
                 <div className={cn("py-3 text-xs", wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre overflow-x-auto")}>
@@ -342,7 +341,7 @@ export function ResponseViewer({
               )}
             </TabsContent>
 
-            {/* Headers */}
+            { }
             <TabsContent value="headers" className="flex-1 overflow-auto m-0 p-0 min-h-0">
               {response.headers && Object.keys(response.headers).length > 0 ? (
                 <div className="divide-y divide-zinc-800/50">
@@ -364,7 +363,7 @@ export function ResponseViewer({
               )}
             </TabsContent>
 
-            {/* Cookies */}
+            { }
             <TabsContent value="cookies" className="flex-1 overflow-auto m-0 p-0 min-h-0">
               {response.cookies ? (
                 <pre className="text-xs p-4 font-mono text-zinc-300 whitespace-pre-wrap break-all select-text leading-relaxed">

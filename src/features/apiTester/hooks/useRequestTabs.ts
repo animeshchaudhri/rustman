@@ -93,7 +93,7 @@ export const buildTabName = (method: string, urlInput: string, fallback = "Untit
     const path = `${parsedUrl.pathname}${parsedUrl.search}` || "/";
     return `${method.toUpperCase()} ${path}`;
   } catch {
-    const withoutProtocol = trimmedUrl.replace(/^https?:\/\//i, "");
+    const withoutProtocol = trimmedUrl.replace(/^https?:\/\//, "");
     const slashIndex = withoutProtocol.indexOf("/");
     const path = slashIndex >= 0 ? withoutProtocol.slice(slashIndex) : trimmedUrl;
     return `${method.toUpperCase()} ${path || fallback}`;

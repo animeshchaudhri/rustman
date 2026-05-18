@@ -57,7 +57,7 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
 
   const handleTypeChange = (t: RequestBodyType) => {
     onBodyTypeChange(t);
-    // Auto-set starter templates
+    
     if (t === "json" && !body.trim()) {
       onBodyChange("{\n  \n}");
     }
@@ -65,7 +65,7 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
 
   return (
     <div className="flex flex-col h-full">
-      {/* Type selector */}
+      { }
       <div className="flex items-center gap-1 px-3 py-1.5 border-b border-zinc-800 shrink-0">
         {BODY_TYPES.map(bt => (
           <button
@@ -83,7 +83,7 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
           </button>
         ))}
 
-        {/* JSON tools */}
+        { }
         {bodyType === "json" && (
           <div className="ml-auto flex items-center gap-2">
             <JsonStatus json={body} />
@@ -99,7 +99,7 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
         )}
       </div>
 
-      {/* Content */}
+      { }
       <div className="flex-1 overflow-hidden">
         {bodyType === "none" && (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-zinc-700">
@@ -154,7 +154,7 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
                 </div>
               ) : (
                 <>
-                  {/* Column headings */}
+                  { }
                   <div className="grid grid-cols-[20px_80px_1fr_1fr_28px] gap-1 px-3 py-1 border-b border-zinc-800/60">
                     <div />
                     <div className="text-[10px] uppercase tracking-wider text-zinc-600 font-medium">Type</div>
@@ -179,7 +179,7 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
                         className="w-3.5 h-3.5 accent-orange-500 cursor-pointer"
                       />
 
-                      {/* Type toggle */}
+                      { }
                       <button
                         onClick={() => updateFormField(f.id, { type: f.type === "text" ? "file" : "text", value: "" })}
                         className={cn(
@@ -214,9 +214,22 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
                             ref={el => { fileInputRefs.current[f.id] = el; }}
                             type="file"
                             className="hidden"
-                            onChange={e => {
+                            onChange={async (e) => {
                               const file = e.target.files?.[0];
-                              if (file) updateFormField(f.id, { value: file.name, fileName: file.name });
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                const dataUrl = reader.result as string;
+                                
+                                const base64 = dataUrl.split(",")[1] ?? "";
+                                updateFormField(f.id, {
+                                  value: file.name,
+                                  fileName: file.name,
+                                  fileData: base64,
+                                  mimeType: file.type || "application/octet-stream",
+                                });
+                              };
+                              reader.readAsDataURL(file);
                             }}
                           />
                           <button
@@ -249,7 +262,7 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
               </div>
             </div>
 
-            {/* Summary */}
+            { }
             {formDataFields.filter(f => f.enabled && f.key).length > 0 && (
               <div className="shrink-0 border-t border-zinc-800 px-3 py-1.5">
                 <span className="text-[10px] text-zinc-600">

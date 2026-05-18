@@ -23,11 +23,11 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
 
   const enabledCount = headers.filter(h => h.key && h.enabled).length;
 
-  // Convert headers array to raw text
+  
   const toBulkText = (hdrs: HeaderType[]) =>
     hdrs.filter(h => h.key).map(h => `${h.key}: ${h.value}`).join("\n");
 
-  // Parse raw text back to headers
+  
   const fromBulkText = (text: string): HeaderType[] =>
     text.split("\n")
       .map(line => line.trim())
@@ -50,13 +50,13 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
 
   const commitBulkMode = () => {
     const parsed = fromBulkText(bulkText);
-    // Replace all headers - tell parent via series of changes
-    // We do this by rebuilding: first clear via removing all, then add parsed
-    // Easier: expose a setHeaders prop - for now we'll use a workaround
-    // Since we only have add/change/remove, we store in local state then sync on blur
+    
+    
+    
+    
     setBulkMode(false);
-    // Signal parent with a complete replacement via a synthetic approach:
-    // We'll re-use the existing IDs where possible, otherwise add new ones
+    
+    
     const existing = [...headers];
     parsed.forEach((newH, i) => {
       if (i < existing.length) {
@@ -64,15 +64,15 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
         onHeaderChange(existing[i].id, "value", newH.value);
         onHeaderChange(existing[i].id, "enabled", true);
       } else {
-        // Can't directly add with content via current interface, onAddHeader adds blank
-        // We'll add the header after mount via a timeout trick
+        
+        
         onAddHeader();
         setTimeout(() => {
-          // After add, last header needs to be updated — not perfect but functional
+          
         }, 0);
       }
     });
-    // Remove extra headers
+    
     for (let i = parsed.length; i < existing.length; i++) {
       onRemoveHeader(existing[i].id);
     }
@@ -85,7 +85,7 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar */}
+      { }
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-zinc-800 shrink-0">
         <div className="flex items-center gap-1">
           <span className="text-xs text-zinc-500">
@@ -128,7 +128,7 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
         </div>
       </div>
 
-      {/* Bulk edit mode */}
+      { }
       {bulkMode ? (
         <div className="flex-1 flex flex-col p-3 gap-2">
           <p className="text-xs text-zinc-500">One header per line: <code className="text-zinc-400">Key: Value</code></p>
@@ -155,7 +155,7 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
           </div>
         </div>
       ) : (
-        /* Table mode */
+         
         <div className="flex-1 overflow-y-auto">
           {headers.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 gap-2 text-zinc-700">
@@ -163,7 +163,7 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
             </div>
           ) : (
             <>
-              {/* Column headings */}
+              { }
               <div className="grid grid-cols-[20px_1fr_1fr_28px] gap-1 px-3 py-1 border-b border-zinc-800/60">
                 <div />
                 <div className="text-[10px] uppercase tracking-wider text-zinc-600 font-medium">Key</div>
@@ -180,7 +180,7 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
                     !h.enabled && "opacity-40",
                   )}
                 >
-                  {/* Checkbox */}
+                  { }
                   <input
                     type="checkbox"
                     checked={h.enabled}
@@ -188,7 +188,7 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
                     className="w-3.5 h-3.5 accent-orange-500 cursor-pointer"
                   />
 
-                  {/* Key with autocomplete */}
+                  { }
                   <div className="relative">
                     <input
                       value={h.key}
@@ -214,7 +214,7 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
                     )}
                   </div>
 
-                  {/* Value */}
+                  { }
                   <input
                     value={h.value}
                     onChange={e => onHeaderChange(h.id, "value", e.target.value)}
@@ -223,7 +223,7 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
                     className="w-full bg-transparent border-b border-transparent hover:border-zinc-700 focus:border-orange-500/60 px-1 py-0.5 text-xs font-mono text-zinc-400 placeholder:text-zinc-700 focus:outline-none transition-colors"
                   />
 
-                  {/* Delete */}
+                  { }
                   <button
                     onClick={() => onRemoveHeader(h.id)}
                     className="opacity-0 group-hover:opacity-100 flex items-center justify-center text-zinc-600 hover:text-red-400 transition-all"
@@ -233,7 +233,7 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
                 </div>
               ))}
 
-              {/* Quick add row */}
+              { }
               <div
                 onClick={onAddHeader}
                 className="grid grid-cols-[20px_1fr_1fr_28px] gap-1 px-3 py-2 items-center cursor-pointer hover:bg-zinc-800/40 border-b border-zinc-800/30"

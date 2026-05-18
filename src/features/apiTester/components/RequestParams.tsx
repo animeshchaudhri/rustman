@@ -16,7 +16,7 @@ export function RequestParams({ params, onAddParam, onParamChange, onRemoveParam
 
   const enabledCount = params.filter(p => p.key && p.enabled).length;
 
-  // Build query string preview
+  
   const queryString = params
     .filter(p => p.key && p.enabled)
     .map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`)
@@ -34,7 +34,7 @@ export function RequestParams({ params, onAddParam, onParamChange, onRemoveParam
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar */}
+      { }
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-zinc-800 shrink-0">
         <span className="text-xs text-zinc-500">
           {enabledCount > 0
@@ -50,7 +50,7 @@ export function RequestParams({ params, onAddParam, onParamChange, onRemoveParam
         </button>
       </div>
 
-      {/* Table */}
+      { }
       <div className="flex-1 overflow-y-auto">
         {params.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 text-zinc-700">
@@ -58,7 +58,7 @@ export function RequestParams({ params, onAddParam, onParamChange, onRemoveParam
           </div>
         ) : (
           <>
-            {/* Column headings */}
+            { }
             <div className="grid grid-cols-[20px_1fr_1fr_28px] gap-1 px-3 py-1 border-b border-zinc-800/60">
               <div />
               <div className="text-[10px] uppercase tracking-wider text-zinc-600 font-medium">Key</div>
@@ -115,7 +115,7 @@ export function RequestParams({ params, onAddParam, onParamChange, onRemoveParam
         )}
       </div>
 
-      {/* URL preview */}
+      { }
       {enabledCount > 0 && (
         <div className="shrink-0 border-t border-zinc-800 px-3 py-2 flex items-center gap-2">
           <Link className="h-3 w-3 text-zinc-600 shrink-0" />

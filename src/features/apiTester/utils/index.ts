@@ -1,21 +1,15 @@
-// Utility functions for API Tester
 import { ParsedCurl } from "../types";
-import { tauriProxyFetch } from "./tauriProxy";
+import { tauriProxyFetch, ProxyFormField } from "./tauriProxy";
 
-// Export tauriProxyFetch so it can be used elsewhere
 export { tauriProxyFetch };
+export type { ProxyFormField };
 
-/**
- * Replaces {{variable}} placeholders with values from an env vars map.
- * Unresolved variables are left as-is.
- */
+ 
 export function replaceVariables(str: string, vars: Record<string, string>): string {
   return str.replace(/\{\{(\w+)\}\}/g, (match, key) => vars[key] ?? match);
 }
 
-/**
- * Parses a JWT token and returns the payload as an object
- */
+ 
 export function parseJwt(token: string) {
   try {
     const base64Url = token.split('.')[1];
@@ -30,9 +24,7 @@ export function parseJwt(token: string) {
   }
 }
 
-/**
- * Parses cookies from a cookie string and returns an object
- */
+ 
 export function parseCookies(cookieString: string): Record<string, string> {
   const cookies: Record<string, string> = {};
   if (!cookieString) return cookies;
@@ -47,31 +39,26 @@ export function parseCookies(cookieString: string): Record<string, string> {
   return cookies;
 }
 
-/**
- * Extracts access token from cookies
- */
+ 
 export function extractAccessTokenFromCookies(cookieString: string): string | null {
   const cookies = parseCookies(cookieString);
   return cookies.accessToken || null;
 }
 
-/**
- * Tokenizes a shell-like string respecting single-quoted, double-quoted, and
- * unquoted tokens. Returns an array of unquoted token strings.
- */
+ 
 function shellTokenize(str: string): string[] {
   const tokens: string[] = [];
   let i = 0;
   const len = str.length;
 
   while (i < len) {
-    // Skip whitespace
+    
     while (i < len && /\s/.test(str[i])) i++;
     if (i >= len) break;
 
     const q = str[i];
     if (q === "'" || q === '"') {
-      i++; // skip opening quote
+      i++; 
       let token = "";
       while (i < len && str[i] !== q) {
         if (q === '"' && str[i] === '\\' && i + 1 < len) {
@@ -81,7 +68,7 @@ function shellTokenize(str: string): string[] {
           token += str[i++];
         }
       }
-      if (i < len) i++; // skip closing quote
+      if (i < len) i++; 
       tokens.push(token);
     } else {
       let token = "";
@@ -99,47 +86,44 @@ function shellTokenize(str: string): string[] {
   return tokens;
 }
 
-/**
- * Parses a cURL command (including multi-line with \ continuations) and returns
- * an object with method, URL, headers, body, and cookies.
- */
+ 
 export function parseCurlCommand(curlCmd: string): ParsedCurl {
   const result: ParsedCurl = { header: {}, cookies: {} };
 
-  // 1. Collapse backslash-newline continuations (handles both \n and \r\n)
+  
   let cmd = curlCmd
     .replace(/\\\r\n/g, " ")
     .replace(/\\\n/g, " ")
     .trim();
 
-  // 2. Strip leading "curl" token
+  
   if (/^curl\s/i.test(cmd)) cmd = cmd.replace(/^curl\s+/i, "");
 
-  // 3. Tokenize (respects quoted strings)
+  
   const tokens = shellTokenize(cmd);
 
-  // 4. Walk token pairs
+  
   let i = 0;
   const next = () => tokens[++i];
 
   while (i < tokens.length) {
     const tok = tokens[i];
 
-    // Method
+    
     if (tok === "-X" || tok === "--request") {
       result.method = next()?.toUpperCase();
       i++;
       continue;
     }
 
-    // URL via --url flag
+    
     if (tok === "--url") {
       result.url = next();
       i++;
       continue;
     }
 
-    // Headers
+    
     if (tok === "-H" || tok === "--header") {
       const raw = next() ?? "";
       i++;
@@ -152,7 +136,7 @@ export function parseCurlCommand(curlCmd: string): ParsedCurl {
       continue;
     }
 
-    // Cookies  (-b / --cookie)
+    
     if (tok === "-b" || tok === "--cookie") {
       const raw = next() ?? "";
       i++;
@@ -161,7 +145,7 @@ export function parseCurlCommand(curlCmd: string): ParsedCurl {
       continue;
     }
 
-    // Body  (-d / --data / --data-raw / --data-binary / --data-urlencode)
+    
     if (
       tok === "-d" ||
       tok === "--data" ||
@@ -174,21 +158,21 @@ export function parseCurlCommand(curlCmd: string): ParsedCurl {
       continue;
     }
 
-    // User (-u / --user) — skip value
+    
     if (tok === "-u" || tok === "--user") {
       next();
       i++;
       continue;
     }
 
-    // Form data (-F / --form) — skip value for now
+    
     if (tok === "-F" || tok === "--form") {
       next();
       i++;
       continue;
     }
 
-    // Flags without values that we safely skip
+    
     if (tok === "-s" || tok === "--silent" ||
         tok === "-v" || tok === "--verbose" ||
         tok === "-L" || tok === "--location" ||
@@ -199,19 +183,19 @@ export function parseCurlCommand(curlCmd: string): ParsedCurl {
       continue;
     }
 
-    // Any unrecognised flag with = syntax (e.g. --output=file) — skip
+    
     if (tok.startsWith("-") && tok.includes("=")) {
       i++;
       continue;
     }
 
-    // Any other unrecognised flag — skip (and its potential value)
+    
     if (tok.startsWith("-")) {
       i++;
       continue;
     }
 
-    // Bare token — treat as URL if it looks like one and we don't have a URL yet
+    
     if (!result.url && (tok.includes("://") || tok.startsWith("http"))) {
       result.url = tok;
     }
@@ -219,7 +203,7 @@ export function parseCurlCommand(curlCmd: string): ParsedCurl {
     i++;
   }
 
-  // 5. Infer method
+  
   if (!result.method) {
     result.method = result.body ? "POST" : "GET";
   }
@@ -227,9 +211,7 @@ export function parseCurlCommand(curlCmd: string): ParsedCurl {
   return result;
 }
 
-/**
- * Generates JavaScript code from a parsed cURL object and URL
- */
+ 
 export function generateJsCode(parsed: ParsedCurl, fullUrl: string): string {
   try {
     let code = "// Generated JavaScript fetch code\n";
@@ -263,7 +245,7 @@ export function generateJsCode(parsed: ParsedCurl, fullUrl: string): string {
     code += "    if (!response.ok) {\n";
     code += "      throw new Error(`HTTP error! status: ${response.status}`);\n";
     code += "    }\n";
-    code += "    const data = await response.json(); // or response.text() for non-JSON\n";
+    code += "    const data = await response.json();\n";
     code += "    console.log(data);\n";
     code += "    return data;\n";
     code += "  } catch (error) {\n";
@@ -278,31 +260,20 @@ export function generateJsCode(parsed: ParsedCurl, fullUrl: string): string {
   }
 }
 
-/**
- * Beautifies JSON string with proper indentation
- */
+ 
 export const beautifyJson = (jsonStr: string) => {
   try {
     const obj = JSON.parse(jsonStr);
     return JSON.stringify(obj, null, 2);
   } catch (e) {
-    return jsonStr; // Return original if not valid JSON
+    return jsonStr; 
   }
 };
 
-/**
- * Enhanced fetch function that bypasses CORS by using the Tauri backend proxy
- * This implementation replaces the browser-based fetch with a Tauri command
- */
-export const enhancedFetch = async (url: string, options: RequestInit) => {
+ 
+export const enhancedFetch = async (url: string, options: RequestInit, formFields?: ProxyFormField[]) => {
   try {
-    console.log('Enhanced fetch using Tauri proxy for request to:', url);
-    console.log('Request options:', options);
-    
-    // Use the Tauri proxy fetch implementation which goes through our Rust backend
-    // This bypasses CORS entirely since requests are made from the desktop app
-    const response = await tauriProxyFetch(url, options);
-    
+    const response = await tauriProxyFetch(url, options, formFields);
     return response;
   } catch (error) {
     console.error('Enhanced fetch error:', error);

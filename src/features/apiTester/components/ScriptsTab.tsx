@@ -32,7 +32,7 @@ export function ScriptsTab({ preRequestScript, onPreRequestScriptChange, testScr
 
   return (
     <div className="flex flex-col h-full">
-      {/* Sub-tab selector */}
+      { }
       <div className="flex items-center gap-1 px-3 py-1.5 border-b border-zinc-800 shrink-0">
         {(["pre", "test"] as const).map((s) => (
           <button
@@ -49,7 +49,7 @@ export function ScriptsTab({ preRequestScript, onPreRequestScriptChange, testScr
           </button>
         ))}
 
-        {/* Snippets */}
+        { }
         <div className="ml-auto flex items-center gap-1">
           {snippets.map((snip) => (
             <button
@@ -65,7 +65,7 @@ export function ScriptsTab({ preRequestScript, onPreRequestScriptChange, testScr
         </div>
       </div>
 
-      {/* Info bar */}
+      { }
       <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900/60 border-b border-zinc-800/50 shrink-0">
         <Info className="h-3 w-3 text-zinc-600 shrink-0" />
         <p className="text-[10px] text-zinc-600">
@@ -75,7 +75,7 @@ export function ScriptsTab({ preRequestScript, onPreRequestScriptChange, testScr
         </p>
       </div>
 
-      {/* Editor */}
+      { }
       <div className="flex-1 overflow-hidden" onMouseDown={(e) => e.stopPropagation()}>
         <Editor
           height="100%"
