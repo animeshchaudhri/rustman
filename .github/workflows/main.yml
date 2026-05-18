@@ -64,19 +64,19 @@ jobs:
         run: |
           if ("${{ github.event_name }}" -eq "workflow_dispatch") {
             if (-not [string]::IsNullOrEmpty($env:INPUT_TAG_NAME)) {
-              $safeTag = $env:INPUT_TAG_NAME.Replace("`r", "").Replace("`n", "")
-              if (-not $safeTag -or -not ($safeTag -match '^[A-Za-z0-9][A-Za-z0-9._-]*$')) {
+              $SafeTag = $env:INPUT_TAG_NAME.Replace("`r", "").Replace("`n", "")
+              if (-not $SafeTag -or -not ($SafeTag -match '^[A-Za-z0-9][A-Za-z0-9._-]*$')) {
                 Write-Host "Invalid tag_name input. Use only letters, numbers, dot, underscore, or hyphen."
                 exit 1
               }
-              "tag=$safeTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+              "tag=$SafeTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
             }
             else {
               "tag=manual-v${{ github.run_number }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
             }
           }
           else {
-            "tag=${{ github.ref_name }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            "tag=$env:GITHUB_REF_NAME" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           }
 
       - name: Create GitHub Release
