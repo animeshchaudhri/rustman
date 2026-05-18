@@ -19,6 +19,7 @@ const cloneRequest = (request: SavedRequest): SavedRequest => ({
   headers: request.headers.map((header) => ({ ...header })),
   params: request.params.map((param) => ({ ...param })),
   formDataFields: request.formDataFields.map((field) => ({ ...field })),
+  cookies: (request.cookies ?? []).map((c) => ({ ...c })),
 });
 
 const sortRequests = (items: SavedRequest[]) =>

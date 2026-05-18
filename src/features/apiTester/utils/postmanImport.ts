@@ -159,6 +159,8 @@ function convertRequest(
     formDataFields,
     cookieString: "",
     cookies: [] as CookieType[],
+    preRequestScript: "",
+    testScript: "",
     ...authData,
     apiKeyLocation: "header" as const,
   };

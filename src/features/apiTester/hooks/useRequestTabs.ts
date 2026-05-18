@@ -169,6 +169,10 @@ export const savedRequestToRequestTab = (request: SavedRequest): RequestTab =>
     apiKeyValue: request.apiKeyValue,
     apiKeyLocation: request.apiKeyLocation,
     formDataFields: request.formDataFields,
+    cookieString: request.cookieString,
+    cookies: request.cookies,
+    preRequestScript: request.preRequestScript ?? "",
+    testScript: request.testScript ?? "",
   });
 
 const hasRequestStateChange = (previous: RequestTab, next: RequestTab) =>

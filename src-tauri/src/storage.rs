@@ -35,6 +35,8 @@ pub struct DbSavedRequest {
     pub form_data_fields: String,
     pub cookie_string: String,
     pub cookies: String,
+    pub pre_request_script: String,
+    pub test_script: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -98,6 +100,8 @@ pub fn init_db(app: &AppHandle) -> SqlResult<Connection> {
             form_data_fields TEXT NOT NULL DEFAULT '[]',
             cookie_string TEXT NOT NULL DEFAULT '',
             cookies TEXT NOT NULL DEFAULT '[]',
+            pre_request_script TEXT NOT NULL DEFAULT '',
+            test_script TEXT NOT NULL DEFAULT '',
             FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
         );
 
@@ -119,6 +123,10 @@ pub fn init_db(app: &AppHandle) -> SqlResult<Connection> {
         );
         ",
     )?;
+
+    // ── Migrations: add new columns to existing DBs (silently ignore if already exist) ──
+    let _ = conn.execute("ALTER TABLE requests ADD COLUMN pre_request_script TEXT NOT NULL DEFAULT ''", []);
+    let _ = conn.execute("ALTER TABLE requests ADD COLUMN test_script TEXT NOT NULL DEFAULT ''", []);
 
     Ok(conn)
 }
@@ -212,7 +220,7 @@ pub fn db_get_requests(
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let sql = "SELECT id,collection_id,name,method,url,headers,params,body,body_type,auth_type,\
                bearer_token,basic_user,basic_pass,api_key_name,api_key_value,api_key_location,\
-               form_data_fields,cookie_string,cookies \
+               form_data_fields,cookie_string,cookies,pre_request_script,test_script \
                FROM requests WHERE collection_id=?1 ORDER BY name ASC";
     let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
     let mut rows = stmt.query(params![collectionId]).map_err(|e| e.to_string())?;
@@ -238,6 +246,8 @@ pub fn db_get_requests(
             form_data_fields: row.get(16).map_err(|e: rusqlite::Error| e.to_string())?,
             cookie_string: row.get(17).map_err(|e: rusqlite::Error| e.to_string())?,
             cookies: row.get(18).map_err(|e: rusqlite::Error| e.to_string())?,
+            pre_request_script: row.get(19).map_err(|e: rusqlite::Error| e.to_string())?,
+            test_script: row.get(20).map_err(|e: rusqlite::Error| e.to_string())?,
         });
     }
     Ok(results)
@@ -253,8 +263,8 @@ pub fn db_save_request(
         "INSERT OR REPLACE INTO requests \
          (id,collection_id,name,method,url,headers,params,body,body_type,auth_type,\
           bearer_token,basic_user,basic_pass,api_key_name,api_key_value,api_key_location,\
-          form_data_fields,cookie_string,cookies) \
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
+          form_data_fields,cookie_string,cookies,pre_request_script,test_script) \
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)",
         params![
             req.id,
             req.collection_id,
@@ -274,7 +284,9 @@ pub fn db_save_request(
             req.api_key_location,
             req.form_data_fields,
             req.cookie_string,
-            req.cookies
+            req.cookies,
+            req.pre_request_script,
+            req.test_script
         ],
     )
     .map_err(|e| e.to_string())?;

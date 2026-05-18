@@ -67,6 +67,8 @@ export interface SavedRequest {
   formDataFields: FormDataField[];
   cookieString: string;
   cookies: CookieType[];
+  preRequestScript: string;
+  testScript: string;
 }
 
 export interface Collection {

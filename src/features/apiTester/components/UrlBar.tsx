@@ -176,9 +176,9 @@ export function UrlBar({
       {codeOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setCodeOpen(false)} />
-          <div className="relative bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-[720px] max-w-[95vw] overflow-hidden flex flex-col" style={{ maxHeight: "80vh" }}>
+          <div className="relative bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-[720px] max-w-[95vw] overflow-hidden flex flex-col" style={{ height: "min(80vh, 600px)" }}>
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800 shrink-0">
               <div className="flex items-center gap-2">
                 <Code className="h-4 w-4 text-orange-400" />
                 <span className="text-sm font-semibold text-zinc-100">Generated Code</span>
@@ -216,8 +216,8 @@ export function UrlBar({
                 </button>
               </div>
             </div>
-            {/* Editor */}
-            <div className="flex-1 overflow-hidden" style={{ minHeight: "300px" }}>
+            {/* Editor — needs explicit pixel height for Monaco to render */}
+            <div className="flex-1 min-h-0">
               <Editor
                 height="100%"
                 language={codeTab === "curl" ? "shell" : "javascript"}

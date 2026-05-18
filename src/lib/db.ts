@@ -37,6 +37,8 @@ interface DbSavedRequest {
   formDataFields: string;
   cookieString: string;
   cookies: string;
+  preRequestScript: string;
+  testScript: string;
 }
 
 interface DbHistoryEntry {
@@ -93,6 +95,8 @@ function dbToSavedRequest(db: DbSavedRequest): SavedRequest {
     formDataFields: tryParse<FormDataField[]>(db.formDataFields, []),
     cookieString: db.cookieString,
     cookies: tryParse<CookieType[]>(db.cookies, []),
+    preRequestScript: db.preRequestScript ?? "",
+    testScript: db.testScript ?? "",
   };
 }
 
@@ -117,6 +121,8 @@ function savedRequestToDb(req: SavedRequest): DbSavedRequest {
     formDataFields: JSON.stringify(req.formDataFields),
     cookieString: req.cookieString,
     cookies: JSON.stringify(req.cookies),
+    preRequestScript: req.preRequestScript ?? "",
+    testScript: req.testScript ?? "",
   };
 }
 
@@ -140,6 +146,8 @@ const EMPTY_REQUEST: SavedRequest = {
   formDataFields: [],
   cookieString: "",
   cookies: [],
+  preRequestScript: "",
+  testScript: "",
 };
 
 function dbToHistoryEntry(db: DbHistoryEntry): HistoryEntry {
