@@ -52,6 +52,7 @@ import type {
   SavedRequest,
 } from "./types";
 import { cn } from "@/lib/utils";
+import { useTheme, type Theme } from "@/contexts/ThemeContext";
 import {
   BookOpen,
   Clock,
@@ -93,6 +94,8 @@ const METHOD_BADGE: Record<string, string> = {
 // ── About / Settings panel ────────────────────────────────────────────────────
 
 function AboutPanel() {
+  const { theme, setTheme } = useTheme();
+
   const stack = [
     { icon: Zap, label: "Tauri v2", desc: "Desktop runtime" },
     { icon: Layers, label: "React 18", desc: "UI framework" },
@@ -180,6 +183,29 @@ function AboutPanel() {
           </div>
         </div>
 
+        {/* Theme */}
+        <div className="bg-zinc-800/40 rounded-xl border border-zinc-800 overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-zinc-800">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Theme</p>
+          </div>
+          <div className="flex p-2 gap-1.5">
+            {(["dark", "light", "system"] as Theme[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTheme(t)}
+                className={cn(
+                  "flex-1 py-2 rounded-lg text-xs font-medium capitalize transition-colors border",
+                  theme === t
+                    ? "bg-orange-600/20 text-orange-400 border-orange-500/30"
+                    : "text-zinc-500 border-zinc-700 hover:text-zinc-300 hover:bg-zinc-800",
+                )}
+              >
+                {t === "dark" ? "🌙 Dark" : t === "light" ? "☀️ Light" : "💻 System"}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Footer */}
         <div className="flex items-center justify-center gap-1.5 text-[10px] text-zinc-700 pb-2">
           <span>© 2026 Animesh Chaudhri</span>
@@ -194,6 +220,7 @@ function AboutPanel() {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ApiTester() {
+  const { resolved } = useTheme();
   // ── Sidebar & UI state ──
   const [panel, setPanel] = useState<SidePanel>("collections");
   const [splitRatio, setSplitRatio] = useState(0.45);
@@ -531,6 +558,8 @@ export default function ApiTester() {
           formDataFields: tab.formDataFields,
           cookieString: tab.cookieString,
           cookies: tab.cookies,
+          preRequestScript: tab.preRequestScript,
+          testScript: tab.testScript,
         },
       };
       addToHistory(historyEntry).catch(console.error);
@@ -586,6 +615,8 @@ export default function ApiTester() {
       formDataFields: tab.formDataFields,
       cookieString: tab.cookieString,
       cookies: tab.cookies,
+      preRequestScript: tab.preRequestScript,
+      testScript: tab.testScript,
     };
     await saveReqToCollection(req);
     updateActiveTab({ name, isDirty: false, savedRequestId: req.id });
@@ -641,7 +672,7 @@ export default function ApiTester() {
   const u = updateActiveTab;
 
   return (
-    <div className="dark flex h-screen bg-zinc-950 text-zinc-100 overflow-hidden select-none">
+    <div className={cn(resolved, "flex h-screen overflow-hidden select-none", resolved === "dark" ? "bg-zinc-950 text-zinc-100" : "bg-gray-50 text-zinc-900")}>
       {/* ── Left icon rail ── */}
       <div className="flex flex-col items-center w-12 border-r border-zinc-800 bg-zinc-900 py-3 gap-1 shrink-0">
         {(
