@@ -28,6 +28,7 @@ import {
   parseJwt,
   generateJsCode,
   replaceVariables,
+  type ProxyFormField,
 } from "./utils";
 import {
   deleteEnvironment,
@@ -69,8 +70,6 @@ import {
   Heart,
 } from "lucide-react";
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
 type SidePanel = "collections" | "history" | "environments" | "settings" | null;
 
 interface TabResponse {
@@ -91,8 +90,6 @@ const METHOD_BADGE: Record<string, string> = {
   OPTIONS: "text-sky-400",
 };
 
-// ── About / Settings panel ────────────────────────────────────────────────────
-
 function AboutPanel() {
   const { theme, setTheme } = useTheme();
 
@@ -110,14 +107,14 @@ function AboutPanel() {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      {/* Header */}
+      { }
       <div className="px-4 py-3 border-b border-zinc-800">
         <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold mb-0.5">About</p>
         <p className="text-sm font-bold text-zinc-100">Rustman</p>
       </div>
 
       <div className="flex flex-col gap-5 p-4">
-        {/* Logo block */}
+        { }
         <div className="flex flex-col items-center gap-3 py-5 bg-zinc-800/40 rounded-xl border border-zinc-800">
           <img src="/rustman-logo.svg" alt="Rustman" className="w-16 h-16" />
           <div className="text-center">
@@ -129,7 +126,7 @@ function AboutPanel() {
           <span className="text-[10px] bg-zinc-700 text-zinc-400 px-2 py-0.5 rounded-full">v0.1.0</span>
         </div>
 
-        {/* Author */}
+        { }
         <div className="bg-zinc-800/40 rounded-xl border border-zinc-800 overflow-hidden">
           <div className="px-4 py-2.5 border-b border-zinc-800">
             <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Made by</p>
@@ -148,7 +145,7 @@ function AboutPanel() {
             </div>
           </div>
 
-          {/* Links */}
+          { }
           <div className="border-t border-zinc-800 divide-y divide-zinc-800/60">
             {links.map(({ icon: Icon, label, href, color }) => (
               <a
@@ -165,7 +162,7 @@ function AboutPanel() {
           </div>
         </div>
 
-        {/* Stack */}
+        { }
         <div className="bg-zinc-800/40 rounded-xl border border-zinc-800 overflow-hidden">
           <div className="px-4 py-2.5 border-b border-zinc-800">
             <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Built with</p>
@@ -183,7 +180,7 @@ function AboutPanel() {
           </div>
         </div>
 
-        {/* Theme */}
+        { }
         <div className="bg-zinc-800/40 rounded-xl border border-zinc-800 overflow-hidden">
           <div className="px-4 py-2.5 border-b border-zinc-800">
             <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Theme</p>
@@ -206,7 +203,7 @@ function AboutPanel() {
           </div>
         </div>
 
-        {/* Footer */}
+        { }
         <div className="flex items-center justify-center gap-1.5 text-[10px] text-zinc-700 pb-2">
           <span>© 2026 Animesh Chaudhri</span>
           <Heart className="h-2.5 w-2.5 text-red-500/60 fill-red-500/60" />
@@ -217,21 +214,19 @@ function AboutPanel() {
   );
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
-
 export default function ApiTester() {
   const { resolved } = useTheme();
-  // ── Sidebar & UI state ──
+  
   const [panel, setPanel] = useState<SidePanel>("collections");
   const [splitRatio, setSplitRatio] = useState(0.45);
   const isDragging = useRef(false);
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
-  // ── Request tabs ──
+  
   const { tabs, activeTabId, activeTab, addTab, closeTab, duplicateTab, setActiveTab, updateActiveTab } =
     useRequestTabs();
 
-  // ── Per-tab response state ──
+  
   const [responses, setResponses] = useState<Record<string, TabResponse>>({});
   const activeResponse = responses[activeTabId] ?? {
     response: null,
@@ -251,19 +246,19 @@ export default function ApiTester() {
     [],
   );
 
-  // ── Per-tab UI state (request/response tabs, view mode) ──
+  
   const [activeRequestTab, setActiveRequestTab] = useState<RequestTabType>("params");
   const [activeResponseTab, setActiveResponseTab] = useState<ResponseTabType>("body");
   const [responseBodyView, setResponseBodyView] = useState<ResponseBodyView>("pretty");
 
-  // ── Code gen ──
+  
   const [generatedCurl, setGeneratedCurl] = useState("");
   const [generatedJs, setGeneratedJs] = useState("");
 
-  // ── Save dialog ──
+  
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
-  // ── Collections ──
+  
   const {
     collections,
     requests: collectionRequests,
@@ -275,10 +270,10 @@ export default function ApiTester() {
     renameRequest,
   } = useCollections();
 
-  // ── History ──
+  
   const { history, addToHistory, clearHistory } = useHistory();
 
-  // ── Environments ──
+  
   const [environments, setEnvironments] = useState<AppEnvironment[]>([]);
   const [activeEnvId, setActiveEnvId] = useState<string | null>(null);
   const [envEnabled, setEnvEnabled] = useState(
@@ -308,7 +303,7 @@ export default function ApiTester() {
     if (activeEnvId === id) setActiveEnvId(null);
   };
 
-  // ── Drag handle ──
+  
   useEffect(() => {
     const handleMove = (e: MouseEvent) => {
       if (!isDragging.current || !splitContainerRef.current) return;
@@ -325,7 +320,7 @@ export default function ApiTester() {
     };
   }, []);
 
-  // ── URL building with {{variable}} substitution ──
+  
   const getFullUrl = useCallback(
     (tab: typeof activeTab) => {
       const envVars = activeEnv?.variables ?? {};
@@ -352,7 +347,7 @@ export default function ApiTester() {
     [envEnabled, activeEnv],
   );
 
-  // ── cURL import (called by UrlBar on paste or typed curl) ──
+  
   const handleCurlImport = useCallback(
     (curlCmd: string) => {
       try {
@@ -380,7 +375,7 @@ export default function ApiTester() {
                   const colonIdx = decoded.indexOf(":");
                   newBasicUser = decoded.slice(0, colonIdx);
                   newBasicPass = decoded.slice(colonIdx + 1);
-                } catch {/* ignore */}
+                } catch { }
                 continue;
               }
             }
@@ -449,7 +444,7 @@ export default function ApiTester() {
     [updateActiveTab],
   );
 
-  // ── Send request ──
+  
   const sendRequest = useCallback(async () => {
     const tab = activeTab;
     const fullUrl = getFullUrl(tab);
@@ -481,27 +476,51 @@ export default function ApiTester() {
     }
 
     const requestOptions: RequestInit = { method: tab.method, headers: headerObj };
+    let proxyFormFields: ProxyFormField[] | undefined;
 
-    if (["POST", "PUT", "PATCH", "DELETE"].includes(tab.method)) {
-      if (tab.bodyType === "json" || tab.bodyType === "text") {
-        if (tab.body) requestOptions.body = tab.body;
-      } else if (tab.bodyType === "form-data") {
-        const textFields = tab.formDataFields.filter((f) => f.enabled && f.key && f.type === "text");
-        if (textFields.length > 0) {
-          requestOptions.body = textFields
-            .map((f) => `${encodeURIComponent(f.key)}=${encodeURIComponent(f.value)}`)
-            .join("&");
-          if (!headerObj["Content-Type"] && !headerObj["content-type"]) {
-            (requestOptions.headers as Record<string, string>)["Content-Type"] =
-              "application/x-www-form-urlencoded";
-          }
+    if (tab.bodyType === "json" || tab.bodyType === "text") {
+      if (tab.body) {
+        requestOptions.body = tab.body;
+        const hasContentType = Object.keys(headerObj).some(
+          (k) => k.toLowerCase() === "content-type",
+        );
+        if (!hasContentType) {
+          (requestOptions.headers as Record<string, string>)["Content-Type"] =
+            tab.bodyType === "json" ? "application/json" : "text/plain";
+        }
+      }
+    } else if (tab.bodyType === "form-data") {
+      const enabledFields = tab.formDataFields.filter((f) => f.enabled && f.key);
+      const hasFileField = enabledFields.some((f) => f.type === "file");
+
+      if (hasFileField) {
+        
+        proxyFormFields = enabledFields.map((f) => ({
+          name: f.key,
+          value: f.value,
+          is_file: f.type === "file",
+          file_name: f.fileName,
+          file_data_base64: f.fileData,
+          mime_type: f.mimeType,
+        }));
+      } else if (enabledFields.length > 0) {
+        
+        requestOptions.body = enabledFields
+          .map((f) => `${encodeURIComponent(f.key)}=${encodeURIComponent(f.value)}`)
+          .join("&");
+        const hasContentType = Object.keys(headerObj).some(
+          (k) => k.toLowerCase() === "content-type",
+        );
+        if (!hasContentType) {
+          (requestOptions.headers as Record<string, string>)["Content-Type"] =
+            "application/x-www-form-urlencoded";
         }
       }
     }
 
     const startTime = performance.now();
     try {
-      const res = await enhancedFetch(fullUrl, requestOptions);
+      const res = await enhancedFetch(fullUrl, requestOptions, proxyFormFields);
       const duration = Math.round(performance.now() - startTime);
       const text = await res.text();
       const size = new Blob([text]).size;
@@ -530,7 +549,7 @@ export default function ApiTester() {
         error: null,
       });
 
-      // Auto-save to history
+      
       const historyEntry: HistoryEntry = {
         id: crypto.randomUUID(),
         timestamp: Date.now(),
@@ -569,7 +588,7 @@ export default function ApiTester() {
     }
   }, [activeTab, activeTabId, getFullUrl, setTabResponse, addToHistory]);
 
-  // ── Keyboard shortcuts (placed after sendRequest to avoid TDZ) ──
+  
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
@@ -584,7 +603,7 @@ export default function ApiTester() {
     return () => window.removeEventListener("keydown", handler);
   }, [sendRequest, addTab, closeTab, duplicateTab, activeTabId]);
 
-  // ── Load request into new tab ──
+  
   const handleLoadRequest = useCallback(
     (req: SavedRequest) => {
       addTab(savedRequestToRequestTab(req));
@@ -592,7 +611,7 @@ export default function ApiTester() {
     [addTab],
   );
 
-  // ── Save request ──
+  
   const handleSaveRequest = async (name: string, collectionId: string) => {
     const tab = activeTab;
     const req: SavedRequest = {
@@ -622,7 +641,7 @@ export default function ApiTester() {
     updateActiveTab({ name, isDirty: false, savedRequestId: req.id });
   };
 
-  // ── Import Postman collection ──
+  
   const handleImportCollection = async (col: Collection, reqs: SavedRequest[]) => {
     await createCollection(col.name).then(async (newCol) => {
       for (const req of reqs) {
@@ -631,7 +650,7 @@ export default function ApiTester() {
     });
   };
 
-  // ── Code gen ──
+  
   const generateCurl = useCallback((): string => {
     const tab = activeTab;
     const fullUrl = getFullUrl(tab);
@@ -665,15 +684,15 @@ export default function ApiTester() {
     return js;
   }, [activeTab, getFullUrl]);
 
-  // ── Sidebar toggle ──
+  
   const togglePanel = (p: SidePanel) => setPanel((prev) => (prev === p ? null : p));
 
-  // ── Helpers to update specific tab fields ──
+  
   const u = updateActiveTab;
 
   return (
     <div className={cn(resolved, "flex h-screen overflow-hidden select-none", resolved === "dark" ? "bg-zinc-950 text-zinc-100" : "bg-gray-50 text-zinc-900")}>
-      {/* ── Left icon rail ── */}
+      { }
       <div className="flex flex-col items-center w-12 border-r border-zinc-800 bg-zinc-900 py-3 gap-1 shrink-0">
         {(
           [
@@ -711,7 +730,7 @@ export default function ApiTester() {
         </button>
       </div>
 
-      {/* ── Sidebar panel ── */}
+      { }
       {panel && (
         <div className="w-64 shrink-0 border-r border-zinc-800 bg-zinc-900 flex flex-col overflow-hidden">
           {panel === "collections" && (
@@ -749,9 +768,9 @@ export default function ApiTester() {
         </div>
       )}
 
-      {/* ── Main area ── */}
+      { }
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {/* Tab bar */}
+        { }
         <div className="flex items-center h-9 border-b border-zinc-800 bg-zinc-900 overflow-x-auto shrink-0 scrollbar-thin">
           {tabs.map((tab) => (
             <div
@@ -801,7 +820,7 @@ export default function ApiTester() {
           </button>
         </div>
 
-        {/* URL bar — code gen is integrated inside UrlBar */}
+        { }
         <UrlBar
           method={activeTab.method}
           onMethodChange={(m) => u({ method: m })}
@@ -816,9 +835,9 @@ export default function ApiTester() {
           onGenerateCode={() => { generateCurl(); prepareJsCode(); }}
         />
 
-        {/* Split view: request + response */}
+        { }
         <div ref={splitContainerRef} className="flex-1 flex flex-col overflow-hidden min-h-0">
-          {/* Request config */}
+          { }
           <div
             className="flex flex-col overflow-hidden border-b border-zinc-800"
             style={{ height: `${splitRatio * 100}%` }}
@@ -933,7 +952,7 @@ export default function ApiTester() {
             </Tabs>
           </div>
 
-          {/* Drag handle */}
+          { }
           <div
             className="h-1.5 bg-zinc-800 hover:bg-orange-500/40 cursor-row-resize transition-colors shrink-0 group flex items-center justify-center"
             onMouseDown={() => { isDragging.current = true; }}
@@ -941,7 +960,7 @@ export default function ApiTester() {
             <div className="w-8 h-0.5 bg-zinc-600 group-hover:bg-orange-500/60 rounded-full transition-colors" />
           </div>
 
-          {/* Response */}
+          { }
           <div
             className="overflow-hidden flex flex-col min-h-0"
             style={{ height: `${(1 - splitRatio) * 100 - 2}%` }}
@@ -961,7 +980,7 @@ export default function ApiTester() {
         </div>
       </div>
 
-      {/* Save dialog */}
+      { }
       <SaveRequestDialog
         open={saveDialogOpen}
         defaultName={activeTab.name}

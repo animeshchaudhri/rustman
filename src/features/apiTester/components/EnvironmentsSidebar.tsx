@@ -84,7 +84,7 @@ export function EnvironmentsSidebar({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
+      { }
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-700/50">
         <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
           Environments
@@ -100,7 +100,7 @@ export function EnvironmentsSidebar({
         )}
       </div>
 
-      {/* Env enabled toggle */}
+      { }
       <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-700/30">
         <span className="text-xs text-zinc-400">Environment mode</span>
         <button
@@ -119,10 +119,10 @@ export function EnvironmentsSidebar({
         </button>
       </div>
 
-      {/* Body */}
+      { }
       <div className="flex-1 overflow-y-auto py-1">
         {editor ? (
-          /* Editor */
+           
           <div className="p-3 space-y-3">
             <input
               autoFocus
@@ -184,7 +184,7 @@ export function EnvironmentsSidebar({
             </div>
           </div>
         ) : (
-          /* Environment list */
+           
           <>
             {environments.length === 0 && (
               <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
@@ -196,7 +196,7 @@ export function EnvironmentsSidebar({
               </div>
             )}
 
-            {/* No env option */}
+            { }
             <button
               className={cn(
                 "w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-zinc-800 transition-colors",

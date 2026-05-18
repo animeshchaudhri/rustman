@@ -9,8 +9,6 @@ import type {
   SavedRequest,
 } from "@/features/apiTester/types";
 
-// ── Rust-side shapes (camelCase matches #[serde(rename_all = "camelCase")]) ──
-
 interface DbCollection {
   id: string;
   name: string;
@@ -58,8 +56,6 @@ interface DbEnvironment {
   isActive: boolean;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 const tryParse = <T>(json: string, fallback: T): T => {
   try {
     return JSON.parse(json) as T;
@@ -67,8 +63,6 @@ const tryParse = <T>(json: string, fallback: T): T => {
     return fallback;
   }
 };
-
-// ── Converters ────────────────────────────────────────────────────────────────
 
 function dbToCollection(db: DbCollection): Collection {
   return { id: db.id, name: db.name, createdAt: db.createdAt };
@@ -192,8 +186,6 @@ function environmentToDb(env: AppEnvironment): DbEnvironment {
   };
 }
 
-// ── Collections ───────────────────────────────────────────────────────────────
-
 export async function getCollections(): Promise<Collection[]> {
   const result = await invoke<DbCollection[]>("db_get_collections");
   return result.map(dbToCollection);
@@ -219,8 +211,6 @@ export async function deleteCollection(id: string): Promise<void> {
   await invoke("db_delete_collection", { id });
 }
 
-// ── Requests ──────────────────────────────────────────────────────────────────
-
 export async function getRequestsForCollection(collectionId: string): Promise<SavedRequest[]> {
   const result = await invoke<DbSavedRequest[]>("db_get_requests", { collectionId });
   return result.map(dbToSavedRequest);
@@ -240,8 +230,6 @@ export async function deleteRequest(id: string): Promise<void> {
   await invoke("db_delete_request", { id });
 }
 
-// ── History ───────────────────────────────────────────────────────────────────
-
 export async function getHistory(): Promise<HistoryEntry[]> {
   const result = await invoke<DbHistoryEntry[]>("db_get_history");
   return result.map(dbToHistoryEntry);
@@ -255,8 +243,6 @@ export async function addToHistory(entry: HistoryEntry): Promise<HistoryEntry> {
 export async function clearHistory(): Promise<void> {
   await invoke("db_clear_history");
 }
-
-// ── Environments ──────────────────────────────────────────────────────────────
 
 export async function getEnvironments(): Promise<AppEnvironment[]> {
   const result = await invoke<DbEnvironment[]>("db_get_environments");

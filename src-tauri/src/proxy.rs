@@ -1,21 +1,31 @@
 use anyhow::{Context, Result};
+use base64::{engine::general_purpose, Engine as _};
 use reqwest::{Client, Method, header::{HeaderMap, HeaderName, HeaderValue}};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::str::FromStr;
 use std::time::Duration;
 
-// Request structure that will be sent from the frontend
+#[derive(Debug, Deserialize)]
+pub struct ProxyFormField {
+    pub name: String,
+    pub value: String,
+    pub is_file: bool,
+    pub file_name: Option<String>,
+    pub file_data_base64: Option<String>,
+    pub mime_type: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ProxyRequest {
     url: String,
     method: String,
-    headers: Option<Value>, // Using Value for flexibility in header format
+    headers: Option<Value>,
     body: Option<String>,
-    timeout: Option<u64>, // timeout in milliseconds
+    form_fields: Option<Vec<ProxyFormField>>,
+    timeout: Option<u64>,
 }
 
-// Response structure that will be sent back to the frontend
 #[derive(Debug, Serialize)]
 pub struct ProxyResponse {
     status: u16,
@@ -24,7 +34,6 @@ pub struct ProxyResponse {
     error: Option<String>,
 }
 
-// Helper function to convert serde_json::Value headers to reqwest::HeaderMap
 fn convert_headers(headers_value: Value) -> Result<HeaderMap> {
     let mut header_map = HeaderMap::new();
     
@@ -45,7 +54,6 @@ fn convert_headers(headers_value: Value) -> Result<HeaderMap> {
     Ok(header_map)
 }
 
-// Helper function to convert reqwest::HeaderMap to a Value for serialization
 fn headers_to_json(headers: &HeaderMap) -> Value {
     let mut map = serde_json::Map::new();
     
@@ -61,10 +69,9 @@ fn headers_to_json(headers: &HeaderMap) -> Value {
     Value::Object(map)
 }
 
-// The main proxy function that will be exposed as a Tauri command
 #[tauri::command]
 pub async fn proxy_request(request: ProxyRequest) -> Result<ProxyResponse, String> {
-    // Build client with optional timeout
+    
     let mut client_builder = Client::builder();
     if let Some(timeout) = request.timeout {
         client_builder = client_builder.timeout(Duration::from_millis(timeout));
@@ -74,40 +81,58 @@ pub async fn proxy_request(request: ProxyRequest) -> Result<ProxyResponse, Strin
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
     
-    // Parse HTTP method
+    
     let method = Method::from_str(&request.method.to_uppercase())
         .map_err(|e| format!("Invalid HTTP method '{}': {}", request.method, e))?;
     
-    // Build request
+    
     let mut req_builder = client.request(method.clone(), &request.url);
     
-    // Add headers if provided
+    
     if let Some(headers) = &request.headers {
         let header_map = convert_headers(headers.clone())
             .map_err(|e| format!("Header conversion error: {}", e))?;
         req_builder = req_builder.headers(header_map);
     }
     
-    // Add body for appropriate methods
-    if let Some(body) = &request.body {
-        if matches!(
-            method,
-            Method::POST | Method::PUT | Method::PATCH | Method::DELETE
-        ) {
-            req_builder = req_builder.body(body.clone());
+    
+    if let Some(fields) = request.form_fields {
+        
+        let mut form = reqwest::multipart::Form::new();
+        for field in fields {
+            if field.is_file {
+                let bytes = match field.file_data_base64 {
+                    Some(ref data) => general_purpose::STANDARD
+                        .decode(data)
+                        .map_err(|e| format!("Base64 decode error: {}", e))?,
+                    None => Vec::new(),
+                };
+                let fname = field.file_name.clone().unwrap_or_else(|| "file".to_string());
+                let mut part = reqwest::multipart::Part::bytes(bytes).file_name(fname);
+                if let Some(mime) = field.mime_type {
+                    part = part.mime_str(&mime)
+                        .map_err(|e| format!("MIME type error: {}", e))?;
+                }
+                form = form.part(field.name, part);
+            } else {
+                form = form.text(field.name, field.value);
+            }
         }
+        req_builder = req_builder.multipart(form);
+    } else if let Some(body) = &request.body {
+        req_builder = req_builder.body(body.clone());
     }
     
-    // Execute request
+    
     match req_builder.send().await {
         Ok(response) => {
-            // Extract status code
+            
             let status = response.status().as_u16();
             
-            // Extract headers
+            
             let headers_json = headers_to_json(response.headers());
             println!("{}", headers_json);
-            // Get response body as text
+            
             let body = response
                 .text()
                 .await
@@ -122,7 +147,7 @@ pub async fn proxy_request(request: ProxyRequest) -> Result<ProxyResponse, Strin
         },
         Err(e) => {
             Ok(ProxyResponse {
-                status: 0, // Use 0 to indicate a connection error
+                status: 0, 
                 headers: json!({}),
                 body: String::new(),
                 error: Some(format!("Request failed: {}", e)),

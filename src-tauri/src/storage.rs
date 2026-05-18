@@ -124,14 +124,12 @@ pub fn init_db(app: &AppHandle) -> SqlResult<Connection> {
         ",
     )?;
 
-    // ── Migrations: add new columns to existing DBs (silently ignore if already exist) ──
+    
     let _ = conn.execute("ALTER TABLE requests ADD COLUMN pre_request_script TEXT NOT NULL DEFAULT ''", []);
     let _ = conn.execute("ALTER TABLE requests ADD COLUMN test_script TEXT NOT NULL DEFAULT ''", []);
 
     Ok(conn)
 }
-
-// ── Helper macro to collect rows without borrow checker issues ─────────────
 
 macro_rules! query_rows {
     ($conn:expr, $sql:expr, $params:expr, $map:expr, $T:ty) => {{
@@ -144,8 +142,6 @@ macro_rules! query_rows {
         Ok(results)
     }};
 }
-
-// ── Collections ──────────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub fn db_get_collections(state: tauri::State<'_, AppDb>) -> Result<Vec<DbCollection>, String> {
@@ -209,8 +205,6 @@ pub fn db_delete_collection(state: tauri::State<'_, AppDb>, id: String) -> Resul
         .map_err(|e| e.to_string())?;
     Ok(())
 }
-
-// ── Requests ─────────────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub fn db_get_requests(
@@ -301,8 +295,6 @@ pub fn db_delete_request(state: tauri::State<'_, AppDb>, id: String) -> Result<(
     Ok(())
 }
 
-// ── History ───────────────────────────────────────────────────────────────────
-
 #[tauri::command]
 pub fn db_get_history(state: tauri::State<'_, AppDb>) -> Result<Vec<DbHistoryEntry>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
@@ -361,8 +353,6 @@ pub fn db_clear_history(state: tauri::State<'_, AppDb>) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     Ok(())
 }
-
-// ── Environments ──────────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub fn db_get_environments(state: tauri::State<'_, AppDb>) -> Result<Vec<DbEnvironment>, String> {

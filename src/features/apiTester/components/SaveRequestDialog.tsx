@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Collection } from "../types";
 import { cn } from "@/lib/utils";
 import { FolderPlus, Save, X } from "lucide-react";
@@ -23,8 +23,23 @@ export function SaveRequestDialog({
   const [name, setName] = useState(defaultName);
   const [collectionId, setCollectionId] = useState(collections[0]?.id ?? "");
   const [newCollName, setNewCollName] = useState("");
-  const [creatingNew, setCreatingNew] = useState(false);
+  const [creatingNew, setCreatingNew] = useState(collections.length === 0);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setName(defaultName);
+      setNewCollName("");
+      setBusy(false);
+      if (collections.length === 0) {
+        setCreatingNew(true);
+        setCollectionId("");
+      } else {
+        setCreatingNew(false);
+        setCollectionId(collections[0].id);
+      }
+    }
+  }, [open]);
 
   if (!open) return null;
 
@@ -49,10 +64,10 @@ export function SaveRequestDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
+      { }
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Dialog */}
+      { }
       <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-[420px] p-6">
         <button
           onClick={onClose}
@@ -66,7 +81,7 @@ export function SaveRequestDialog({
           Save Request
         </h2>
 
-        {/* Request name */}
+        { }
         <div className="mb-4">
           <label className="text-xs text-zinc-400 mb-1.5 block font-medium">Request Name</label>
           <input
@@ -78,7 +93,7 @@ export function SaveRequestDialog({
           />
         </div>
 
-        {/* Collection */}
+        { }
         <div className="mb-5">
           <label className="text-xs text-zinc-400 mb-1.5 block font-medium">Save to Collection</label>
 
@@ -135,7 +150,7 @@ export function SaveRequestDialog({
           )}
         </div>
 
-        {/* Actions */}
+        { }
         <div className="flex gap-2">
           <button
             onClick={handleSave}

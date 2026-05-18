@@ -26,7 +26,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
   const [systemTheme, setSystemTheme] = useState<"dark" | "light">(getSystemTheme);
 
-  // Track system preference changes
+  
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = (e: MediaQueryListEvent) => setSystemTheme(e.matches ? "dark" : "light");
@@ -36,7 +36,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const resolved = theme === "system" ? systemTheme : theme;
 
-  // Apply class to <html>
+  
   useEffect(() => {
     const root = document.documentElement;
     root.classList.remove("dark", "light");
