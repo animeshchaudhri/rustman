@@ -1,4 +1,4 @@
-name: Build macOS
+name: Build Windows
 
 on:
   push:
@@ -12,8 +12,8 @@ on:
         type: string
 
 jobs:
-  build-macos:
-    runs-on: macos-latest
+  build-windows:
+    runs-on: windows-latest
     permissions:
       contents: write
 
@@ -31,7 +31,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: x86_64-pc-windows-msvc
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -41,18 +41,18 @@ jobs:
       - name: Install frontend dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build universal macOS app
+      - name: Build Windows app
         uses: tauri-apps/tauri-action@v0
         with:
-          args: --target universal-apple-darwin
+          args: --target x86_64-pc-windows-msvc
 
-      - name: Upload .dmg artifact
+      - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Rustman-macOS-universal
+          name: Rustman-windows-x86_64
           path: |
-            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
           if-no-files-found: error
 
       - name: Resolve release tag
@@ -60,21 +60,25 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         env:
           INPUT_TAG_NAME: ${{ github.event.inputs.tag_name }}
+          REF_NAME: ${{ github.ref_name }}
+        shell: pwsh
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ -n "$INPUT_TAG_NAME" ]; then
-              SAFE_TAG=$(printf '%s' "$INPUT_TAG_NAME" | tr -d '\r\n')
-              if [ -z "$SAFE_TAG" ] || ! printf '%s' "$SAFE_TAG" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
-                echo "Invalid tag_name input. Use only letters, numbers, dot, underscore, or hyphen."
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            if (-not [string]::IsNullOrEmpty($env:INPUT_TAG_NAME)) {
+              $SafeTag = $env:INPUT_TAG_NAME.Replace("`r", "").Replace("`n", "")
+              if (-not $SafeTag -or -not ($SafeTag -match '^[A-Za-z0-9][A-Za-z0-9._-]*$')) {
+                Write-Host "Invalid tag_name input. Use only letters, numbers, dot, underscore, or hyphen."
                 exit 1
-              fi
-              echo "tag=$SAFE_TAG" >> "$GITHUB_OUTPUT"
-            else
-              echo "tag=manual-v${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-            fi
-          else
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
+              }
+              "tag=$SafeTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            }
+            else {
+              "tag=manual-v${{ github.run_number }}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            }
+          }
+          else {
+            "tag=$env:REF_NAME" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
@@ -83,6 +87,6 @@ jobs:
           tag_name: ${{ steps.resolve_release_tag.outputs.tag }}
           name: ${{ steps.resolve_release_tag.outputs.tag }}
           files: |
-            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
           generate_release_notes: true
