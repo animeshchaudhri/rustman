@@ -60,6 +60,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         env:
           INPUT_TAG_NAME: ${{ github.event.inputs.tag_name }}
+          REF_NAME: ${{ github.ref_name }}
         shell: pwsh
         run: |
           if ("${{ github.event_name }}" -eq "workflow_dispatch") {
@@ -76,7 +77,7 @@ jobs:
             }
           }
           else {
-            "tag=$env:GITHUB_REF_NAME" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "tag=$env:REF_NAME" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           }
 
       - name: Create GitHub Release
