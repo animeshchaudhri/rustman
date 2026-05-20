@@ -100,36 +100,36 @@ function AboutPanel() {
   ];
 
   const links = [
-    { icon: Github, label: "GitHub", href: "https://github.com/animeshchaudhri", color: "text-zinc-300" },
-    { icon: Globe2, label: "animesh.us", href: "https://animesh.us", color: "text-sky-400" },
-    { icon: Mail, label: "ac04@duck.com", href: "mailto:ac04@duck.com", color: "text-orange-400" },
+    { icon: Github, label: "GitHub", href: "https://github.com/animeshchaudhri", color: "text-zinc-700 dark:text-zinc-300" },
+    { icon: Globe2, label: "animesh.us", href: "https://animesh.us", color: "text-sky-500 dark:text-sky-400" },
+    { icon: Mail, label: "ac04@duck.com", href: "mailto:ac04@duck.com", color: "text-orange-500 dark:text-orange-400" },
   ];
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       { }
-      <div className="px-4 py-3 border-b border-zinc-800">
-        <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold mb-0.5">About</p>
-        <p className="text-sm font-bold text-zinc-100">Rustman</p>
+      <div className="px-4 py-3 border-b border-stone-200 dark:border-zinc-800">
+        <p className="text-[10px] uppercase tracking-widest text-zinc-500 dark:text-zinc-600 font-semibold mb-0.5">About</p>
+        <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100">Rustman</p>
       </div>
 
       <div className="flex flex-col gap-5 p-4">
         { }
-        <div className="flex flex-col items-center gap-3 py-5 bg-zinc-800/40 rounded-xl border border-zinc-800">
+        <div className="flex flex-col items-center gap-3 py-5 bg-stone-100 dark:bg-zinc-800/40 rounded-xl border border-stone-200 dark:border-zinc-800">
           <img src="/rustman-logo.svg" alt="Rustman" className="w-16 h-16" />
           <div className="text-center">
-            <p className="text-base font-bold text-zinc-100 tracking-tight">
+            <p className="text-base font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
               RUST<span className="text-orange-400">MAN</span>
             </p>
-            <p className="text-[10px] text-zinc-600 tracking-widest mt-0.5">API TESTING TOOL</p>
+            <p className="text-[10px] text-zinc-500 dark:text-zinc-600 tracking-widest mt-0.5">API TESTING TOOL</p>
           </div>
-          <span className="text-[10px] bg-zinc-700 text-zinc-400 px-2 py-0.5 rounded-full">v0.1.0</span>
+          <span className="text-[10px] bg-stone-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 px-2 py-0.5 rounded-full">v0.1.0</span>
         </div>
 
         { }
-        <div className="bg-zinc-800/40 rounded-xl border border-zinc-800 overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-zinc-800">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Made by</p>
+        <div className="bg-stone-100 dark:bg-zinc-800/40 rounded-xl border border-stone-200 dark:border-zinc-800 overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-stone-200 dark:border-zinc-800">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-500 dark:text-zinc-600 font-semibold">Made by</p>
           </div>
           <div className="px-4 py-3 flex items-center gap-3">
             <img
@@ -139,41 +139,41 @@ function AboutPanel() {
               onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
             />
             <div>
-              <p className="text-sm font-semibold text-zinc-100">Animesh Chaudhri</p>
-              <p className="text-[11px] text-zinc-500">Full-Stack · Rust · AI · Distributed Systems</p>
-              <p className="text-[10px] text-zinc-600 mt-0.5">Pune, India</p>
+              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Animesh Chaudhri</p>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Full-Stack · Rust · AI · Distributed Systems</p>
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-600 mt-0.5">Pune, India</p>
             </div>
           </div>
 
           { }
-          <div className="border-t border-zinc-800 divide-y divide-zinc-800/60">
+          <div className="border-t border-stone-200 dark:border-zinc-800 divide-y divide-stone-200/60 dark:divide-zinc-800/60">
             {links.map(({ icon: Icon, label, href, color }) => (
               <a
                 key={href}
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800/60 transition-colors group"
+                className="flex items-center gap-3 px-4 py-2.5 hover:bg-stone-200/60 dark:hover:bg-zinc-800/60 transition-colors group"
               >
                 <Icon className={cn("h-3.5 w-3.5 shrink-0", color)} />
-                <span className="text-xs text-zinc-400 group-hover:text-zinc-200 transition-colors">{label}</span>
+                <span className="text-xs text-zinc-500 dark:text-zinc-400 group-hover:text-zinc-700 dark:group-hover:text-zinc-200 transition-colors">{label}</span>
               </a>
             ))}
           </div>
         </div>
 
         { }
-        <div className="bg-zinc-800/40 rounded-xl border border-zinc-800 overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-zinc-800">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Built with</p>
+        <div className="bg-stone-100 dark:bg-zinc-800/40 rounded-xl border border-stone-200 dark:border-zinc-800 overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-stone-200 dark:border-zinc-800">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-500 dark:text-zinc-600 font-semibold">Built with</p>
           </div>
-          <div className="divide-y divide-zinc-800/60">
+          <div className="divide-y divide-stone-200/60 dark:divide-zinc-800/60">
             {stack.map(({ icon: Icon, label, desc }) => (
               <div key={label} className="flex items-center gap-3 px-4 py-2.5">
                 <Icon className="h-3.5 w-3.5 text-orange-400/70 shrink-0" />
                 <div>
-                  <p className="text-xs font-medium text-zinc-300">{label}</p>
-                  <p className="text-[10px] text-zinc-600">{desc}</p>
+                  <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">{label}</p>
+                  <p className="text-[10px] text-zinc-500 dark:text-zinc-600">{desc}</p>
                 </div>
               </div>
             ))}
@@ -181,9 +181,9 @@ function AboutPanel() {
         </div>
 
         { }
-        <div className="bg-zinc-800/40 rounded-xl border border-zinc-800 overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-zinc-800">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Theme</p>
+        <div className="bg-stone-100 dark:bg-zinc-800/40 rounded-xl border border-stone-200 dark:border-zinc-800 overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-stone-200 dark:border-zinc-800">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-500 dark:text-zinc-600 font-semibold">Theme</p>
           </div>
           <div className="flex p-2 gap-1.5">
             {(["dark", "light", "system"] as Theme[]).map((t) => (
@@ -194,7 +194,7 @@ function AboutPanel() {
                   "flex-1 py-2 rounded-lg text-xs font-medium capitalize transition-colors border",
                   theme === t
                     ? "bg-orange-600/20 text-orange-400 border-orange-500/30"
-                    : "text-zinc-500 border-zinc-700 hover:text-zinc-300 hover:bg-zinc-800",
+                    : "text-zinc-500 dark:text-zinc-500 border-stone-300 dark:border-zinc-700 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-stone-200 dark:hover:bg-zinc-800",
                 )}
               >
                 {t === "dark" ? "🌙 Dark" : t === "light" ? "☀️ Light" : "💻 System"}
@@ -204,7 +204,7 @@ function AboutPanel() {
         </div>
 
         { }
-        <div className="flex items-center justify-center gap-1.5 text-[10px] text-zinc-700 pb-2">
+        <div className="flex items-center justify-center gap-1.5 text-[10px] text-zinc-400 dark:text-zinc-700 pb-2">
           <span>© 2026 Animesh Chaudhri</span>
           <Heart className="h-2.5 w-2.5 text-red-500/60 fill-red-500/60" />
           <span>MIT License</span>
@@ -690,10 +690,38 @@ export default function ApiTester() {
   
   const u = updateActiveTab;
 
+  const syncParamsFromUrl = useCallback(
+    (cleanUrl: string, params: Array<{ id: string; key: string; value: string; enabled: boolean }>) => {
+      u({ urlInput: cleanUrl, params });
+    },
+    [u],
+  );
+
+  // Reliable URL→params sync: whenever urlInput gains a query string (paste, programmatic set, etc.)
+  // this effect fires and extracts params directly from state — bypasses all event handler edge-cases.
+  const urlSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (urlSyncTimerRef.current) clearTimeout(urlSyncTimerRef.current);
+    const raw = activeTab.urlInput;
+    if (!raw.includes("?")) return;
+    urlSyncTimerRef.current = setTimeout(() => {
+      const q = raw.indexOf("?");
+      const cleanUrl = raw.slice(0, q);
+      try {
+        const search = new URLSearchParams(raw.slice(q + 1));
+        const params = Array.from(search.entries())
+          .filter(([key]) => key.length > 0)
+          .map(([key, value]) => ({ id: crypto.randomUUID(), key, value, enabled: true }));
+        if (params.length > 0) updateActiveTab({ urlInput: cleanUrl, params });
+      } catch { /* ignore */ }
+    }, 150);
+    return () => { if (urlSyncTimerRef.current) clearTimeout(urlSyncTimerRef.current); };
+  }, [activeTab.urlInput, updateActiveTab]);
+
   return (
-    <div className={cn(resolved, "flex h-screen overflow-hidden select-none", resolved === "dark" ? "bg-zinc-950 text-zinc-100" : "bg-gray-50 text-zinc-900")}>
+    <div className={cn(resolved, "flex h-screen overflow-hidden select-none bg-stone-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100")}>
       { }
-      <div className="flex flex-col items-center w-12 border-r border-zinc-800 bg-zinc-900 py-3 gap-1 shrink-0">
+      <div className="flex flex-col items-center w-12 border-r border-stone-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 py-3 gap-1 shrink-0">
         {(
           [
             { id: "collections", icon: BookOpen, label: "Collections" },
@@ -709,7 +737,7 @@ export default function ApiTester() {
               "p-2.5 rounded-lg transition-colors",
               panel === id
                 ? "bg-orange-600/20 text-orange-400"
-                : "text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800",
+                : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800",
             )}
           >
             <Icon className="h-4 w-4" />
@@ -723,7 +751,7 @@ export default function ApiTester() {
             "p-2.5 rounded-lg transition-colors",
             panel === "settings"
               ? "bg-orange-600/20 text-orange-400"
-              : "text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800",
+              : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800",
           )}
         >
           <Settings className="h-4 w-4" />
@@ -732,7 +760,7 @@ export default function ApiTester() {
 
       { }
       {panel && (
-        <div className="w-64 shrink-0 border-r border-zinc-800 bg-zinc-900 flex flex-col overflow-hidden">
+        <div className="w-64 shrink-0 border-r border-stone-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col overflow-hidden">
           {panel === "collections" && (
             <CollectionsSidebar
               collections={collections}
@@ -771,17 +799,17 @@ export default function ApiTester() {
       { }
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         { }
-        <div className="flex items-center h-9 border-b border-zinc-800 bg-zinc-900 overflow-x-auto shrink-0 scrollbar-thin">
+        <div className="flex items-center h-9 border-b border-stone-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-x-auto shrink-0 scrollbar-thin">
           {tabs.map((tab) => (
             <div
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "group flex items-center gap-1.5 px-3 h-full border-r border-zinc-800 cursor-pointer shrink-0",
+                "group flex items-center gap-1.5 px-3 h-full border-r border-stone-200 dark:border-zinc-800 cursor-pointer shrink-0",
                 "text-xs transition-colors min-w-0 max-w-[200px]",
                 tab.id === activeTabId
-                  ? "bg-zinc-950 text-zinc-100 border-t-2 border-t-orange-500"
-                  : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800",
+                  ? "bg-stone-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 border-t-2 border-t-orange-500"
+                  : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-stone-50 dark:hover:bg-zinc-800",
               )}
             >
               <span
@@ -802,8 +830,8 @@ export default function ApiTester() {
                 className={cn(
                   "shrink-0 rounded p-0.5 transition-colors",
                   tab.id === activeTabId
-                    ? "text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700"
-                    : "opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-700",
+                    ? "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-stone-200 dark:hover:bg-zinc-700"
+                    : "opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-stone-200 dark:hover:bg-zinc-700",
                 )}
               >
                 <X className="h-3 w-3" />
@@ -813,7 +841,7 @@ export default function ApiTester() {
 
           <button
             onClick={() => addTab()}
-            className="h-full px-3 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors shrink-0"
+            className="h-full px-3 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800 transition-colors shrink-0"
             title="New tab"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -826,6 +854,7 @@ export default function ApiTester() {
           onMethodChange={(m) => u({ method: m })}
           urlInput={activeTab.urlInput}
           onUrlChange={(v) => u({ urlInput: v })}
+          onUrlSync={syncParamsFromUrl}
           onCurlImport={handleCurlImport}
           isLoading={activeResponse.isLoading}
           onSendRequest={sendRequest}
@@ -839,7 +868,7 @@ export default function ApiTester() {
         <div ref={splitContainerRef} className="flex-1 flex flex-col overflow-hidden min-h-0">
           { }
           <div
-            className="flex flex-col overflow-hidden border-b border-zinc-800"
+            className="flex flex-col overflow-hidden border-b border-stone-200 dark:border-zinc-800"
             style={{ height: `${splitRatio * 100}%` }}
           >
             <Tabs
@@ -847,7 +876,7 @@ export default function ApiTester() {
               onValueChange={(v) => setActiveRequestTab(v as RequestTabType)}
               className="flex flex-col h-full"
             >
-              <TabsList className="shrink-0 bg-zinc-900 border-b border-zinc-800 rounded-none justify-start px-2 h-8 gap-0">
+              <TabsList className="shrink-0 bg-white dark:bg-zinc-900 border-b border-stone-200 dark:border-zinc-800 rounded-none justify-start px-2 h-8 gap-0">
                 {(["params", "headers", "body", "auth", "scripts"] as RequestTabType[]).map((t) => (
                   <TabsTrigger
                     key={t}
@@ -855,19 +884,19 @@ export default function ApiTester() {
                     className={cn(
                       "text-xs px-3 py-0 h-7 rounded-none capitalize border-b-2 border-transparent data-[state=active]:border-orange-500",
                       "data-[state=active]:bg-transparent data-[state=active]:text-orange-400",
-                      "text-zinc-500 hover:text-zinc-300",
+                      "text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300",
                     )}
                   >
                     {t}
                     {t === "params" &&
                       activeTab.params.filter((p) => p.key && p.enabled).length > 0 && (
-                        <span className="ml-1 text-[10px] bg-zinc-700 text-zinc-300 rounded-full px-1">
+                        <span className="ml-1 text-[10px] bg-stone-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-full px-1">
                           {activeTab.params.filter((p) => p.key && p.enabled).length}
                         </span>
                       )}
                     {t === "headers" &&
                       activeTab.headers.filter((h) => h.key && h.enabled).length > 0 && (
-                        <span className="ml-1 text-[10px] bg-zinc-700 text-zinc-300 rounded-full px-1">
+                        <span className="ml-1 text-[10px] bg-stone-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-full px-1">
                           {activeTab.headers.filter((h) => h.key && h.enabled).length}
                         </span>
                       )}
@@ -881,6 +910,7 @@ export default function ApiTester() {
               <TabsContent value="params" className="flex-1 overflow-auto m-0 p-0 data-[state=active]:flex data-[state=active]:flex-col">
                 <RequestParams
                   params={activeTab.params}
+                  urlInput={activeTab.urlInput}
                   onAddParam={() => u({ params: [...activeTab.params, { id: crypto.randomUUID(), key: "", value: "", enabled: true }] })}
                   onParamChange={(id, field, value) => u({ params: activeTab.params.map((p) => (p.id === id ? { ...p, [field]: value } : p)) })}
                   onRemoveParam={(id) => u({ params: activeTab.params.filter((p) => p.id !== id) })}
@@ -954,10 +984,10 @@ export default function ApiTester() {
 
           { }
           <div
-            className="h-1.5 bg-zinc-800 hover:bg-orange-500/40 cursor-row-resize transition-colors shrink-0 group flex items-center justify-center"
+            className="h-1.5 bg-stone-200 dark:bg-zinc-800 hover:bg-orange-500/40 cursor-row-resize transition-colors shrink-0 group flex items-center justify-center"
             onMouseDown={() => { isDragging.current = true; }}
           >
-            <div className="w-8 h-0.5 bg-zinc-600 group-hover:bg-orange-500/60 rounded-full transition-colors" />
+            <div className="w-8 h-0.5 bg-stone-400 dark:bg-zinc-600 group-hover:bg-orange-500/60 rounded-full transition-colors" />
           </div>
 
           { }

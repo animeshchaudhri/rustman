@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Editor from "@monaco-editor/react";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Play, Info } from "lucide-react";
 
 interface ScriptsTabProps {
@@ -24,6 +25,7 @@ const PRESET_SNIPPETS = {
 };
 
 export function ScriptsTab({ preRequestScript, onPreRequestScriptChange, testScript, onTestScriptChange }: ScriptsTabProps) {
+  const { resolved } = useTheme();
   const [activeScript, setActiveScript] = useState<"pre" | "test">("pre");
 
   const currentValue = activeScript === "pre" ? preRequestScript : testScript;
@@ -32,8 +34,7 @@ export function ScriptsTab({ preRequestScript, onPreRequestScriptChange, testScr
 
   return (
     <div className="flex flex-col h-full">
-      { }
-      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-zinc-800 shrink-0">
+      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-stone-200 dark:border-zinc-800 shrink-0">
         {(["pre", "test"] as const).map((s) => (
           <button
             key={s}
@@ -42,20 +43,19 @@ export function ScriptsTab({ preRequestScript, onPreRequestScriptChange, testScr
               "px-3 py-1 rounded-md text-xs font-medium transition-colors",
               activeScript === s
                 ? "bg-orange-600/20 text-orange-400 border border-orange-500/30"
-                : "text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800",
+                : "text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800",
             )}
           >
             {s === "pre" ? "Pre-request" : "Tests"}
           </button>
         ))}
 
-        { }
         <div className="ml-auto flex items-center gap-1">
           {snippets.map((snip) => (
             <button
               key={snip.label}
               onClick={() => currentOnChange(currentValue ? `${currentValue}\n${snip.code}` : snip.code)}
-              className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 rounded border border-zinc-800 transition-colors"
+              className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800 rounded border border-stone-200 dark:border-zinc-800 transition-colors"
               title={`Insert: ${snip.label}`}
             >
               <Play className="h-2.5 w-2.5" />
@@ -65,24 +65,22 @@ export function ScriptsTab({ preRequestScript, onPreRequestScriptChange, testScr
         </div>
       </div>
 
-      { }
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900/60 border-b border-zinc-800/50 shrink-0">
-        <Info className="h-3 w-3 text-zinc-600 shrink-0" />
-        <p className="text-[10px] text-zinc-600">
+      <div className="flex items-center gap-2 px-3 py-1.5 bg-stone-50/60 dark:bg-zinc-900/60 border-b border-stone-200/50 dark:border-zinc-800/50 shrink-0">
+        <Info className="h-3 w-3 text-zinc-400 dark:text-zinc-600 shrink-0" />
+        <p className="text-[10px] text-zinc-400 dark:text-zinc-600">
           {activeScript === "pre"
             ? "Runs before the request is sent. Use pm.environment.set() to inject variables."
             : "Runs after response is received. Use pm.test() and pm.expect() for assertions."}
         </p>
       </div>
 
-      { }
       <div className="flex-1 overflow-hidden" onMouseDown={(e) => e.stopPropagation()}>
         <Editor
           height="100%"
           language="javascript"
           value={currentValue}
           onChange={(v) => currentOnChange(v ?? "")}
-          theme="vs-dark"
+          theme={resolved === "dark" ? "vs-dark" : "vs"}
           options={{
             minimap: { enabled: false },
             scrollBeyondLastLine: false,

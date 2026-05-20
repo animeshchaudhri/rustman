@@ -7,21 +7,21 @@ import {
   ChevronRight,
   FolderOpen,
   MoreHorizontal,
-  Plus,
-  Trash2,
   Upload,
   Pencil,
   FolderPlus,
+  Plus,
+  Trash2,
 } from "lucide-react";
 
 const METHOD_BADGE: Record<string, string> = {
-  GET: "text-emerald-400 bg-emerald-400/10",
-  POST: "text-orange-400 bg-orange-400/10",
-  PUT: "text-blue-400 bg-blue-400/10",
-  PATCH: "text-teal-400 bg-teal-400/10",
-  DELETE: "text-red-400 bg-red-400/10",
-  HEAD: "text-purple-400 bg-purple-400/10",
-  OPTIONS: "text-sky-400 bg-sky-400/10",
+  GET: "text-emerald-500 dark:text-emerald-400 bg-emerald-500/10",
+  POST: "text-orange-500 dark:text-orange-400 bg-orange-400/10",
+  PUT: "text-blue-500 dark:text-blue-400 bg-blue-400/10",
+  PATCH: "text-teal-500 dark:text-teal-400 bg-teal-400/10",
+  DELETE: "text-red-500 dark:text-red-400 bg-red-400/10",
+  HEAD: "text-purple-500 dark:text-purple-400 bg-purple-400/10",
+  OPTIONS: "text-sky-500 dark:text-sky-400 bg-sky-400/10",
 };
 
 interface CollectionsSidebarProps {
@@ -100,9 +100,8 @@ export function CollectionsSidebar({
 
   return (
     <div className="flex flex-col h-full" onClick={closeMenu}>
-      { }
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-700/50">
-        <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-stone-300/50 dark:border-zinc-700/50">
+        <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
           Collections
         </span>
         <div className="flex gap-1">
@@ -111,7 +110,7 @@ export function CollectionsSidebar({
               e.stopPropagation();
               fileRef.current?.click();
             }}
-            className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 rounded transition-colors"
+            className="p-1 text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-stone-200 dark:hover:bg-zinc-700 rounded transition-colors"
             title="Import Postman Collection"
           >
             <Upload className="h-3.5 w-3.5" />
@@ -121,7 +120,7 @@ export function CollectionsSidebar({
               e.stopPropagation();
               setNewCollName("");
             }}
-            className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 rounded transition-colors"
+            className="p-1 text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-stone-200 dark:hover:bg-zinc-700 rounded transition-colors"
             title="New Collection"
           >
             <FolderPlus className="h-3.5 w-3.5" />
@@ -130,9 +129,7 @@ export function CollectionsSidebar({
         <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
       </div>
 
-      { }
       <div className="flex-1 overflow-y-auto py-1">
-        { }
         {newCollName !== null && (
           <div className="px-2 py-1">
             <input
@@ -151,16 +148,16 @@ export function CollectionsSidebar({
                 if (e.key === "Escape") setNewCollName(null);
               }}
               placeholder="Collection name…"
-              className="w-full bg-zinc-700 border border-orange-500/50 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none placeholder:text-zinc-500"
+              className="w-full bg-white dark:bg-zinc-700 border border-orange-500/50 rounded px-2 py-1 text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none placeholder:text-zinc-500 dark:placeholder:text-zinc-500"
             />
           </div>
         )}
 
         {collections.length === 0 && newCollName === null && (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-            <FolderOpen className="h-8 w-8 text-zinc-600 mb-2" />
-            <p className="text-xs text-zinc-500">No collections yet</p>
-            <p className="text-xs text-zinc-600 mt-1">
+            <FolderOpen className="h-8 w-8 text-zinc-400 dark:text-zinc-600 mb-2" />
+            <p className="text-xs text-zinc-500 dark:text-zinc-500">No collections yet</p>
+            <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-1">
               Create one or import a Postman collection
             </p>
           </div>
@@ -172,12 +169,11 @@ export function CollectionsSidebar({
 
           return (
             <div key={col.id}>
-              { }
               <div
-                className="group flex items-center gap-1.5 px-2 py-1.5 hover:bg-zinc-800 cursor-pointer select-none"
+                className="group flex items-center gap-1.5 px-2 py-1.5 hover:bg-stone-100 dark:hover:bg-zinc-800 cursor-pointer select-none"
                 onClick={() => toggleExpand(col.id)}
               >
-                <span className="text-zinc-500 shrink-0">
+                <span className="text-zinc-500 dark:text-zinc-500 shrink-0">
                   {isOpen ? (
                     <ChevronDown className="h-3.5 w-3.5" />
                   ) : (
@@ -196,15 +192,15 @@ export function CollectionsSidebar({
                       if (e.key === "Escape") setRenaming(null);
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    className="flex-1 bg-zinc-700 border border-orange-500/50 rounded px-1.5 py-0.5 text-xs text-zinc-200 focus:outline-none"
+                    className="flex-1 bg-white dark:bg-zinc-700 border border-orange-500/50 rounded px-1.5 py-0.5 text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none"
                   />
                 ) : (
-                  <span className="flex-1 text-xs text-zinc-300 truncate font-medium">
+                  <span className="flex-1 text-xs text-zinc-700 dark:text-zinc-300 truncate font-medium">
                     {col.name}
                   </span>
                 )}
 
-                <span className="text-xs text-zinc-600 shrink-0">{reqs.length}</span>
+                <span className="text-xs text-zinc-400 dark:text-zinc-600 shrink-0">{reqs.length}</span>
 
                 <button
                   onClick={(e) => {
@@ -212,28 +208,27 @@ export function CollectionsSidebar({
                     const rect = e.currentTarget.getBoundingClientRect();
                     setMenu({ type: "collection", id: col.id, x: rect.right, y: rect.bottom });
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 rounded transition-all shrink-0"
+                  className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-stone-200 dark:hover:bg-zinc-700 rounded transition-all shrink-0"
                 >
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </button>
               </div>
 
-              { }
               {isOpen && (
-                <div className="ml-4 border-l border-zinc-700/40 pl-1">
+                <div className="ml-4 border-l border-stone-300/40 dark:border-zinc-700/40 pl-1">
                   {reqs.length === 0 && (
-                    <p className="text-xs text-zinc-600 px-3 py-2 italic">No requests</p>
+                    <p className="text-xs text-zinc-400 dark:text-zinc-600 px-3 py-2 italic">No requests</p>
                   )}
                   {reqs.map((req) => (
                     <div
                       key={req.id}
-                      className="group flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 cursor-pointer rounded-sm mx-1"
+                      className="group flex items-center gap-2 px-2 py-1.5 hover:bg-stone-100 dark:hover:bg-zinc-800 cursor-pointer rounded-sm mx-1"
                       onClick={() => onLoadRequest(req)}
                     >
                       <span
                         className={cn(
                           "text-[10px] font-bold rounded px-1 py-0.5 shrink-0 leading-none",
-                          METHOD_BADGE[req.method] ?? "text-zinc-400 bg-zinc-700",
+                          METHOD_BADGE[req.method] ?? "text-zinc-500 dark:text-zinc-400 bg-stone-200 dark:bg-zinc-700",
                         )}
                       >
                         {req.method.slice(0, 3)}
@@ -250,10 +245,10 @@ export function CollectionsSidebar({
                             if (e.key === "Escape") setRenaming(null);
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          className="flex-1 bg-zinc-700 border border-orange-500/50 rounded px-1.5 py-0.5 text-xs text-zinc-200 focus:outline-none"
+                          className="flex-1 bg-white dark:bg-zinc-700 border border-orange-500/50 rounded px-1.5 py-0.5 text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none"
                         />
                       ) : (
-                        <span className="flex-1 text-xs text-zinc-400 truncate">{req.name}</span>
+                        <span className="flex-1 text-xs text-zinc-500 dark:text-zinc-400 truncate">{req.name}</span>
                       )}
 
                       <button
@@ -268,7 +263,7 @@ export function CollectionsSidebar({
                             y: rect.bottom,
                           });
                         }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-600 hover:text-zinc-200 hover:bg-zinc-700 rounded transition-all shrink-0"
+                        className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-400 dark:text-zinc-600 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-stone-200 dark:hover:bg-zinc-700 rounded transition-all shrink-0"
                       >
                         <MoreHorizontal className="h-3 w-3" />
                       </button>
@@ -281,19 +276,18 @@ export function CollectionsSidebar({
         })}
       </div>
 
-      { }
       {menu && (
         <>
           <div className="fixed inset-0 z-40" onClick={closeMenu} />
           <div
-            className="fixed z-50 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 min-w-[160px]"
+            className="fixed z-50 bg-white dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg shadow-xl py-1 min-w-[160px]"
             style={{ left: menu.x - 160, top: menu.y + 4 }}
             onClick={(e) => e.stopPropagation()}
           >
             {menu.type === "collection" && (
               <>
                 <button
-                  className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
+                  className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
                   onClick={() => {
                     const col = collections.find((c) => c.id === menu.id);
                     if (col) setRenaming({ id: col.id, value: col.name, type: "c" });
@@ -303,9 +297,9 @@ export function CollectionsSidebar({
                   <Pencil className="h-3.5 w-3.5" />
                   Rename
                 </button>
-                <div className="h-px bg-zinc-700 my-1" />
+                <div className="h-px bg-stone-200 dark:bg-zinc-700 my-1" />
                 <button
-                  className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
+                  className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-red-500 dark:text-red-400 hover:bg-red-500/10 transition-colors"
                   onClick={() => {
                     onDeleteCollection(menu.id);
                     closeMenu();
@@ -319,7 +313,7 @@ export function CollectionsSidebar({
             {menu.type === "request" && menu.collectionId && (
               <>
                 <button
-                  className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
+                  className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
                   onClick={() => {
                     const col = menu.collectionId!;
                     const req = (requests[col] ?? []).find((r) => r.id === menu.id);
@@ -331,7 +325,7 @@ export function CollectionsSidebar({
                   Rename
                 </button>
                 <button
-                  className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
+                  className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
                   onClick={() => {
                     const req = (requests[menu.collectionId!] ?? []).find((r) => r.id === menu.id);
                     if (req) onLoadRequest(req);
@@ -341,9 +335,9 @@ export function CollectionsSidebar({
                   <Plus className="h-3.5 w-3.5" />
                   Open in tab
                 </button>
-                <div className="h-px bg-zinc-700 my-1" />
+                <div className="h-px bg-stone-200 dark:bg-zinc-700 my-1" />
                 <button
-                  className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
+                  className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-red-500 dark:text-red-400 hover:bg-red-500/10 transition-colors"
                   onClick={() => {
                     onDeleteRequest(menu.id, menu.collectionId!);
                     closeMenu();
