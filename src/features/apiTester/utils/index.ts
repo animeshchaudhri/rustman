@@ -369,9 +369,9 @@ export const beautifyJson = (jsonStr: string) => {
 };
 
  
-export const enhancedFetch = async (url: string, options: RequestInit, formFields?: ProxyFormField[]) => {
+export const enhancedFetch = async (url: string, options: RequestInit, formFields?: ProxyFormField[], tabId?: string) => {
   try {
-    const response = await tauriProxyFetch(url, options, formFields);
+    const response = await tauriProxyFetch(url, options, formFields, tabId);
     return response;
   } catch (error) {
     console.error('Enhanced fetch error:', error);

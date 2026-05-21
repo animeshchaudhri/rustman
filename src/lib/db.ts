@@ -269,3 +269,34 @@ export async function getSession(): Promise<string | null> {
 export async function clearSession(): Promise<void> {
   await invoke("db_clear_session");
 }
+
+// ── Rust in-memory body store ──────────────────────────────────────────────
+
+export interface BodySlice {
+  lines: string[];
+  totalLines: number;
+}
+
+export async function bodyStore(id: string, text: string): Promise<void> {
+  await invoke("body_store", { id, text });
+}
+
+export async function bodyGetSlice(id: string, lineStart: number, lineCount: number): Promise<BodySlice> {
+  return await invoke<BodySlice>("body_get_slice", { id, lineStart, lineCount });
+}
+
+export async function bodySearch(id: string, query: string): Promise<number> {
+  return await invoke<number>("body_search", { id, query });
+}
+
+export async function bodyGetFull(id: string): Promise<string> {
+  return await invoke<string>("body_get_full", { id });
+}
+
+export async function bodySearchLines(id: string, query: string): Promise<number[]> {
+  return await invoke<number[]>("body_search_lines", { id, query });
+}
+
+export async function bodyClearPrefix(prefix: string): Promise<void> {
+  await invoke("body_clear_prefix", { prefix });
+}

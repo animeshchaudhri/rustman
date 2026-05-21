@@ -113,6 +113,11 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    scrollbar-width: none; /* Firefox */
+  }
+
+  *::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Edge */
   }
 
   html,

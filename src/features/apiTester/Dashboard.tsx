@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, startTransition, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Authentication,
@@ -39,6 +39,7 @@ import {
   getSession,
   saveEnvironment,
   saveSession,
+  bodyClearPrefix,
 } from "@/lib/db";
 import type {
   ApiKeyLocation,
@@ -249,6 +250,11 @@ export default function ApiTester() {
     reorderTabs,
   } = useRequestTabs();
 
+  const handleCloseTab = useCallback((tabId: string) => {
+    bodyClearPrefix(tabId).catch(console.error);
+    closeTab(tabId);
+  }, [closeTab]);
+
   
   const [responses, setResponses] = useState<Record<string, TabResponse>>({});
   const activeResponse = responses[activeTabId] ?? {
@@ -289,6 +295,8 @@ export default function ApiTester() {
     savedAt: number;
   } | null>(null);
   const sessionHydrated = useRef(false);
+
+  const abortRef = useRef<(() => void) | null>(null);
 
   const dragTabIdRef = useRef<string | null>(null);
   const [dragOverTabId, setDragOverTabId] = useState<string | null>(null);
@@ -523,6 +531,13 @@ export default function ApiTester() {
     const tabId = activeTabId;
     setTabResponse(tabId, { isLoading: true, response: null, error: null, responseTime: null, responseSize: null });
 
+    let aborted = false;
+    abortRef.current = () => {
+      aborted = true;
+      abortRef.current = null;
+      setTabResponse(tabId, { isLoading: false, response: null, error: "Request aborted", responseTime: null, responseSize: null });
+    };
+
     const headerObj: Record<string, string> = {};
     tab.headers.forEach((h) => {
       if (h.key && h.enabled) headerObj[h.key] = h.value;
@@ -590,17 +605,22 @@ export default function ApiTester() {
 
     const startTime = performance.now();
     try {
-      const res = await enhancedFetch(fullUrl, requestOptions, proxyFormFields);
+      // Pass tabId — Rust stores raw+pretty in BodyStore and pretty-prints JSON there
+      const res = await enhancedFetch(fullUrl, requestOptions, proxyFormFields, tabId);
+      if (aborted) return;
       const duration = Math.round(performance.now() - startTime);
       const text = await res.text();
-      const size = new Blob([text]).size;
+      const size = (res as { bodySize?: number }).bodySize ?? text.length;
 
-      let data: unknown;
-      const ct = res.headers.get("content-type") ?? "";
-      try {
-        data = ct.includes("application/json") ? JSON.parse(text) : text;
-      } catch {
-        data = text;
+      // Only parse JSON for small inline bodies — large ones are null (rendered via Rust store)
+      let data: unknown = null;
+      if (text.length > 0) {
+        const ct = res.headers.get("content-type") ?? "";
+        try {
+          data = ct.includes("application/json") ? JSON.parse(text) : text;
+        } catch {
+          data = text;
+        }
       }
 
       const apiResponse: ApiResponse = {
@@ -611,12 +631,15 @@ export default function ApiTester() {
         cookies: res.headers.get("set-cookie"),
       };
 
-      setTabResponse(tabId, {
-        isLoading: false,
-        response: apiResponse,
-        responseTime: duration,
-        responseSize: size,
-        error: null,
+      // Defer React state update so it never blocks tab clicks / UI interactions
+      startTransition(() => {
+        setTabResponse(tabId, {
+          isLoading: false,
+          response: apiResponse,
+          responseTime: duration,
+          responseSize: size,
+          error: null,
+        });
       });
 
       
@@ -652,9 +675,12 @@ export default function ApiTester() {
         },
       };
       addToHistory(historyEntry).catch(console.error);
+      abortRef.current = null;
     } catch (err: unknown) {
+      if (aborted) return;
       const msg = err instanceof Error ? err.message : "Unknown error";
       setTabResponse(tabId, { isLoading: false, response: null, error: msg, responseTime: null, responseSize: null });
+      abortRef.current = null;
     }
   }, [activeTab, activeTabId, getFullUrl, setTabResponse, addToHistory]);
 
@@ -666,13 +692,13 @@ export default function ApiTester() {
       if (e.key === "Enter") { e.preventDefault(); sendRequest(); }
       else if (e.key === "s") { e.preventDefault(); setSaveDialogOpen(true); }
       else if (e.key === "t") { e.preventDefault(); addTab(); }
-      else if (e.key === "w") { e.preventDefault(); closeTab(activeTabId); }
+      else if (e.key === "w") { e.preventDefault(); handleCloseTab(activeTabId); }
       else if (e.key === "d") { e.preventDefault(); duplicateTab(activeTabId); }
       else if (e.key === "p") { e.preventDefault(); setPaletteOpen(true); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [sendRequest, addTab, closeTab, duplicateTab, activeTabId]);
+  }, [sendRequest, addTab, handleCloseTab, duplicateTab, activeTabId]);
 
   
   const handleLoadRequest = useCallback(
@@ -925,7 +951,7 @@ export default function ApiTester() {
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {pendingSession && (
           <div className="flex items-center gap-3 px-4 py-2 bg-orange-600/10 border-b border-orange-500/20 text-xs shrink-0">
-            <span className="text-orange-400 text-sm">📋</span>
+            <span className="text-orange-400 text-sm"></span>
             <span className="text-zinc-700 dark:text-zinc-300 flex-1">
               Restore {pendingSession.tabs.length} tab{pendingSession.tabs.length !== 1 ? "s" : ""} from your last session
               <span className="text-zinc-400 dark:text-zinc-600 ml-1.5">
@@ -997,7 +1023,7 @@ export default function ApiTester() {
               <span className="truncate">{tab.name}</span>
               {tab.isDirty && <span className="text-orange-400 shrink-0">●</span>}
               <button
-                onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
+                onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.id); }}
                 className={cn(
                   "shrink-0 rounded p-0.5 transition-colors",
                   tab.id === activeTabId
@@ -1029,6 +1055,7 @@ export default function ApiTester() {
           onCurlImport={handleCurlImport}
           isLoading={activeResponse.isLoading}
           onSendRequest={sendRequest}
+          onAbort={() => { abortRef.current?.(); }}
           onSaveRequest={() => setSaveDialogOpen(true)}
           generatedCurl={generatedCurl}
           generatedJs={generatedJs}
@@ -1177,6 +1204,7 @@ export default function ApiTester() {
               onTabChange={setActiveResponseTab}
               bodyView={responseBodyView}
               onBodyViewChange={setResponseBodyView}
+              tabId={activeTabId}
             />
           </div>
         </div>
