@@ -754,10 +754,17 @@ export default function ApiTester() {
     if (!fullUrl) return "";
     let cmd = `curl -X ${tab.method} "${fullUrl}"`;
     tab.headers.filter((h) => h.key && h.enabled).forEach((h) => {
-      cmd += ` \\\n  -H "${h.key}: ${h.value}"`;
+      cmd += ` \\\n  -H "${h.key}: ${h.value.replace(/"/g, '\\"')}"`;
     });
     if (tab.authType === "bearer" && tab.bearerToken) {
       cmd += ` \\\n  -H "Authorization: Bearer ${tab.bearerToken}"`;
+    }
+    if (tab.authType === "cookie") {
+      const cookieStr = tab.cookies
+        .filter((c) => c.name && c.enabled)
+        .map((c) => `${c.name}=${c.value}`)
+        .join("; ");
+      if (cookieStr) cmd += ` \\\n  -b '${cookieStr}'`;
     }
     if (["POST", "PUT", "PATCH"].includes(tab.method) && tab.body) {
       cmd += ` \\\n  -d '${tab.body.replace(/'/g, "'\\''")}'`;
@@ -774,6 +781,13 @@ export default function ApiTester() {
     tab.headers.filter((h) => h.key && h.enabled).forEach((h) => { headers[h.key] = h.value; });
     if (tab.authType === "bearer" && tab.bearerToken) {
       headers["Authorization"] = `Bearer ${tab.bearerToken}`;
+    }
+    if (tab.authType === "cookie") {
+      const cookieStr = tab.cookies
+        .filter((c) => c.name && c.enabled)
+        .map((c) => `${c.name}=${c.value}`)
+        .join("; ");
+      if (cookieStr) headers["Cookie"] = cookieStr;
     }
     const parsed: ParsedCurl = { method: tab.method, header: headers, body: tab.body || undefined };
     const js = generateJsCode(parsed, fullUrl);
