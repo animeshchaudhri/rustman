@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
-import { Code, Copy, Loader2, Save, Send } from "lucide-react";
+import { Code, Copy, Save, Send, X } from "lucide-react";
 import Editor from "@monaco-editor/react";
 
 const METHOD_COLORS: Record<string, string> = {
@@ -32,6 +32,7 @@ interface UrlBarProps {
   onCurlImport: (curlCommand: string) => void;
   isLoading: boolean;
   onSendRequest: () => void;
+  onAbort?: () => void;
   onSaveRequest: () => void;
   generatedCurl?: string;
   generatedJs?: string;
@@ -79,6 +80,7 @@ export function UrlBar({
   onCurlImport,
   isLoading,
   onSendRequest,
+  onAbort,
   onSaveRequest,
   generatedCurl = "",
   generatedJs = "",
@@ -224,24 +226,28 @@ export function UrlBar({
           <Save className="h-3.5 w-3.5" />
         </button>
 
-        <button
-          onClick={onSendRequest}
-          disabled={disabled || isLoading || !urlInput.trim()}
-          className={cn(
-            "shrink-0 flex items-center gap-1.5 h-8 px-4 rounded-lg text-sm font-semibold transition-all",
-            "bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-900/20",
-            "disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none",
-          )}
-        >
-          {isLoading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <>
-              <Send className="h-3.5 w-3.5" />
-              Send
-            </>
-          )}
-        </button>
+        {isLoading ? (
+          <button
+            onClick={onAbort}
+            className="shrink-0 flex items-center gap-1.5 h-8 px-4 rounded-lg text-sm font-semibold transition-all bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/20"
+          >
+            <X className="h-3.5 w-3.5" />
+            Abort
+          </button>
+        ) : (
+          <button
+            onClick={onSendRequest}
+            disabled={disabled || !urlInput.trim()}
+            className={cn(
+              "shrink-0 flex items-center gap-1.5 h-8 px-4 rounded-lg text-sm font-semibold transition-all",
+              "bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-900/20",
+              "disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none",
+            )}
+          >
+            <Send className="h-3.5 w-3.5" />
+            Send
+          </button>
+        )}
       </div>
 
       {codeOpen && (

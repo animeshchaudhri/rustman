@@ -1,8 +1,11 @@
 mod proxy;
 mod storage;
+mod response_store;
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 use storage::AppDb;
+use response_store::BodyStore;
 use tauri::Manager;
 
 #[tauri::command]
@@ -17,6 +20,7 @@ pub fn run() {
         .setup(|app| {
             let conn = storage::init_db(app.handle()).expect("Failed to init database");
             app.manage(AppDb(Mutex::new(conn)));
+            app.manage(BodyStore(Mutex::new(HashMap::new())));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -38,7 +42,14 @@ pub fn run() {
             storage::db_save_session,
             storage::db_get_session,
             storage::db_clear_session,
+            response_store::body_store,
+            response_store::body_get_slice,
+            response_store::body_get_full,
+            response_store::body_search,
+            response_store::body_search_lines,
+            response_store::body_clear_prefix,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
