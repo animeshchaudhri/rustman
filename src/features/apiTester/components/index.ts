@@ -9,3 +9,4 @@ export { HistorySidebar } from './HistorySidebar';
 export { EnvironmentsSidebar } from './EnvironmentsSidebar';
 export { SaveRequestDialog } from './SaveRequestDialog';
 export { ScriptsTab } from './ScriptsTab';
+export { CommandPalette } from './CommandPalette';

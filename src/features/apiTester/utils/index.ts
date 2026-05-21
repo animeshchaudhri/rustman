@@ -32,7 +32,10 @@ export function parseCookies(cookieString: string): Record<string, string> {
   cookieString.split(';').forEach(cookie => {
     const [name, ...rest] = cookie.trim().split('=');
     if (name && rest.length > 0) {
-      cookies[name.trim()] = rest.join('=').trim();
+      const raw = rest.join('=').trim();
+      let value = raw;
+      try { value = decodeURIComponent(raw); } catch { value = raw; }
+      cookies[name.trim()] = value;
     }
   });
   
@@ -86,6 +89,99 @@ function shellTokenize(str: string): string[] {
   return tokens;
 }
 
+function fixCurlJsonHeaders(cmd: string): string {
+  const out: string[] = [];
+  let i = 0;
+  const len = cmd.length;
+
+  while (i < len) {
+    const isShort = cmd[i] === '-' && i + 1 < len && cmd[i + 1] === 'H';
+    const isLong = cmd.slice(i, i + 8) === '--header';
+
+    if (!isShort && !isLong) {
+      out.push(cmd[i++]);
+      continue;
+    }
+
+    const flagEnd = isShort ? i + 2 : i + 8;
+    out.push(cmd.slice(i, flagEnd));
+    i = flagEnd;
+
+    while (i < len && (cmd[i] === ' ' || cmd[i] === '\t')) out.push(cmd[i++]);
+
+    const q = i < len ? cmd[i] : '';
+    if (q !== '"' && q !== "'") continue;
+
+    out.push(q);
+    i++;
+
+    let colonIdx = -1;
+    for (let k = i; k < len; k++) {
+      if (cmd[k] === q || cmd[k] === '\n') break;
+      if (cmd[k] === ':') { colonIdx = k; break; }
+    }
+
+    if (colonIdx < 0) {
+      while (i < len && cmd[i] !== q && cmd[i] !== '\n') out.push(cmd[i++]);
+      if (i < len && cmd[i] === q) { out.push(q); i++; }
+      continue;
+    }
+
+    out.push(cmd.slice(i, colonIdx + 1));
+    i = colonIdx + 1;
+
+    while (i < len && cmd[i] === ' ') out.push(cmd[i++]);
+
+    if (i >= len || (cmd[i] !== '{' && cmd[i] !== '[')) {
+      while (i < len && cmd[i] !== q && cmd[i] !== '\n') {
+        if (cmd[i] === '\\' && i + 1 < len) { out.push(cmd[i++]); out.push(cmd[i++]); }
+        else out.push(cmd[i++]);
+      }
+      if (i < len && cmd[i] === q) { out.push(q); i++; }
+      continue;
+    }
+
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    const jsonStart = i;
+
+    while (i < len) {
+      const ch = cmd[i];
+      if (esc) {
+        esc = false;
+      } else if (ch === '\\') {
+        if (inStr) esc = true;
+      } else if (ch === '"') {
+        inStr = !inStr;
+      } else if (!inStr) {
+        if (ch === '{' || ch === '[') depth++;
+        else if (ch === '}' || ch === ']') { depth--; if (depth === 0) { i++; break; } }
+      }
+      i++;
+    }
+
+    if (depth !== 0) {
+      out.push(cmd.slice(jsonStart, i));
+      while (i < len && cmd[i] !== q && cmd[i] !== '\n') i++;
+      if (i < len && cmd[i] === q) i++;
+      out.push(q);
+      continue;
+    }
+
+    const jsonContent = cmd.slice(jsonStart, i);
+    const escaped = q === '"' ? jsonContent.replace(/"/g, '\\"') : jsonContent;
+    out.push(escaped, q);
+
+    while (i < len && cmd[i] !== ' ' && cmd[i] !== '\t' && cmd[i] !== '\\' && cmd[i] !== '\n') {
+      if (cmd[i] === q) { i++; break; }
+      i++;
+    }
+  }
+
+  return out.join('');
+}
+
  
 export function parseCurlCommand(curlCmd: string): ParsedCurl {
   const result: ParsedCurl = { header: {}, cookies: {} };
@@ -95,6 +191,8 @@ export function parseCurlCommand(curlCmd: string): ParsedCurl {
     .replace(/\\\r\n/g, " ")
     .replace(/\\\n/g, " ")
     .trim();
+
+  cmd = fixCurlJsonHeaders(cmd);
 
   
   if (/^curl\s/i.test(cmd)) cmd = cmd.replace(/^curl\s+/i, "");

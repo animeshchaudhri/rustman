@@ -148,6 +148,9 @@ export function CollectionsSidebar({
                 if (e.key === "Escape") setNewCollName(null);
               }}
               placeholder="Collection name…"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
               className="w-full bg-white dark:bg-zinc-700 border border-orange-500/50 rounded px-2 py-1 text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none placeholder:text-zinc-500 dark:placeholder:text-zinc-500"
             />
           </div>
@@ -192,6 +195,9 @@ export function CollectionsSidebar({
                       if (e.key === "Escape") setRenaming(null);
                     }}
                     onClick={(e) => e.stopPropagation()}
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     className="flex-1 bg-white dark:bg-zinc-700 border border-orange-500/50 rounded px-1.5 py-0.5 text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none"
                   />
                 ) : (
@@ -245,6 +251,9 @@ export function CollectionsSidebar({
                             if (e.key === "Escape") setRenaming(null);
                           }}
                           onClick={(e) => e.stopPropagation()}
+                          autoCorrect="off"
+                          autoCapitalize="none"
+                          spellCheck={false}
                           className="flex-1 bg-white dark:bg-zinc-700 border border-orange-500/50 rounded px-1.5 py-0.5 text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none"
                         />
                       ) : (

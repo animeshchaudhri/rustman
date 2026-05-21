@@ -89,6 +89,9 @@ export function SaveRequestDialog({
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSave()}
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
             className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/60 placeholder:text-zinc-600"
           />
         </div>
@@ -129,6 +132,9 @@ export function SaveRequestDialog({
               value={newCollName}
               onChange={(e) => setNewCollName(e.target.value)}
               placeholder="Collection name…"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/60 placeholder:text-zinc-600"
             />
           ) : collections.length === 0 ? (

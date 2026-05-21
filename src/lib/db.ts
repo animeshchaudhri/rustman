@@ -257,3 +257,15 @@ export async function saveEnvironment(env: AppEnvironment): Promise<AppEnvironme
 export async function deleteEnvironment(id: string): Promise<void> {
   await invoke("db_delete_environment", { id });
 }
+
+export async function saveSession(data: string, savedAt: number): Promise<void> {
+  await invoke("db_save_session", { data, savedAt });
+}
+
+export async function getSession(): Promise<string | null> {
+  return await invoke<string | null>("db_get_session");
+}
+
+export async function clearSession(): Promise<void> {
+  await invoke("db_clear_session");
+}

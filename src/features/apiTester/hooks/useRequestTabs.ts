@@ -267,6 +267,21 @@ export function useRequestTabs() {
     });
   }, []);
 
+  const restoreTabs = useCallback((newTabs: RequestTab[], newActiveTabId: string) => {
+    const normalized = newTabs.map((t) => createRequestTab({ ...t, id: t.id }));
+    setTabs(normalized);
+    setActiveTabId(newActiveTabId);
+  }, []);
+
+  const reorderTabs = useCallback((fromIndex: number, toIndex: number) => {
+    setTabs((prev) => {
+      const next = [...prev];
+      const [removed] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, removed);
+      return next;
+    });
+  }, []);
+
   return {
     tabs,
     activeTabId,
@@ -276,5 +291,7 @@ export function useRequestTabs() {
     duplicateTab,
     setActiveTab: setActiveTabId,
     updateActiveTab,
+    restoreTabs,
+    reorderTabs,
   };
 }
