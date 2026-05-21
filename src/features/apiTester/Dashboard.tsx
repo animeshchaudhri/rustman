@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Authentication,
   CollectionsSidebar,
+  CommandPalette,
   EnvironmentsSidebar,
   HistorySidebar,
   RequestBody,
@@ -17,6 +18,7 @@ import { useCollections } from "./hooks/useCollections";
 import { useHistory } from "./hooks/useHistory";
 import {
   buildTabName,
+  createRequestTab,
   savedRequestToRequestTab,
   useRequestTabs,
 } from "./hooks/useRequestTabs";
@@ -31,9 +33,12 @@ import {
   type ProxyFormField,
 } from "./utils";
 import {
+  clearSession,
   deleteEnvironment,
   getEnvironments,
+  getSession,
   saveEnvironment,
+  saveSession,
 } from "@/lib/db";
 import type {
   ApiKeyLocation,
@@ -89,6 +94,14 @@ const METHOD_BADGE: Record<string, string> = {
   HEAD: "text-purple-400",
   OPTIONS: "text-sky-400",
 };
+
+function formatRelativeTime(ts: number): string {
+  const d = Date.now() - ts;
+  if (d < 60000) return "just now";
+  if (d < 3600000) return `${Math.floor(d / 60000)}m ago`;
+  if (d < 86400000) return `${Math.floor(d / 3600000)}h ago`;
+  return `${Math.floor(d / 86400000)}d ago`;
+}
 
 function AboutPanel() {
   const { theme, setTheme } = useTheme();
@@ -223,8 +236,18 @@ export default function ApiTester() {
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
   
-  const { tabs, activeTabId, activeTab, addTab, closeTab, duplicateTab, setActiveTab, updateActiveTab } =
-    useRequestTabs();
+  const {
+    tabs,
+    activeTabId,
+    activeTab,
+    addTab,
+    closeTab,
+    duplicateTab,
+    setActiveTab,
+    updateActiveTab,
+    restoreTabs,
+    reorderTabs,
+  } = useRequestTabs();
 
   
   const [responses, setResponses] = useState<Record<string, TabResponse>>({});
@@ -258,6 +281,18 @@ export default function ApiTester() {
   
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  const [pendingSession, setPendingSession] = useState<{
+    tabs: ReturnType<typeof createRequestTab>[];
+    activeTabId: string;
+    savedAt: number;
+  } | null>(null);
+  const sessionHydrated = useRef(false);
+
+  const dragTabIdRef = useRef<string | null>(null);
+  const [dragOverTabId, setDragOverTabId] = useState<string | null>(null);
+
   
   const {
     collections,
@@ -284,7 +319,42 @@ export default function ApiTester() {
     getEnvironments().then(setEnvironments).catch(console.error);
   }, []);
 
+  useEffect(() => {
+    getSession()
+      .then((raw) => {
+        if (!raw) { sessionHydrated.current = true; return; }
+        try {
+          const data = JSON.parse(raw) as { tabs: unknown[]; activeTabId: string; savedAt: number };
+          const restoredTabs = (data.tabs as Parameters<typeof createRequestTab>[0][]).map((t) =>
+            createRequestTab(t as Parameters<typeof createRequestTab>[0])
+          );
+          const hasMeaningful = restoredTabs.some(
+            (t) => t.urlInput.trim() || t.body || t.headers.some((h) => h.key),
+          );
+          if (hasMeaningful) {
+            setPendingSession({ tabs: restoredTabs, activeTabId: data.activeTabId, savedAt: data.savedAt });
+          } else {
+            sessionHydrated.current = true;
+          }
+        } catch {
+          sessionHydrated.current = true;
+        }
+      })
+      .catch(() => { sessionHydrated.current = true; });
+  }, []);
+
   const activeEnv = envEnabled ? (environments.find((e) => e.id === activeEnvId) ?? null) : null;
+
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!sessionHydrated.current) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      const payload = JSON.stringify({ tabs, activeTabId, savedAt: Date.now(), version: 1 });
+      saveSession(payload, Date.now()).catch(console.error);
+    }, 800);
+    return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
+  }, [tabs, activeTabId]);
 
   const handleEnvEnabledChange = (val: boolean) => {
     setEnvEnabled(val);
@@ -598,6 +668,7 @@ export default function ApiTester() {
       else if (e.key === "t") { e.preventDefault(); addTab(); }
       else if (e.key === "w") { e.preventDefault(); closeTab(activeTabId); }
       else if (e.key === "d") { e.preventDefault(); duplicateTab(activeTabId); }
+      else if (e.key === "p") { e.preventDefault(); setPaletteOpen(true); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -689,6 +760,60 @@ export default function ApiTester() {
 
   
   const u = updateActiveTab;
+
+  const handleExtractFromCookie = useCallback(() => {
+    let jwtToken = "";
+
+    // 1. Check Cookie header in headers list
+    const cookieHeader = activeTab.headers.find((h) => h.key.toLowerCase() === "cookie");
+    if (cookieHeader?.value) {
+      const c = parseCookies(cookieHeader.value);
+      jwtToken = c.accessToken || c.token || c.jwt ||
+        Object.values(c).find((v) => v.startsWith("eyJ")) || "";
+    }
+
+    // 2. Check cookieString (populated by -b flag import)
+    if (!jwtToken && activeTab.cookieString) {
+      const c = parseCookies(activeTab.cookieString);
+      jwtToken = c.accessToken || c.token || c.jwt ||
+        Object.values(c).find((v) => v.startsWith("eyJ")) || "";
+    }
+
+    // 3. Check cookies array
+    if (!jwtToken && activeTab.cookies.length > 0) {
+      jwtToken = activeTab.cookies
+        .filter((c) => c.enabled)
+        .find((c) => c.value.startsWith("eyJ"))?.value || "";
+    }
+
+    // 4. Check bearerToken (auto-extracted from accessToken cookie on import)
+    if (!jwtToken && activeTab.bearerToken.startsWith("eyJ")) {
+      jwtToken = activeTab.bearerToken;
+    }
+
+    // 5. Check any header value that looks like a JWT
+    if (!jwtToken) {
+      for (const h of activeTab.headers) {
+        if (!h.enabled) continue;
+        if (h.value.startsWith("eyJ")) { jwtToken = h.value; break; }
+        if (h.key.toLowerCase() === "authorization" && h.value.toLowerCase().startsWith("bearer ")) {
+          const t = h.value.slice(7);
+          if (t.startsWith("eyJ")) { jwtToken = t; break; }
+        }
+      }
+    }
+
+    if (!jwtToken) return;
+    const decoded = parseJwt(jwtToken);
+    if (!decoded) return;
+    const xUserDetailValue = JSON.stringify(decoded);
+    const existing = activeTab.headers.find((h) => h.key.toLowerCase() === "x-user-detail");
+    if (existing) {
+      u({ headers: activeTab.headers.map((h) => h.id === existing.id ? { ...h, value: xUserDetailValue, enabled: true } : h) });
+    } else {
+      u({ headers: [...activeTab.headers, { id: crypto.randomUUID(), key: "x-user-detail", value: xUserDetailValue, enabled: true }] });
+    }
+  }, [activeTab.headers, activeTab.cookieString, activeTab.cookies, activeTab.bearerToken, u]);
 
   const syncParamsFromUrl = useCallback(
     (cleanUrl: string, params: Array<{ id: string; key: string; value: string; enabled: boolean }>) => {
@@ -798,11 +923,64 @@ export default function ApiTester() {
 
       { }
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        {pendingSession && (
+          <div className="flex items-center gap-3 px-4 py-2 bg-orange-600/10 border-b border-orange-500/20 text-xs shrink-0">
+            <span className="text-orange-400 text-sm">📋</span>
+            <span className="text-zinc-700 dark:text-zinc-300 flex-1">
+              Restore {pendingSession.tabs.length} tab{pendingSession.tabs.length !== 1 ? "s" : ""} from your last session
+              <span className="text-zinc-400 dark:text-zinc-600 ml-1.5">
+                ({formatRelativeTime(pendingSession.savedAt)})
+              </span>
+            </span>
+            <button
+              onClick={() => {
+                sessionHydrated.current = true;
+                restoreTabs(pendingSession.tabs, pendingSession.activeTabId);
+                setPendingSession(null);
+              }}
+              className="px-3 py-1 bg-orange-600 hover:bg-orange-500 text-white rounded-md font-semibold transition-colors"
+            >
+              Restore
+            </button>
+            <button
+              onClick={() => {
+                sessionHydrated.current = true;
+                clearSession().catch(console.error);
+                setPendingSession(null);
+              }}
+              className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
         { }
         <div className="flex items-center h-9 border-b border-stone-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-x-auto shrink-0 scrollbar-thin">
-          {tabs.map((tab) => (
+          {tabs.map((tab, index) => (
             <div
               key={tab.id}
+              draggable
+              onDragStart={(e) => {
+                dragTabIdRef.current = tab.id;
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", tab.id);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                setDragOverTabId(tab.id);
+              }}
+              onDragLeave={() => setDragOverTabId(null)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverTabId(null);
+                const fromId = dragTabIdRef.current;
+                dragTabIdRef.current = null;
+                if (!fromId || fromId === tab.id) return;
+                const fromIndex = tabs.findIndex((t) => t.id === fromId);
+                if (fromIndex >= 0) reorderTabs(fromIndex, index);
+              }}
+              onDragEnd={() => { dragTabIdRef.current = null; setDragOverTabId(null); }}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
                 "group flex items-center gap-1.5 px-3 h-full border-r border-stone-200 dark:border-zinc-800 cursor-pointer shrink-0",
@@ -810,23 +988,16 @@ export default function ApiTester() {
                 tab.id === activeTabId
                   ? "bg-stone-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 border-t-2 border-t-orange-500"
                   : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-stone-50 dark:hover:bg-zinc-800",
+                dragOverTabId === tab.id && dragTabIdRef.current !== tab.id && "border-l-2 border-l-orange-400",
               )}
             >
-              <span
-                className={cn(
-                  "text-[10px] font-bold shrink-0",
-                  METHOD_BADGE[tab.method] ?? "text-zinc-400",
-                )}
-              >
+              <span className={cn("text-[10px] font-bold shrink-0", METHOD_BADGE[tab.method] ?? "text-zinc-400")}>
                 {tab.method.slice(0, 3)}
               </span>
               <span className="truncate">{tab.name}</span>
               {tab.isDirty && <span className="text-orange-400 shrink-0">●</span>}
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  closeTab(tab.id);
-                }}
+                onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
                 className={cn(
                   "shrink-0 rounded p-0.5 transition-colors",
                   tab.id === activeTabId
@@ -923,6 +1094,7 @@ export default function ApiTester() {
                   onAddHeader={() => u({ headers: [...activeTab.headers, { id: crypto.randomUUID(), key: "", value: "", enabled: true }] })}
                   onHeaderChange={(id, field, value) => u({ headers: activeTab.headers.map((h) => (h.id === id ? { ...h, [field]: value } : h)) })}
                   onRemoveHeader={(id) => u({ headers: activeTab.headers.filter((h) => h.id !== id) })}
+                  onExtractFromCookie={handleExtractFromCookie}
                 />
               </TabsContent>
 
@@ -1018,6 +1190,17 @@ export default function ApiTester() {
         onSave={handleSaveRequest}
         onClose={() => setSaveDialogOpen(false)}
         onCreateCollection={createCollection}
+      />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        requests={Object.values(collectionRequests).flat()}
+        collections={collections}
+        history={history}
+        openTabs={tabs}
+        activeTabId={activeTabId}
+        onOpen={handleLoadRequest}
+        onSwitchTab={(tabId) => setActiveTab(tabId)}
       />
     </div>
   );

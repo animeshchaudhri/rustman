@@ -194,6 +194,9 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
                         onChange={(e) => updateFormField(f.id, { key: e.target.value })}
                         placeholder="Key"
                         disabled={!f.enabled}
+                        autoCorrect="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
                         className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-orange-500/60 px-1 py-0.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
                       />
 
@@ -203,6 +206,9 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
                           onChange={(e) => updateFormField(f.id, { value: e.target.value })}
                           placeholder="Value"
                           disabled={!f.enabled}
+                          autoCorrect="off"
+                          autoCapitalize="none"
+                          spellCheck={false}
                           className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-orange-500/60 px-1 py-0.5 text-xs font-mono text-zinc-500 dark:text-zinc-400 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
                         />
                       ) : (

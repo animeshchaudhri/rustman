@@ -1,13 +1,14 @@
 import { useState } from "react";
 import type { HeaderType } from "../types";
 import { cn } from "@/lib/utils";
-import { AlignLeft, Plus, Table, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { AlignLeft, Key, Plus, Table, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 
 interface RequestHeadersProps {
   headers: HeaderType[];
   onAddHeader: () => void;
   onHeaderChange: (id: string, field: "key" | "value" | "enabled", value: string | boolean) => void;
   onRemoveHeader: (id: string) => void;
+  onExtractFromCookie?: () => void;
 }
 
 const COMMON_HEADERS = [
@@ -16,7 +17,7 @@ const COMMON_HEADERS = [
   "Origin", "Referer", "User-Agent", "Cookie",
 ];
 
-export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveHeader }: RequestHeadersProps) {
+export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveHeader, onExtractFromCookie }: RequestHeadersProps) {
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [showSuggestions, setShowSuggestions] = useState<string | null>(null);
@@ -108,6 +109,16 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
             {bulkMode ? <Table className="h-3.5 w-3.5" /> : <AlignLeft className="h-3.5 w-3.5" />}
             {bulkMode ? "Table" : "Bulk Edit"}
           </button>
+          {onExtractFromCookie && (
+            <button
+              onClick={onExtractFromCookie}
+              title="Decode JWT from Cookie header and inject x-user-detail"
+              className="flex items-center gap-1 px-2 py-0.5 text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800 rounded transition-colors"
+            >
+              <Key className="h-3.5 w-3.5" />
+              JWT→Detail
+            </button>
+          )}
           <button
             onClick={onAddHeader}
             className="flex items-center gap-1 px-2 py-0.5 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-stone-100 dark:hover:bg-zinc-800 rounded transition-colors"
@@ -126,6 +137,9 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}
             placeholder={"Content-Type: application/json\nAuthorization: Bearer <token>\nX-API-Key: abc123"}
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
             className="flex-1 bg-white dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg p-3 text-xs font-mono text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:outline-none focus:border-orange-500/50 resize-none"
           />
           <div className="flex gap-2">
@@ -182,6 +196,9 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
                       onBlur={() => setTimeout(() => setShowSuggestions(null), 150)}
                       placeholder="Key"
                       disabled={!h.enabled}
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-orange-500/60 px-1 py-0.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
                     />
                     {showSuggestions === h.id && h.key.length >= 1 && (
@@ -204,6 +221,9 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
                     onChange={(e) => onHeaderChange(h.id, "value", e.target.value)}
                     placeholder="Value"
                     disabled={!h.enabled}
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-orange-500/60 px-1 py-0.5 text-xs font-mono text-zinc-500 dark:text-zinc-400 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
                   />
 

@@ -125,6 +125,9 @@ export function EnvironmentsSidebar({
               value={editor.name}
               onChange={(e) => setEditor({ ...editor, name: e.target.value })}
               placeholder="Environment name"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
               className="w-full bg-white dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-sm text-zinc-800 dark:text-zinc-200 focus:outline-none focus:border-orange-500/60 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
             />
 
@@ -139,12 +142,18 @@ export function EnvironmentsSidebar({
                     value={v.key}
                     onChange={(e) => updateEditorVar(i, "key", e.target.value)}
                     placeholder="key"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     className="flex-1 bg-white dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded px-2 py-1 text-xs text-zinc-700 dark:text-zinc-300 focus:outline-none focus:border-orange-500/50 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
                   />
                   <input
                     value={v.value}
                     onChange={(e) => updateEditorVar(i, "value", e.target.value)}
                     placeholder="value"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     className="flex-1 bg-white dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded px-2 py-1 text-xs text-zinc-700 dark:text-zinc-300 focus:outline-none focus:border-orange-500/50 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
                   />
                   <button

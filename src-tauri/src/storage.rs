@@ -121,6 +121,12 @@ pub fn init_db(app: &AppHandle) -> SqlResult<Connection> {
             variables TEXT NOT NULL DEFAULT '{}',
             is_active INTEGER NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS session_tabs (
+            key TEXT PRIMARY KEY DEFAULT 'current',
+            data TEXT NOT NULL DEFAULT '{}',
+            saved_at INTEGER NOT NULL DEFAULT 0
+        );
         ",
     )?;
 
@@ -396,6 +402,43 @@ pub fn db_save_environment(
 pub fn db_delete_environment(state: tauri::State<'_, AppDb>, id: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM environments WHERE id=?1", params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn db_save_session(
+    state: tauri::State<'_, AppDb>,
+    data: String,
+    #[allow(non_snake_case)] savedAt: i64,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO session_tabs (key, data, saved_at) VALUES ('current', ?1, ?2)",
+        params![data, savedAt],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn db_get_session(state: tauri::State<'_, AppDb>) -> Result<Option<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    match conn.query_row(
+        "SELECT data FROM session_tabs WHERE key = 'current'",
+        [],
+        |row| row.get::<_, String>(0),
+    ) {
+        Ok(data) => Ok(Some(data)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn db_clear_session(state: tauri::State<'_, AppDb>) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM session_tabs WHERE key = 'current'", [])
         .map_err(|e| e.to_string())?;
     Ok(())
 }

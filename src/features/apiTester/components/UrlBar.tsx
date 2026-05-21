@@ -185,6 +185,9 @@ export function UrlBar({
           onPaste={handlePaste}
           onBlur={handleBlur}
           placeholder="https://api.example.com/endpoint  —  or paste a cURL command"
+          autoCorrect="off"
+          autoCapitalize="none"
+          spellCheck={false}
           disabled={disabled}
           className={cn(
             "flex-1 bg-white dark:bg-zinc-800/80 border border-stone-300 dark:border-zinc-700 rounded-lg px-4 py-1.5 text-sm",

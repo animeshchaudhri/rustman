@@ -134,7 +134,7 @@ function JsonTreeNode({ keyName, value, depth, searchTerm, isLast = true }: Json
   const isObject = typeof value === "object" && value !== null && !Array.isArray(value);
   const isArray = Array.isArray(value);
   const isCollapsible = isObject || isArray;
-  const [collapsed, setCollapsed] = useState(depth >= 3 && isCollapsible);
+  const [collapsed, setCollapsed] = useState(false);
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const forceExpand = normalizedSearch.length > 0;
@@ -233,7 +233,7 @@ function JsonTreeNode({ keyName, value, depth, searchTerm, isLast = true }: Json
 
 function JsonTreeViewer({ data, searchTerm }: { data: JsonValue; searchTerm: string }) {
   return (
-    <div className="font-mono text-xs leading-5 p-3 text-zinc-700 dark:text-zinc-300">
+    <div className="font-mono text-xs leading-5 p-3 text-zinc-700 dark:text-zinc-300 select-text">
       <JsonTreeNode value={data} depth={0} searchTerm={searchTerm} />
     </div>
   );
@@ -476,6 +476,9 @@ export function ResponseViewer({
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search in response…"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   className="flex-1 bg-transparent text-xs text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:outline-none"
                 />
                 {search && (

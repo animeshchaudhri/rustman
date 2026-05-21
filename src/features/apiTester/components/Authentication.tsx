@@ -85,12 +85,19 @@ export function Authentication({
               placeholder="Username"
               value={basicUser}
               onChange={(e) => onBasicUserChange(e.target.value)}
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
             />
             <Input
               type="password"
               placeholder="Password"
               value={basicPass}
               onChange={(e) => onBasicPassChange(e.target.value)}
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              autoComplete="current-password"
             />
           </div>
         )}
@@ -100,6 +107,9 @@ export function Authentication({
             placeholder="Bearer Token"
             value={bearerToken}
             onChange={(e) => onBearerTokenChange(e.target.value)}
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
             className="font-mono"
           />
         )}
@@ -111,6 +121,9 @@ export function Authentication({
                 placeholder="Header Name / Query Param Name"
                 value={apiKeyName}
                 onChange={(e) => onApiKeyNameChange(e.target.value)}
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
               />
               <Select value={apiKeyLocation} onValueChange={(val: ApiKeyLocation) => onApiKeyLocationChange(val)}>
                 <SelectTrigger>
@@ -126,6 +139,9 @@ export function Authentication({
               placeholder="API Key Value"
               value={apiKeyValue}
               onChange={(e) => onApiKeyValueChange(e.target.value)}
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
               className="font-mono"
             />
           </div>
@@ -139,6 +155,9 @@ export function Authentication({
                 placeholder="Paste JWT token here"
                 value={bearerToken}
                 onChange={(e) => onJwtTokenChange(e.target.value)}
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 className="font-mono mt-1"
               />
             </div>
@@ -167,6 +186,9 @@ export function Authentication({
                 placeholder="Paste cookie string from browser or cURL (e.g., name1=value1; name2=value2)"
                 value={cookieString}
                 onChange={(e) => onCookieStringChange(e.target.value)}
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 className="font-mono mt-1 min-h-[100px]"
               />
             </div>
@@ -189,12 +211,18 @@ export function Authentication({
                       placeholder="Name"
                       value={cookie.name}
                       onChange={(e) => onCookieChange(cookie.id, "name", e.target.value)}
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       className="flex-1"
                     />
                     <Input
                       placeholder="Value"
                       value={cookie.value}
                       onChange={(e) => onCookieChange(cookie.id, "value", e.target.value)}
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       className="flex-1"
                     />
                     <Input

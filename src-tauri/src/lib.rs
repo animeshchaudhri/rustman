@@ -35,6 +35,9 @@ pub fn run() {
             storage::db_get_environments,
             storage::db_save_environment,
             storage::db_delete_environment,
+            storage::db_save_session,
+            storage::db_get_session,
+            storage::db_clear_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
