@@ -6,6 +6,7 @@ import { FolderPlus, Save, X } from "lucide-react";
 interface SaveRequestDialogProps {
   open: boolean;
   defaultName: string;
+  defaultCollectionId?: string;
   collections: Collection[];
   onSave: (name: string, collectionId: string) => void;
   onClose: () => void;
@@ -15,13 +16,14 @@ interface SaveRequestDialogProps {
 export function SaveRequestDialog({
   open,
   defaultName,
+  defaultCollectionId,
   collections,
   onSave,
   onClose,
   onCreateCollection,
 }: SaveRequestDialogProps) {
   const [name, setName] = useState(defaultName);
-  const [collectionId, setCollectionId] = useState(collections[0]?.id ?? "");
+  const [collectionId, setCollectionId] = useState(defaultCollectionId ?? collections[0]?.id ?? "");
   const [newCollName, setNewCollName] = useState("");
   const [creatingNew, setCreatingNew] = useState(collections.length === 0);
   const [busy, setBusy] = useState(false);
@@ -36,7 +38,7 @@ export function SaveRequestDialog({
         setCollectionId("");
       } else {
         setCreatingNew(false);
-        setCollectionId(collections[0].id);
+        setCollectionId(defaultCollectionId ?? collections[0].id);
       }
     }
   }, [open]);

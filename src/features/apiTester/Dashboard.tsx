@@ -496,7 +496,8 @@ export default function ApiTester() {
         }
 
         const newMethod = parsed.method ?? "GET";
-        const newUrl = parsed.url ?? "";
+        // Strip trailing quote artifacts browser devtools sometimes appends (%27 = ', %22 = ")
+        const newUrl = (parsed.url ?? "").replace(/(%27|%22|'|")+$/, "");
 
         updateActiveTab({
           method: newMethod,
@@ -684,32 +685,7 @@ export default function ApiTester() {
     }
   }, [activeTab, activeTabId, getFullUrl, setTabResponse, addToHistory]);
 
-  
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const meta = e.metaKey || e.ctrlKey;
-      if (!meta) return;
-      if (e.key === "Enter") { e.preventDefault(); sendRequest(); }
-      else if (e.key === "s") { e.preventDefault(); setSaveDialogOpen(true); }
-      else if (e.key === "t") { e.preventDefault(); addTab(); }
-      else if (e.key === "w") { e.preventDefault(); handleCloseTab(activeTabId); }
-      else if (e.key === "d") { e.preventDefault(); duplicateTab(activeTabId); }
-      else if (e.key === "p") { e.preventDefault(); setPaletteOpen(true); }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [sendRequest, addTab, handleCloseTab, duplicateTab, activeTabId]);
-
-  
-  const handleLoadRequest = useCallback(
-    (req: SavedRequest) => {
-      addTab(savedRequestToRequestTab(req));
-    },
-    [addTab],
-  );
-
-  
-  const handleSaveRequest = async (name: string, collectionId: string) => {
+  const handleSaveRequest = useCallback(async (name: string, collectionId: string) => {
     const tab = activeTab;
     const req: SavedRequest = {
       id: tab.savedRequestId ?? crypto.randomUUID(),
@@ -735,10 +711,51 @@ export default function ApiTester() {
       testScript: tab.testScript,
     };
     await saveReqToCollection(req);
-    updateActiveTab({ name, isDirty: false, savedRequestId: req.id });
-  };
+    updateActiveTab({ name, isDirty: false, savedRequestId: req.id, savedCollectionId: collectionId });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, saveReqToCollection, updateActiveTab]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey;
+      if (!meta) return;
+      if (e.key === "Enter") { e.preventDefault(); sendRequest(); }
+      else if (e.key === "s") {
+        e.preventDefault();
+        const tab = tabs.find((t) => t.id === activeTabId);
+        if (tab?.savedRequestId) {
+          // Existing request — auto-save silently, no dialog.
+          const collId =
+            tab.savedCollectionId ??
+            Object.entries(collectionRequests).find(([, reqs]) =>
+              reqs.some((r) => r.id === tab.savedRequestId),
+            )?.[0];
+          if (collId) {
+            handleSaveRequest(tab.name, collId);
+          } else {
+            setSaveDialogOpen(true);
+          }
+        } else {
+          setSaveDialogOpen(true);
+        }
+      }
+      else if (e.key === "t") { e.preventDefault(); addTab(); }
+      else if (e.key === "w") { e.preventDefault(); handleCloseTab(activeTabId); }
+      else if (e.key === "d") { e.preventDefault(); duplicateTab(activeTabId); }
+      else if (e.key === "p") { e.preventDefault(); setPaletteOpen(true); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [sendRequest, addTab, handleCloseTab, duplicateTab, activeTabId, tabs, handleSaveRequest, collectionRequests]);
 
   
+  const handleLoadRequest = useCallback(
+    (req: SavedRequest) => {
+      addTab(savedRequestToRequestTab(req));
+    },
+    [addTab],
+  );
+
   const handleImportCollection = async (col: Collection, reqs: SavedRequest[]) => {
     await createCollection(col.name).then(async (newCol) => {
       for (const req of reqs) {
@@ -766,7 +783,7 @@ export default function ApiTester() {
         .join("; ");
       if (cookieStr) cmd += ` \\\n  -b '${cookieStr}'`;
     }
-    if (["POST", "PUT", "PATCH"].includes(tab.method) && tab.body) {
+    if (tab.body) {
       cmd += ` \\\n  -d '${tab.body.replace(/'/g, "'\\''")}'`;
     }
     setGeneratedCurl(cmd);
@@ -1070,7 +1087,17 @@ export default function ApiTester() {
           isLoading={activeResponse.isLoading}
           onSendRequest={sendRequest}
           onAbort={() => { abortRef.current?.(); }}
-          onSaveRequest={() => setSaveDialogOpen(true)}
+          onSaveRequest={() => {
+            if (activeTab.savedRequestId) {
+              const collId =
+                activeTab.savedCollectionId ??
+                Object.entries(collectionRequests).find(([, reqs]) =>
+                  reqs.some((r) => r.id === activeTab.savedRequestId),
+                )?.[0];
+              if (collId) { handleSaveRequest(activeTab.name, collId); return; }
+            }
+            setSaveDialogOpen(true);
+          }}
           generatedCurl={generatedCurl}
           generatedJs={generatedJs}
           onGenerateCode={() => { generateCurl(); prepareJsCode(); }}
@@ -1228,6 +1255,7 @@ export default function ApiTester() {
       <SaveRequestDialog
         open={saveDialogOpen}
         defaultName={activeTab.name}
+        defaultCollectionId={activeTab.savedCollectionId}
         collections={collections}
         onSave={handleSaveRequest}
         onClose={() => setSaveDialogOpen(false)}

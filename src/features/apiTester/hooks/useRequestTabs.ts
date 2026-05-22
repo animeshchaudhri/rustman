@@ -15,6 +15,7 @@ export interface RequestTab {
   name: string;
   isDirty: boolean;
   savedRequestId?: string;
+  savedCollectionId?: string;
   method: string;
   urlInput: string;
   headers: HeaderType[];
@@ -129,6 +130,7 @@ export const createRequestTab = (overrides: Partial<RequestTab> = {}): RequestTa
     name: overrides.name ?? buildTabName(method, urlInput),
     isDirty: overrides.isDirty ?? false,
     savedRequestId: overrides.savedRequestId,
+    savedCollectionId: overrides.savedCollectionId,
     method,
     urlInput,
     headers: normalizeHeaders(overrides.headers),
@@ -155,6 +157,7 @@ export const savedRequestToRequestTab = (request: SavedRequest): RequestTab =>
     name: request.name,
     isDirty: false,
     savedRequestId: request.id,
+    savedCollectionId: request.collectionId,
     method: request.method,
     urlInput: request.url,
     headers: request.headers,

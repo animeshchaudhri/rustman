@@ -176,14 +176,18 @@ export function ResponseViewer({
     const el = scrollRef.current;
     if (!el || isLoadingMoreRef.current) return;
 
-    const { scrollTop, scrollHeight, clientHeight } = el;
+    const { scrollTop, clientHeight } = el;
     const start = windowStartRef.current;
     const len = windowLinesLenRef.current;
     const total = rustTotalRef.current;
     const key = rustKeyRef.current;
     const windowEnd = start + len;
 
-    if (scrollHeight - scrollTop - clientHeight < 400 && windowEnd < total) {
+    // Trigger load-more when viewport bottom approaches the END of loaded content.
+    // Compare against loaded-content boundary (not absolute scrollHeight) so phantom
+    // padding below doesn't prevent the trigger from firing.
+    const loadedBottomPx = windowEnd * LINE_HEIGHT_PX;
+    if (scrollTop + clientHeight > loadedBottomPx - 400 && windowEnd < total) {
       isLoadingMoreRef.current = true;
       bodyGetSlice(key, windowEnd, PAGE_SIZE)
         .then((slice: BodySlice) => {
@@ -208,7 +212,10 @@ export function ResponseViewer({
         .catch(() => { isLoadingMoreRef.current = false; });
     }
 
-    if (scrollTop < 400 && start > 0 && !isLoadingMoreRef.current) {
+    // Trigger load-more when viewport top approaches the START of loaded content.
+    // Include paddingTop offset so the check works even when windowStart > 0.
+    const loadedTopPx = start * LINE_HEIGHT_PX;
+    if (scrollTop < loadedTopPx + 400 && start > 0 && !isLoadingMoreRef.current) {
       isLoadingMoreRef.current = true;
       const fetchStart = Math.max(0, start - PAGE_SIZE);
       const count = start - fetchStart;
