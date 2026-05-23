@@ -79,7 +79,7 @@ export function SaveRequestDialog({
         </button>
 
         <h2 className="text-sm font-semibold text-zinc-100 mb-4 flex items-center gap-2">
-          <Save className="h-4 w-4 text-orange-400" />
+          <Save className="h-4 w-4 text-brand-400" />
           Save Request
         </h2>
 
@@ -94,7 +94,7 @@ export function SaveRequestDialog({
             autoCorrect="off"
             autoCapitalize="none"
             spellCheck={false}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/60 placeholder:text-zinc-600"
+            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-brand-500/60 placeholder:text-zinc-600"
           />
         </div>
 
@@ -108,7 +108,7 @@ export function SaveRequestDialog({
               className={cn(
                 "flex-1 text-xs py-1.5 rounded-md border transition-colors",
                 !creatingNew
-                  ? "bg-orange-600/20 border-orange-600/40 text-orange-400"
+                  ? "bg-brand-600/20 border-brand-600/40 text-brand-400"
                   : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200",
               )}
             >
@@ -119,7 +119,7 @@ export function SaveRequestDialog({
               className={cn(
                 "flex-1 text-xs py-1.5 rounded-md border transition-colors flex items-center justify-center gap-1",
                 creatingNew
-                  ? "bg-orange-600/20 border-orange-600/40 text-orange-400"
+                  ? "bg-brand-600/20 border-brand-600/40 text-brand-400"
                   : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200",
               )}
             >
@@ -137,7 +137,7 @@ export function SaveRequestDialog({
               autoCorrect="off"
               autoCapitalize="none"
               spellCheck={false}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-orange-500/60 placeholder:text-zinc-600"
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-brand-500/60 placeholder:text-zinc-600"
             />
           ) : collections.length === 0 ? (
             <p className="text-xs text-zinc-500 italic px-1">
@@ -147,7 +147,7 @@ export function SaveRequestDialog({
             <select
               value={collectionId}
               onChange={(e) => setCollectionId(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:border-orange-500/60 appearance-none cursor-pointer"
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none focus:border-brand-500/60 appearance-none cursor-pointer"
             >
               {collections.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -163,7 +163,7 @@ export function SaveRequestDialog({
           <button
             onClick={handleSave}
             disabled={busy || !name.trim() || (creatingNew ? !newCollName.trim() : !collectionId)}
-            className="flex-1 bg-orange-600 hover:bg-orange-500 disabled:opacity-40 text-white text-sm font-semibold rounded-lg py-2 transition-colors"
+            className="flex-1 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-sm font-semibold rounded-lg py-2 transition-colors"
           >
             {busy ? "Saving…" : "Save"}
           </button>

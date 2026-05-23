@@ -300,3 +300,39 @@ export async function bodySearchLines(id: string, query: string): Promise<number
 export async function bodyClearPrefix(prefix: string): Promise<void> {
   await invoke("body_clear_prefix", { prefix });
 }
+
+export interface ParsedCurlResult {
+  method: string | null;
+  url: string | null;
+  header: Record<string, string>;
+  body: string | null;
+  cookies: Record<string, string>;
+}
+
+export async function parseCurl(cmd: string): Promise<ParsedCurlResult> {
+  return await invoke<ParsedCurlResult>("parse_curl", { cmd });
+}
+
+export interface CurlKvPair {
+  key: string;
+  value: string;
+}
+
+export interface GenerateCurlInput {
+  method: string;
+  url: string;
+  headers: CurlKvPair[];
+  body?: string;
+  cookies: CurlKvPair[];
+  auth_type: string;
+  bearer_token?: string;
+  basic_user?: string;
+  basic_pass?: string;
+  api_key_name?: string;
+  api_key_value?: string;
+  api_key_location?: string;
+}
+
+export async function generateCurlCmd(input: GenerateCurlInput): Promise<string> {
+  return await invoke<string>("generate_curl", { input });
+}

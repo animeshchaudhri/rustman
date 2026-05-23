@@ -6,7 +6,7 @@ import type { RequestTab } from "../hooks/useRequestTabs";
 
 const METHOD_COLORS: Record<string, string> = {
   GET: "text-emerald-500 bg-emerald-500/10",
-  POST: "text-orange-500 bg-orange-500/10",
+  POST: "text-brand-500 bg-brand-500/10",
   PUT: "text-blue-500 bg-blue-500/10",
   PATCH: "text-teal-500 bg-teal-500/10",
   DELETE: "text-red-500 bg-red-500/10",
@@ -245,7 +245,7 @@ export function CommandPalette({
                 className={cn(
                   "w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors border-b border-stone-100/60 dark:border-zinc-800/60",
                   idx === activeIndex
-                    ? "bg-orange-500/10"
+                    ? "bg-brand-500/10"
                     : "hover:bg-stone-50 dark:hover:bg-zinc-800/60",
                 )}
               >

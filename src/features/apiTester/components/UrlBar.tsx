@@ -3,18 +3,9 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Code, Copy, Save, Send, X } from "lucide-react";
 import Editor from "@monaco-editor/react";
+import { METHOD_COLORS, METHODS } from "../constants";
+import { READ_ONLY_EDITOR_OPTIONS, getEditorTheme } from "../editorConfig";
 
-const METHOD_COLORS: Record<string, string> = {
-  GET: "text-emerald-500 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
-  POST: "text-orange-500 dark:text-orange-400 border-orange-500/30 bg-orange-500/10",
-  PUT: "text-blue-500 dark:text-blue-400 border-blue-500/30 bg-blue-500/10",
-  PATCH: "text-teal-500 dark:text-teal-400 border-teal-500/30 bg-teal-500/10",
-  DELETE: "text-red-500 dark:text-red-400 border-red-500/30 bg-red-500/10",
-  HEAD: "text-purple-500 dark:text-purple-400 border-purple-500/30 bg-purple-500/10",
-  OPTIONS: "text-sky-500 dark:text-sky-400 border-sky-500/30 bg-sky-500/10",
-};
-
-const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
 type UrlSyncParam = {
   id: string;
@@ -165,7 +156,7 @@ export function UrlBar({
             onChange={(e) => onMethodChange(e.target.value)}
             className={cn(
               "appearance-none border rounded-lg px-3 py-1.5 pr-7 text-sm font-bold cursor-pointer",
-              "focus:outline-none focus:ring-2 focus:ring-orange-500/40 transition-colors min-w-[88px]",
+              "focus:outline-none focus:ring-2 focus:ring-brand-500/40 transition-colors min-w-[88px]",
               methodStyle,
             )}
           >
@@ -194,7 +185,7 @@ export function UrlBar({
           className={cn(
             "flex-1 bg-white dark:bg-zinc-800/80 border border-stone-300 dark:border-zinc-700 rounded-lg px-4 py-1.5 text-sm",
             "text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600",
-            "focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500/50",
+            "focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/50",
             "font-mono transition-all",
             disabled && "opacity-40 cursor-not-allowed",
           )}
@@ -240,7 +231,7 @@ export function UrlBar({
             disabled={disabled || !urlInput.trim()}
             className={cn(
               "shrink-0 flex items-center gap-1.5 h-8 px-4 rounded-lg text-sm font-semibold transition-all",
-              "bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-900/20",
+              "bg-brand-600 hover:bg-brand-500 text-white shadow-lg shadow-brand-900/20",
               "disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none",
             )}
           >
@@ -259,7 +250,7 @@ export function UrlBar({
           >
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-stone-200 dark:border-zinc-800 shrink-0">
               <div className="flex items-center gap-2">
-                <Code className="h-4 w-4 text-orange-400" />
+                <Code className="h-4 w-4 text-brand-400" />
                 <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Generated Code</span>
               </div>
               <div className="flex items-center gap-2">
@@ -299,16 +290,8 @@ export function UrlBar({
                 height="100%"
                 language={codeTab === "curl" ? "shell" : "javascript"}
                 value={currentCode || "// Send a request first to generate code"}
-                theme={resolved === "dark" ? "vs-dark" : "vs"}
-                options={{
-                  readOnly: true,
-                  minimap: { enabled: false },
-                  scrollBeyondLastLine: false,
-                  fontSize: 13,
-                  lineNumbers: "off",
-                  renderLineHighlight: "none",
-                  padding: { top: 16, bottom: 16 },
-                }}
+                theme={getEditorTheme(resolved)}
+                options={READ_ONLY_EDITOR_OPTIONS}
               />
             </div>
           </div>

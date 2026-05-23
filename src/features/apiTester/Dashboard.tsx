@@ -40,6 +40,9 @@ import {
   saveEnvironment,
   saveSession,
   bodyClearPrefix,
+  parseCurl,
+  generateCurlCmd,
+  type GenerateCurlInput,
 } from "@/lib/db";
 import type {
   ApiKeyLocation,
@@ -51,15 +54,19 @@ import type {
   FormDataField,
   HeaderType,
   HistoryEntry,
+  PanelLayout,
   ParsedCurl,
   RequestBodyType,
   RequestTabType,
   ResponseBodyView,
   ResponseTabType,
   SavedRequest,
+  TestResult,
 } from "./types";
+import { runPreRequestScript, runTestScript } from "./utils/scriptRunner";
 import { cn } from "@/lib/utils";
-import { useTheme, type Theme } from "@/contexts/ThemeContext";
+import { useTheme, type Theme, BRAND_THEMES } from "@/contexts/ThemeContext";
+import { METHOD_BADGE_DOT as METHOD_BADGE } from "./constants";
 import {
   BookOpen,
   Clock,
@@ -84,17 +91,8 @@ interface TabResponse {
   responseSize: number | null;
   isLoading: boolean;
   error: string | null;
+  testResults: TestResult[];
 }
-
-const METHOD_BADGE: Record<string, string> = {
-  GET: "text-emerald-400",
-  POST: "text-orange-400",
-  PUT: "text-blue-400",
-  PATCH: "text-teal-400",
-  DELETE: "text-red-400",
-  HEAD: "text-purple-400",
-  OPTIONS: "text-sky-400",
-};
 
 function formatRelativeTime(ts: number): string {
   const d = Date.now() - ts;
@@ -105,7 +103,7 @@ function formatRelativeTime(ts: number): string {
 }
 
 function AboutPanel() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, brand, setBrand } = useTheme();
 
   const stack = [
     { icon: Zap, label: "Tauri v2", desc: "Desktop runtime" },
@@ -116,31 +114,28 @@ function AboutPanel() {
   const links = [
     { icon: Github, label: "GitHub", href: "https://github.com/animeshchaudhri", color: "text-zinc-700 dark:text-zinc-300" },
     { icon: Globe2, label: "animesh.us", href: "https://animesh.us", color: "text-sky-500 dark:text-sky-400" },
-    { icon: Mail, label: "ac04@duck.com", href: "mailto:ac04@duck.com", color: "text-orange-500 dark:text-orange-400" },
+    { icon: Mail, label: "ac04@duck.com", href: "mailto:ac04@duck.com", color: "text-brand-500 dark:text-brand-400" },
   ];
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      { }
       <div className="px-4 py-3 border-b border-stone-200 dark:border-zinc-800">
         <p className="text-[10px] uppercase tracking-widest text-zinc-500 dark:text-zinc-600 font-semibold mb-0.5">About</p>
         <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100">Rustman</p>
       </div>
 
       <div className="flex flex-col gap-5 p-4">
-        { }
         <div className="flex flex-col items-center gap-3 py-5 bg-stone-100 dark:bg-zinc-800/40 rounded-xl border border-stone-200 dark:border-zinc-800">
           <img src="/rustman-logo.svg" alt="Rustman" className="w-16 h-16" />
           <div className="text-center">
             <p className="text-base font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
-              RUST<span className="text-orange-400">MAN</span>
+              RUST<span className="text-brand-400">MAN</span>
             </p>
             <p className="text-[10px] text-zinc-500 dark:text-zinc-600 tracking-widest mt-0.5">API TESTING TOOL</p>
           </div>
-          <span className="text-[10px] bg-stone-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 px-2 py-0.5 rounded-full">v0.1.0</span>
+          <span className="text-[10px] bg-stone-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 px-2 py-0.5 rounded-full">v0.2.0</span>
         </div>
 
-        { }
         <div className="bg-stone-100 dark:bg-zinc-800/40 rounded-xl border border-stone-200 dark:border-zinc-800 overflow-hidden">
           <div className="px-4 py-2.5 border-b border-stone-200 dark:border-zinc-800">
             <p className="text-[10px] uppercase tracking-widest text-zinc-500 dark:text-zinc-600 font-semibold">Made by</p>
@@ -149,7 +144,7 @@ function AboutPanel() {
             <img
               src="https://github.com/animeshchaudhri.png"
               alt="Animesh Chaudhri"
-              className="w-10 h-10 rounded-full border-2 border-orange-500/30"
+              className="w-10 h-10 rounded-full border-2 border-brand-500/30"
               onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
             />
             <div>
@@ -159,7 +154,6 @@ function AboutPanel() {
             </div>
           </div>
 
-          { }
           <div className="border-t border-stone-200 dark:border-zinc-800 divide-y divide-stone-200/60 dark:divide-zinc-800/60">
             {links.map(({ icon: Icon, label, href, color }) => (
               <a
@@ -176,7 +170,6 @@ function AboutPanel() {
           </div>
         </div>
 
-        { }
         <div className="bg-stone-100 dark:bg-zinc-800/40 rounded-xl border border-stone-200 dark:border-zinc-800 overflow-hidden">
           <div className="px-4 py-2.5 border-b border-stone-200 dark:border-zinc-800">
             <p className="text-[10px] uppercase tracking-widest text-zinc-500 dark:text-zinc-600 font-semibold">Built with</p>
@@ -184,7 +177,7 @@ function AboutPanel() {
           <div className="divide-y divide-stone-200/60 dark:divide-zinc-800/60">
             {stack.map(({ icon: Icon, label, desc }) => (
               <div key={label} className="flex items-center gap-3 px-4 py-2.5">
-                <Icon className="h-3.5 w-3.5 text-orange-400/70 shrink-0" />
+                <Icon className="h-3.5 w-3.5 text-brand-400/70 shrink-0" />
                 <div>
                   <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">{label}</p>
                   <p className="text-[10px] text-zinc-500 dark:text-zinc-600">{desc}</p>
@@ -194,10 +187,9 @@ function AboutPanel() {
           </div>
         </div>
 
-        { }
         <div className="bg-stone-100 dark:bg-zinc-800/40 rounded-xl border border-stone-200 dark:border-zinc-800 overflow-hidden">
           <div className="px-4 py-2.5 border-b border-stone-200 dark:border-zinc-800">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500 dark:text-zinc-600 font-semibold">Theme</p>
+            <p className="text-[10px] uppercase tracking-widest text-zinc-500 dark:text-zinc-600 font-semibold">Mode</p>
           </div>
           <div className="flex p-2 gap-1.5">
             {(["dark", "light", "system"] as Theme[]).map((t) => (
@@ -207,17 +199,40 @@ function AboutPanel() {
                 className={cn(
                   "flex-1 py-2 rounded-lg text-xs font-medium capitalize transition-colors border",
                   theme === t
-                    ? "bg-orange-600/20 text-orange-400 border-orange-500/30"
+                    ? "bg-brand-600/20 text-brand-400 border-brand-500/30"
                     : "text-zinc-500 dark:text-zinc-500 border-stone-300 dark:border-zinc-700 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-stone-200 dark:hover:bg-zinc-800",
                 )}
               >
-                {t === "dark" ? "🌙 Dark" : t === "light" ? "☀️ Light" : "💻 System"}
+                {t === "dark" ? "Dark" : t === "light" ? "Light" : "System"}
               </button>
             ))}
           </div>
         </div>
 
-        { }
+        <div className="bg-stone-100 dark:bg-zinc-800/40 rounded-xl border border-stone-200 dark:border-zinc-800 overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-stone-200 dark:border-zinc-800">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-500 dark:text-zinc-600 font-semibold">Accent</p>
+          </div>
+          <div className="flex flex-wrap gap-2 p-3">
+            {BRAND_THEMES.map(({ value, label, color }) => (
+              <button
+                key={value}
+                onClick={() => setBrand(value)}
+                title={label}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border",
+                  brand === value
+                    ? "border-brand-500/50 bg-brand-600/10 text-zinc-900 dark:text-zinc-100"
+                    : "border-stone-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-stone-200 dark:hover:bg-zinc-800",
+                )}
+              >
+                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex items-center justify-center gap-1.5 text-[10px] text-zinc-400 dark:text-zinc-700 pb-2">
           <span>© 2026 Animesh Chaudhri</span>
           <Heart className="h-2.5 w-2.5 text-red-500/60 fill-red-500/60" />
@@ -233,8 +248,17 @@ export default function ApiTester() {
   
   const [panel, setPanel] = useState<SidePanel>("collections");
   const [splitRatio, setSplitRatio] = useState(0.45);
+  const [layout, setLayout] = useState<PanelLayout>(
+    () => (localStorage.getItem("rustman-layout") as PanelLayout) || "vertical",
+  );
+  const layoutRef = useRef<PanelLayout>(layout);
   const isDragging = useRef(false);
   const splitContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    layoutRef.current = layout;
+    localStorage.setItem("rustman-layout", layout);
+  }, [layout]);
 
   
   const {
@@ -263,13 +287,14 @@ export default function ApiTester() {
     responseSize: null,
     isLoading: false,
     error: null,
+    testResults: [],
   };
 
   const setTabResponse = useCallback(
     (tabId: string, patch: Partial<TabResponse>) => {
       setResponses((prev) => ({
         ...prev,
-        [tabId]: { ...{ response: null, responseTime: null, responseSize: null, isLoading: false, error: null }, ...(prev[tabId] ?? {}), ...patch },
+        [tabId]: { ...{ response: null, responseTime: null, responseSize: null, isLoading: false, error: null, testResults: [] }, ...(prev[tabId] ?? {}), ...patch },
       }));
     },
     [],
@@ -386,7 +411,10 @@ export default function ApiTester() {
     const handleMove = (e: MouseEvent) => {
       if (!isDragging.current || !splitContainerRef.current) return;
       const rect = splitContainerRef.current.getBoundingClientRect();
-      const ratio = (e.clientY - rect.top) / rect.height;
+      const ratio =
+        layoutRef.current === "horizontal"
+          ? (e.clientX - rect.left) / rect.width
+          : (e.clientY - rect.top) / rect.height;
       setSplitRatio(Math.min(0.8, Math.max(0.15, ratio)));
     };
     const handleUp = () => { isDragging.current = false; };
@@ -426,101 +454,108 @@ export default function ApiTester() {
   );
 
   
-  const handleCurlImport = useCallback(
-    (curlCmd: string) => {
-      try {
-        const parsed: ParsedCurl = parseCurlCommand(curlCmd);
+  const applyParsedCurl = useCallback(
+    (parsed: { method?: string | null; url?: string | null; header?: Record<string, string>; body?: string | null; cookies?: Record<string, string> }) => {
+      const importedHeaders: HeaderType[] = [];
+      let newAuthType: AuthType = "none";
+      let newBearerToken = "";
+      let newBasicUser = "";
+      let newBasicPass = "";
 
-        const importedHeaders: HeaderType[] = [];
-        let newAuthType: AuthType = "none";
-        let newBearerToken = "";
-        let newBasicUser = "";
-        let newBasicPass = "";
-
-        if (parsed.header) {
-          for (const [key, value] of Object.entries(parsed.header)) {
-            const lk = key.toLowerCase();
-            if (lk === "authorization" || lk === "x-authorization") {
-              if (value.toLowerCase().startsWith("bearer ")) {
-                newAuthType = "bearer";
-                newBearerToken = value.substring(7);
-                continue;
-              }
-              if (value.toLowerCase().startsWith("basic ")) {
-                newAuthType = "basic";
-                try {
-                  const decoded = atob(value.substring(6));
-                  const colonIdx = decoded.indexOf(":");
-                  newBasicUser = decoded.slice(0, colonIdx);
-                  newBasicPass = decoded.slice(colonIdx + 1);
-                } catch { }
-                continue;
-              }
-            }
-            importedHeaders.push({ id: crypto.randomUUID(), key, value, enabled: true });
+      for (const [key, value] of Object.entries(parsed.header ?? {})) {
+        const lk = key.toLowerCase();
+        if (lk === "authorization" || lk === "x-authorization") {
+          if (value.toLowerCase().startsWith("bearer ")) {
+            newAuthType = "bearer";
+            newBearerToken = value.substring(7);
+            continue;
+          }
+          if (value.toLowerCase().startsWith("basic ")) {
+            newAuthType = "basic";
+            try {
+              const decoded = atob(value.substring(6));
+              const colonIdx = decoded.indexOf(":");
+              newBasicUser = decoded.slice(0, colonIdx);
+              newBasicPass = decoded.slice(colonIdx + 1);
+            } catch { }
+            continue;
           }
         }
-
-        let newCookies: CookieType[] = [];
-        let newCookieString = "";
-        let newCookieAuthType: AuthType = newAuthType;
-
-        if (parsed.cookies && Object.keys(parsed.cookies).length > 0) {
-          newCookieAuthType = "cookie";
-          newCookies = Object.entries(parsed.cookies).map(([name, value]) => ({
-            id: crypto.randomUUID(),
-            name,
-            value,
-            enabled: true,
-          }));
-          newCookieString = Object.entries(parsed.cookies)
-            .map(([k, v]) => `${k}=${v}`)
-            .join("; ");
-
-          const accessToken = extractAccessTokenFromCookies(newCookieString);
-          if (accessToken) {
-            newBearerToken = accessToken;
-          }
-        }
-
-        let newBody = "";
-        let newBodyType: RequestBodyType = "none";
-        if (parsed.body) {
-          newBody = parsed.body;
-          try {
-            JSON.parse(parsed.body);
-            newBodyType = "json";
-          } catch {
-            newBodyType = "text";
-          }
-        }
-
-        const newMethod = parsed.method ?? "GET";
-        // Strip trailing quote artifacts browser devtools sometimes appends (%27 = ', %22 = ")
-        const newUrl = (parsed.url ?? "").replace(/(%27|%22|'|")+$/, "");
-
-        updateActiveTab({
-          method: newMethod,
-          urlInput: newUrl,
-          headers:
-            importedHeaders.length > 0
-              ? importedHeaders
-              : [{ id: crypto.randomUUID(), key: "Content-Type", value: "application/json", enabled: true }],
-          authType: newCookieAuthType,
-          bearerToken: newBearerToken,
-          basicUser: newBasicUser,
-          basicPass: newBasicPass,
-          body: newBody,
-          bodyType: newBodyType,
-          cookies: newCookies,
-          cookieString: newCookieString,
-          name: buildTabName(newMethod, newUrl),
-        });
-      } catch (e) {
-        console.error("cURL parse error:", e);
+        importedHeaders.push({ id: crypto.randomUUID(), key, value, enabled: true });
       }
+
+      let newCookies: CookieType[] = [];
+      let newCookieString = "";
+      let newCookieAuthType: AuthType = newAuthType;
+
+      const cookiesMap = parsed.cookies ?? {};
+      if (Object.keys(cookiesMap).length > 0) {
+        newCookieAuthType = "cookie";
+        newCookies = Object.entries(cookiesMap).map(([name, value]) => ({
+          id: crypto.randomUUID(),
+          name,
+          value,
+          enabled: true,
+        }));
+        newCookieString = Object.entries(cookiesMap)
+          .map(([k, v]) => `${k}=${v}`)
+          .join("; ");
+
+        const accessToken = extractAccessTokenFromCookies(newCookieString);
+        if (accessToken) {
+          newBearerToken = accessToken;
+        }
+      }
+
+      let newBody = "";
+      let newBodyType: RequestBodyType = "none";
+      if (parsed.body) {
+        newBody = parsed.body;
+        try {
+          JSON.parse(parsed.body);
+          newBodyType = "json";
+        } catch {
+          newBodyType = "text";
+        }
+      }
+
+      const newMethod = parsed.method ?? "GET";
+      const newUrl = (parsed.url ?? "").replace(/(%27|%22|'|")+$/, "");
+
+      updateActiveTab({
+        method: newMethod,
+        urlInput: newUrl,
+        headers:
+          importedHeaders.length > 0
+            ? importedHeaders
+            : [{ id: crypto.randomUUID(), key: "Content-Type", value: "application/json", enabled: true }],
+        authType: newCookieAuthType,
+        bearerToken: newBearerToken,
+        basicUser: newBasicUser,
+        basicPass: newBasicPass,
+        body: newBody,
+        bodyType: newBodyType,
+        cookies: newCookies,
+        cookieString: newCookieString,
+        name: buildTabName(newMethod, newUrl),
+      });
     },
     [updateActiveTab],
+  );
+
+  const handleCurlImport = useCallback(
+    (curlCmd: string) => {
+      parseCurl(curlCmd)
+        .then((parsed) => applyParsedCurl(parsed))
+        .catch(() => {
+          try {
+            applyParsedCurl(parseCurlCommand(curlCmd));
+          } catch (e) {
+            console.error("cURL parse error:", e);
+          }
+        });
+    },
+    [applyParsedCurl],
   );
 
   
@@ -530,7 +565,7 @@ export default function ApiTester() {
     if (!fullUrl) return;
 
     const tabId = activeTabId;
-    setTabResponse(tabId, { isLoading: true, response: null, error: null, responseTime: null, responseSize: null });
+    setTabResponse(tabId, { isLoading: true, response: null, error: null, responseTime: null, responseSize: null, testResults: [] });
 
     let aborted = false;
     abortRef.current = () => {
@@ -538,6 +573,11 @@ export default function ApiTester() {
       abortRef.current = null;
       setTabResponse(tabId, { isLoading: false, response: null, error: "Request aborted", responseTime: null, responseSize: null });
     };
+
+    const envVars = activeEnv?.variables ?? {};
+    const scriptEnv = tab.preRequestScript
+      ? await runPreRequestScript(tab.preRequestScript, { ...envVars })
+      : envVars;
 
     const headerObj: Record<string, string> = {};
     tab.headers.forEach((h) => {
@@ -606,14 +646,12 @@ export default function ApiTester() {
 
     const startTime = performance.now();
     try {
-      // Pass tabId — Rust stores raw+pretty in BodyStore and pretty-prints JSON there
       const res = await enhancedFetch(fullUrl, requestOptions, proxyFormFields, tabId);
       if (aborted) return;
       const duration = Math.round(performance.now() - startTime);
       const text = await res.text();
       const size = (res as { bodySize?: number }).bodySize ?? text.length;
 
-      // Only parse JSON for small inline bodies — large ones are null (rendered via Rust store)
       let data: unknown = null;
       if (text.length > 0) {
         const ct = res.headers.get("content-type") ?? "";
@@ -632,7 +670,10 @@ export default function ApiTester() {
         cookies: res.headers.get("set-cookie"),
       };
 
-      // Defer React state update so it never blocks tab clicks / UI interactions
+      const testResults = tab.testScript
+        ? runTestScript(tab.testScript, apiResponse, duration, scriptEnv)
+        : [];
+
       startTransition(() => {
         setTabResponse(tabId, {
           isLoading: false,
@@ -640,8 +681,10 @@ export default function ApiTester() {
           responseTime: duration,
           responseSize: size,
           error: null,
+          testResults,
         });
       });
+      if (testResults.length > 0) setActiveResponseTab("tests");
 
       
       const historyEntry: HistoryEntry = {
@@ -683,7 +726,7 @@ export default function ApiTester() {
       setTabResponse(tabId, { isLoading: false, response: null, error: msg, responseTime: null, responseSize: null });
       abortRef.current = null;
     }
-  }, [activeTab, activeTabId, getFullUrl, setTabResponse, addToHistory]);
+  }, [activeTab, activeTabId, activeEnv, getFullUrl, setTabResponse, addToHistory]);
 
   const handleSaveRequest = useCallback(async (name: string, collectionId: string) => {
     const tab = activeTab;
@@ -724,7 +767,6 @@ export default function ApiTester() {
         e.preventDefault();
         const tab = tabs.find((t) => t.id === activeTabId);
         if (tab?.savedRequestId) {
-          // Existing request — auto-save silently, no dialog.
           const collId =
             tab.savedCollectionId ??
             Object.entries(collectionRequests).find(([, reqs]) =>
@@ -744,8 +786,28 @@ export default function ApiTester() {
       else if (e.key === "d") { e.preventDefault(); duplicateTab(activeTabId); }
       else if (e.key === "p") { e.preventDefault(); setPaletteOpen(true); }
     };
+    const shortcutHandler = (e: Event) => {
+      const key = (e as CustomEvent<string>).detail;
+      if (key === "new-tab") addTab();
+      else if (key === "close-tab") handleCloseTab(activeTabId);
+      else if (key === "send") sendRequest();
+      else if (key === "duplicate") duplicateTab(activeTabId);
+      else if (key === "palette") setPaletteOpen(true);
+      else if (key === "save") {
+        const tab = tabs.find((t) => t.id === activeTabId);
+        if (tab?.savedRequestId) {
+          const collId = tab.savedCollectionId ?? Object.entries(collectionRequests).find(([, reqs]) => reqs.some((r) => r.id === tab.savedRequestId))?.[0];
+          if (collId) { handleSaveRequest(tab.name, collId); return; }
+        }
+        setSaveDialogOpen(true);
+      }
+    };
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    window.addEventListener("app:shortcut", shortcutHandler);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      window.removeEventListener("app:shortcut", shortcutHandler);
+    };
   }, [sendRequest, addTab, handleCloseTab, duplicateTab, activeTabId, tabs, handleSaveRequest, collectionRequests]);
 
   
@@ -765,29 +827,33 @@ export default function ApiTester() {
   };
 
   
-  const generateCurl = useCallback((): string => {
+  const generateCurl = useCallback(() => {
     const tab = activeTab;
     const fullUrl = getFullUrl(tab);
-    if (!fullUrl) return "";
-    let cmd = `curl -X ${tab.method} "${fullUrl}"`;
-    tab.headers.filter((h) => h.key && h.enabled).forEach((h) => {
-      cmd += ` \\\n  -H "${h.key}: ${h.value.replace(/"/g, '\\"')}"`;
-    });
-    if (tab.authType === "bearer" && tab.bearerToken) {
-      cmd += ` \\\n  -H "Authorization: Bearer ${tab.bearerToken}"`;
-    }
-    if (tab.authType === "cookie") {
-      const cookieStr = tab.cookies
+    if (!fullUrl) return;
+
+    const input: GenerateCurlInput = {
+      method: tab.method,
+      url: fullUrl,
+      headers: tab.headers
+        .filter((h) => h.key && h.enabled)
+        .map((h) => ({ key: h.key, value: h.value })),
+      body: tab.body || undefined,
+      cookies: tab.cookies
         .filter((c) => c.name && c.enabled)
-        .map((c) => `${c.name}=${c.value}`)
-        .join("; ");
-      if (cookieStr) cmd += ` \\\n  -b '${cookieStr}'`;
-    }
-    if (tab.body) {
-      cmd += ` \\\n  -d '${tab.body.replace(/'/g, "'\\''")}'`;
-    }
-    setGeneratedCurl(cmd);
-    return cmd;
+        .map((c) => ({ key: c.name, value: c.value })),
+      auth_type: tab.authType,
+      bearer_token: tab.bearerToken || undefined,
+      basic_user: tab.basicUser || undefined,
+      basic_pass: tab.basicPass || undefined,
+      api_key_name: tab.apiKeyName || undefined,
+      api_key_value: tab.apiKeyValue || undefined,
+      api_key_location: tab.apiKeyLocation || undefined,
+    };
+
+    generateCurlCmd(input)
+      .then((cmd) => setGeneratedCurl(cmd))
+      .catch(console.error);
   }, [activeTab, getFullUrl]);
 
   const prepareJsCode = useCallback((): string => {
@@ -821,7 +887,6 @@ export default function ApiTester() {
   const handleExtractFromCookie = useCallback(() => {
     let jwtToken = "";
 
-    // 1. Check Cookie header in headers list
     const cookieHeader = activeTab.headers.find((h) => h.key.toLowerCase() === "cookie");
     if (cookieHeader?.value) {
       const c = parseCookies(cookieHeader.value);
@@ -829,26 +894,22 @@ export default function ApiTester() {
         Object.values(c).find((v) => v.startsWith("eyJ")) || "";
     }
 
-    // 2. Check cookieString (populated by -b flag import)
     if (!jwtToken && activeTab.cookieString) {
       const c = parseCookies(activeTab.cookieString);
       jwtToken = c.accessToken || c.token || c.jwt ||
         Object.values(c).find((v) => v.startsWith("eyJ")) || "";
     }
 
-    // 3. Check cookies array
     if (!jwtToken && activeTab.cookies.length > 0) {
       jwtToken = activeTab.cookies
         .filter((c) => c.enabled)
         .find((c) => c.value.startsWith("eyJ"))?.value || "";
     }
 
-    // 4. Check bearerToken (auto-extracted from accessToken cookie on import)
     if (!jwtToken && activeTab.bearerToken.startsWith("eyJ")) {
       jwtToken = activeTab.bearerToken;
     }
 
-    // 5. Check any header value that looks like a JWT
     if (!jwtToken) {
       for (const h of activeTab.headers) {
         if (!h.enabled) continue;
@@ -879,8 +940,6 @@ export default function ApiTester() {
     [u],
   );
 
-  // Reliable URL→params sync: whenever urlInput gains a query string (paste, programmatic set, etc.)
-  // this effect fires and extracts params directly from state — bypasses all event handler edge-cases.
   const urlSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (urlSyncTimerRef.current) clearTimeout(urlSyncTimerRef.current);
@@ -902,7 +961,6 @@ export default function ApiTester() {
 
   return (
     <div className={cn(resolved, "flex h-screen overflow-hidden select-none bg-stone-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100")}>
-      { }
       <div className="flex flex-col items-center w-12 border-r border-stone-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 py-3 gap-1 shrink-0">
         {(
           [
@@ -918,7 +976,7 @@ export default function ApiTester() {
             className={cn(
               "p-2.5 rounded-lg transition-colors",
               panel === id
-                ? "bg-orange-600/20 text-orange-400"
+                ? "bg-brand-600/20 text-brand-400"
                 : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800",
             )}
           >
@@ -932,7 +990,7 @@ export default function ApiTester() {
           className={cn(
             "p-2.5 rounded-lg transition-colors",
             panel === "settings"
-              ? "bg-orange-600/20 text-orange-400"
+              ? "bg-brand-600/20 text-brand-400"
               : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800",
           )}
         >
@@ -940,7 +998,6 @@ export default function ApiTester() {
         </button>
       </div>
 
-      { }
       {panel && (
         <div className="w-64 shrink-0 border-r border-stone-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col overflow-hidden">
           {panel === "collections" && (
@@ -978,11 +1035,10 @@ export default function ApiTester() {
         </div>
       )}
 
-      { }
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {pendingSession && (
-          <div className="flex items-center gap-3 px-4 py-2 bg-orange-600/10 border-b border-orange-500/20 text-xs shrink-0">
-            <span className="text-orange-400 text-sm"></span>
+          <div className="flex items-center gap-3 px-4 py-2 bg-brand-600/10 border-b border-brand-500/20 text-xs shrink-0">
+            <span className="text-brand-400 text-sm"></span>
             <span className="text-zinc-700 dark:text-zinc-300 flex-1">
               Restore {pendingSession.tabs.length} tab{pendingSession.tabs.length !== 1 ? "s" : ""} from your last session
               <span className="text-zinc-400 dark:text-zinc-600 ml-1.5">
@@ -995,7 +1051,7 @@ export default function ApiTester() {
                 restoreTabs(pendingSession.tabs, pendingSession.activeTabId);
                 setPendingSession(null);
               }}
-              className="px-3 py-1 bg-orange-600 hover:bg-orange-500 text-white rounded-md font-semibold transition-colors"
+              className="px-3 py-1 bg-brand-600 hover:bg-brand-500 text-white rounded-md font-semibold transition-colors"
             >
               Restore
             </button>
@@ -1011,7 +1067,6 @@ export default function ApiTester() {
             </button>
           </div>
         )}
-        { }
         <div className="flex items-center h-9 border-b border-stone-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-x-auto shrink-0 scrollbar-thin">
           {tabs.map((tab, index) => (
             <div
@@ -1043,16 +1098,16 @@ export default function ApiTester() {
                 "group flex items-center gap-1.5 px-3 h-full border-r border-stone-200 dark:border-zinc-800 cursor-pointer shrink-0",
                 "text-xs transition-colors min-w-0 max-w-[200px]",
                 tab.id === activeTabId
-                  ? "bg-stone-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 border-t-2 border-t-orange-500"
+                  ? "bg-stone-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 border-t-2 border-t-brand-500"
                   : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-stone-50 dark:hover:bg-zinc-800",
-                dragOverTabId === tab.id && dragTabIdRef.current !== tab.id && "border-l-2 border-l-orange-400",
+                dragOverTabId === tab.id && dragTabIdRef.current !== tab.id && "border-l-2 border-l-brand-400",
               )}
             >
               <span className={cn("text-[10px] font-bold shrink-0", METHOD_BADGE[tab.method] ?? "text-zinc-400")}>
                 {tab.method.slice(0, 3)}
               </span>
               <span className="truncate">{tab.name}</span>
-              {tab.isDirty && <span className="text-orange-400 shrink-0">●</span>}
+              {tab.isDirty && <span className="text-brand-400 shrink-0">●</span>}
               <button
                 onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.id); }}
                 className={cn(
@@ -1076,7 +1131,6 @@ export default function ApiTester() {
           </button>
         </div>
 
-        { }
         <UrlBar
           method={activeTab.method}
           onMethodChange={(m) => u({ method: m })}
@@ -1103,12 +1157,25 @@ export default function ApiTester() {
           onGenerateCode={() => { generateCurl(); prepareJsCode(); }}
         />
 
-        { }
-        <div ref={splitContainerRef} className="flex-1 flex flex-col overflow-hidden min-h-0">
-          { }
+        <div
+          ref={splitContainerRef}
+          className={cn(
+            "flex-1 overflow-hidden min-h-0",
+            layout === "vertical" ? "flex flex-col" : "flex flex-row",
+          )}
+        >
           <div
-            className="flex flex-col overflow-hidden border-b border-stone-200 dark:border-zinc-800"
-            style={{ height: `${splitRatio * 100}%` }}
+            className={cn(
+              "flex flex-col overflow-hidden",
+              layout === "vertical"
+                ? "border-b border-stone-200 dark:border-zinc-800"
+                : "border-r border-stone-200 dark:border-zinc-800",
+            )}
+            style={
+              layout === "vertical"
+                ? { height: `${splitRatio * 100}%` }
+                : { width: `${splitRatio * 100}%` }
+            }
           >
             <Tabs
               value={activeRequestTab}
@@ -1121,8 +1188,8 @@ export default function ApiTester() {
                     key={t}
                     value={t}
                     className={cn(
-                      "text-xs px-3 py-0 h-7 rounded-none capitalize border-b-2 border-transparent data-[state=active]:border-orange-500",
-                      "data-[state=active]:bg-transparent data-[state=active]:text-orange-400",
+                      "text-xs px-3 py-0 h-7 rounded-none capitalize border-b-2 border-transparent data-[state=active]:border-brand-500",
+                      "data-[state=active]:bg-transparent data-[state=active]:text-brand-400",
                       "text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300",
                     )}
                   >
@@ -1140,7 +1207,7 @@ export default function ApiTester() {
                         </span>
                       )}
                     {t === "scripts" && (activeTab.preRequestScript || activeTab.testScript) && (
-                      <span className="ml-1 w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />
+                      <span className="ml-1 w-1.5 h-1.5 rounded-full bg-brand-500 inline-block" />
                     )}
                   </TabsTrigger>
                 ))}
@@ -1162,6 +1229,7 @@ export default function ApiTester() {
                   onAddHeader={() => u({ headers: [...activeTab.headers, { id: crypto.randomUUID(), key: "", value: "", enabled: true }] })}
                   onHeaderChange={(id, field, value) => u({ headers: activeTab.headers.map((h) => (h.id === id ? { ...h, [field]: value } : h)) })}
                   onRemoveHeader={(id) => u({ headers: activeTab.headers.filter((h) => h.id !== id) })}
+                  onSetHeaders={(h) => u({ headers: h })}
                   onExtractFromCookie={handleExtractFromCookie}
                 />
               </TabsContent>
@@ -1222,18 +1290,25 @@ export default function ApiTester() {
             </Tabs>
           </div>
 
-          { }
           <div
-            className="h-1.5 bg-stone-200 dark:bg-zinc-800 hover:bg-orange-500/40 cursor-row-resize transition-colors shrink-0 group flex items-center justify-center"
+            className={cn(
+              "bg-stone-200 dark:bg-zinc-800 hover:bg-brand-500/40 transition-colors shrink-0 group flex items-center justify-center",
+              layout === "vertical"
+                ? "h-1.5 cursor-row-resize"
+                : "w-1.5 cursor-col-resize",
+            )}
             onMouseDown={() => { isDragging.current = true; }}
           >
-            <div className="w-8 h-0.5 bg-stone-400 dark:bg-zinc-600 group-hover:bg-orange-500/60 rounded-full transition-colors" />
+            <div
+              className={cn(
+                "bg-stone-400 dark:bg-zinc-600 group-hover:bg-brand-500/60 rounded-full transition-colors",
+                layout === "vertical" ? "w-8 h-0.5" : "h-8 w-0.5",
+              )}
+            />
           </div>
 
-          { }
           <div
-            className="overflow-hidden flex flex-col min-h-0"
-            style={{ height: `${(1 - splitRatio) * 100 - 2}%` }}
+            className="overflow-hidden flex flex-col min-h-0 flex-1"
           >
             <ResponseViewer
               isLoading={activeResponse.isLoading}
@@ -1246,12 +1321,14 @@ export default function ApiTester() {
               bodyView={responseBodyView}
               onBodyViewChange={setResponseBodyView}
               tabId={activeTabId}
+              testResults={activeResponse.testResults}
+              layout={layout}
+              onLayoutChange={setLayout}
             />
           </div>
         </div>
       </div>
 
-      { }
       <SaveRequestDialog
         open={saveDialogOpen}
         defaultName={activeTab.name}

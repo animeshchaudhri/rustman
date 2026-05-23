@@ -105,7 +105,7 @@ export function EnvironmentsSidebar({
           onClick={() => onEnvEnabledChange(!envEnabled)}
           className={cn(
             "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none",
-            envEnabled ? "bg-orange-600" : "bg-stone-300 dark:bg-zinc-600",
+            envEnabled ? "bg-brand-600" : "bg-stone-300 dark:bg-zinc-600",
           )}
         >
           <span
@@ -128,7 +128,7 @@ export function EnvironmentsSidebar({
               autoCorrect="off"
               autoCapitalize="none"
               spellCheck={false}
-              className="w-full bg-white dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-sm text-zinc-800 dark:text-zinc-200 focus:outline-none focus:border-orange-500/60 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
+              className="w-full bg-white dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-sm text-zinc-800 dark:text-zinc-200 focus:outline-none focus:border-brand-500/60 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
             />
 
             <div className="space-y-1">
@@ -145,7 +145,7 @@ export function EnvironmentsSidebar({
                     autoCorrect="off"
                     autoCapitalize="none"
                     spellCheck={false}
-                    className="flex-1 bg-white dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded px-2 py-1 text-xs text-zinc-700 dark:text-zinc-300 focus:outline-none focus:border-orange-500/50 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
+                    className="flex-1 bg-white dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded px-2 py-1 text-xs text-zinc-700 dark:text-zinc-300 focus:outline-none focus:border-brand-500/50 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
                   />
                   <input
                     value={v.value}
@@ -154,7 +154,7 @@ export function EnvironmentsSidebar({
                     autoCorrect="off"
                     autoCapitalize="none"
                     spellCheck={false}
-                    className="flex-1 bg-white dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded px-2 py-1 text-xs text-zinc-700 dark:text-zinc-300 focus:outline-none focus:border-orange-500/50 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
+                    className="flex-1 bg-white dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded px-2 py-1 text-xs text-zinc-700 dark:text-zinc-300 focus:outline-none focus:border-brand-500/50 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
                   />
                   <button
                     onClick={() => removeVar(i)}
@@ -176,7 +176,7 @@ export function EnvironmentsSidebar({
             <div className="flex gap-2 pt-1">
               <button
                 onClick={saveEditor}
-                className="flex-1 bg-orange-600 hover:bg-orange-500 text-white text-xs font-medium rounded-md py-1.5 transition-colors"
+                className="flex-1 bg-brand-600 hover:bg-brand-500 text-white text-xs font-medium rounded-md py-1.5 transition-colors"
               >
                 Save
               </button>
@@ -209,7 +209,7 @@ export function EnvironmentsSidebar({
             >
               <span className="flex-1 text-zinc-500 dark:text-zinc-400">No Environment</span>
               {activeEnvId === null && envEnabled && (
-                <Check className="h-3.5 w-3.5 text-orange-400 shrink-0" />
+                <Check className="h-3.5 w-3.5 text-brand-400 shrink-0" />
               )}
             </button>
 
@@ -232,7 +232,7 @@ export function EnvironmentsSidebar({
                 </div>
 
                 {activeEnvId === env.id && envEnabled && (
-                  <Check className="h-3.5 w-3.5 text-orange-400 shrink-0" />
+                  <Check className="h-3.5 w-3.5 text-brand-400 shrink-0" />
                 )}
 
                 <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 shrink-0">

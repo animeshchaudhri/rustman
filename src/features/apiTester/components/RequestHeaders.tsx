@@ -8,6 +8,7 @@ interface RequestHeadersProps {
   onAddHeader: () => void;
   onHeaderChange: (id: string, field: "key" | "value" | "enabled", value: string | boolean) => void;
   onRemoveHeader: (id: string) => void;
+  onSetHeaders?: (headers: HeaderType[]) => void;
   onExtractFromCookie?: () => void;
 }
 
@@ -17,7 +18,7 @@ const COMMON_HEADERS = [
   "Origin", "Referer", "User-Agent", "Cookie",
 ];
 
-export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveHeader, onExtractFromCookie }: RequestHeadersProps) {
+export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveHeader, onSetHeaders, onExtractFromCookie }: RequestHeadersProps) {
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const [showSuggestions, setShowSuggestions] = useState<string | null>(null);
@@ -49,24 +50,21 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
 
   const commitBulkMode = () => {
     const parsed = fromBulkText(bulkText);
-
     setBulkMode(false);
-
-    const existing = [...headers];
-    parsed.forEach((newH, i) => {
-      if (i < existing.length) {
-        onHeaderChange(existing[i].id, "key", newH.key);
-        onHeaderChange(existing[i].id, "value", newH.value);
-        onHeaderChange(existing[i].id, "enabled", true);
-      } else {
-        onAddHeader();
-        setTimeout(() => {
-        }, 0);
+    if (onSetHeaders) {
+      onSetHeaders(parsed);
+    } else {
+      const existing = [...headers];
+      parsed.forEach((newH, i) => {
+        if (i < existing.length) {
+          onHeaderChange(existing[i].id, "key", newH.key);
+          onHeaderChange(existing[i].id, "value", newH.value);
+          onHeaderChange(existing[i].id, "enabled", true);
+        }
+      });
+      for (let i = parsed.length; i < existing.length; i++) {
+        onRemoveHeader(existing[i].id);
       }
-    });
-
-    for (let i = parsed.length; i < existing.length; i++) {
-      onRemoveHeader(existing[i].id);
     }
   };
 
@@ -80,7 +78,7 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-stone-200 dark:border-zinc-800 shrink-0">
         <div className="flex items-center gap-1">
           <span className="text-xs text-zinc-500 dark:text-zinc-500">
-            {enabledCount > 0 && <span className="text-orange-400 font-medium">{enabledCount}</span>}
+            {enabledCount > 0 && <span className="text-brand-400 font-medium">{enabledCount}</span>}
             {enabledCount > 0 ? " active" : "No active headers"}
           </span>
         </div>
@@ -102,7 +100,7 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
             className={cn(
               "flex items-center gap-1 px-2 py-0.5 text-xs rounded transition-colors",
               bulkMode
-                ? "bg-orange-600/20 text-orange-400 border border-orange-500/30"
+                ? "bg-brand-600/20 text-brand-400 border border-brand-500/30"
                 : "text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800",
             )}
           >
@@ -140,12 +138,12 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
             autoCorrect="off"
             autoCapitalize="none"
             spellCheck={false}
-            className="flex-1 bg-white dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg p-3 text-xs font-mono text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:outline-none focus:border-orange-500/50 resize-none"
+            className="flex-1 bg-white dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg p-3 text-xs font-mono text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:outline-none focus:border-brand-500/50 resize-none"
           />
           <div className="flex gap-2">
             <button
               onClick={commitBulkMode}
-              className="px-4 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold rounded-lg transition-colors"
+              className="px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg transition-colors"
             >
               Apply
             </button>
@@ -185,7 +183,7 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
                     type="checkbox"
                     checked={h.enabled}
                     onChange={(e) => onHeaderChange(h.id, "enabled", e.target.checked)}
-                    className="w-3.5 h-3.5 accent-orange-500 cursor-pointer"
+                    className="w-3.5 h-3.5 accent-brand-500 cursor-pointer"
                   />
 
                   <div className="relative">
@@ -199,7 +197,7 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
                       autoCorrect="off"
                       autoCapitalize="none"
                       spellCheck={false}
-                      className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-orange-500/60 px-1 py-0.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
+                      className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-brand-500/60 px-1 py-0.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
                     />
                     {showSuggestions === h.id && h.key.length >= 1 && (
                       <div className="absolute top-full left-0 z-20 mt-0.5 bg-white dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg shadow-xl max-h-40 overflow-y-auto min-w-[200px]">
@@ -224,7 +222,7 @@ export function RequestHeaders({ headers, onAddHeader, onHeaderChange, onRemoveH
                     autoCorrect="off"
                     autoCapitalize="none"
                     spellCheck={false}
-                    className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-orange-500/60 px-1 py-0.5 text-xs font-mono text-zinc-500 dark:text-zinc-400 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
+                    className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-brand-500/60 px-1 py-0.5 text-xs font-mono text-zinc-500 dark:text-zinc-400 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
                   />
 
                   <button

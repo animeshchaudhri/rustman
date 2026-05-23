@@ -1,16 +1,11 @@
 [package]
 name = "rustman"
-version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+version = "0.2.0"
+description = "Rustman — a fast API testing tool built with Tauri"
+authors = ["animeshchaudhri"]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "api_tester_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
@@ -27,9 +22,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.11", features = ["json", "cookies", "blocking", "multipart"] }
 tokio = { version = "1", features = ["full"] }
-anyhow = "1.0"
-thiserror = "1.0"
-http = "0.2"
 rusqlite = { version = "0.31", features = ["bundled"] }
 base64 = "0.21"
-
