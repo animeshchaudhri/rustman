@@ -24,8 +24,9 @@ No subscriptions. No cloud sync. No telemetry. Your requests stay on your machin
 ## Features
 
 - **Native Rust HTTP engine** — requests go through `reqwest`, no browser CORS limits or size caps
-- **Pre & post-request scripts** — async JavaScript sandbox with full `pm.*` API and WebCrypto support
-- **Built-in test runner** — `pm.test()` assertions with pass/fail results and per-test timing
+- **Pre-request scripts** — async JavaScript sandbox runs before every request; set env vars, sign payloads, call `await` and WebCrypto
+- **Post-request scripts** — runs after the response; chain tokens, transform data, set variables for the next request
+- **Built-in test runner** — write `pm.test()` assertions in the post-request script, see pass/fail results with per-test timing
 - **Collections & history** — organize requests, replay from history, all stored in local SQLite
 - **Environment variables** — `{{variable}}` substitution in URLs, headers, and bodies
 - **All auth types** — Bearer, Basic, API Key (header or query), Cookie, JWT

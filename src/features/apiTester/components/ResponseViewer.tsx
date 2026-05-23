@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ApiResponse, ResponseBodyView, ResponseTabType, PanelLayout, TestResult } from "../types";
+import { ApiResponse, ConsoleEntry, ResponseBodyView, ResponseTabType, PanelLayout, TestResult } from "../types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Clock, Database, XCircle,
@@ -21,6 +21,7 @@ interface ResponseViewerProps {
   onBodyViewChange: (view: ResponseBodyView) => void;
   tabId: string;
   testResults?: TestResult[];
+  consoleLogs?: ConsoleEntry[];
   layout: PanelLayout;
   onLayoutChange: (l: PanelLayout) => void;
 }
@@ -112,6 +113,7 @@ export function ResponseViewer({
   onBodyViewChange,
   tabId,
   testResults,
+  consoleLogs,
   layout,
   onLayoutChange,
 }: ResponseViewerProps) {
@@ -452,7 +454,7 @@ export function ResponseViewer({
           <Tabs value={activeTab} onValueChange={onTabChange as (v: string) => void} className="flex flex-col h-full min-h-0">
             <div className="shrink-0 flex items-center border-b border-stone-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-2 gap-1">
               <TabsList className="bg-transparent rounded-none h-8 gap-0 p-0">
-                {(["body", "headers", "cookies", "tests"] as ResponseTabType[]).map((t) => (
+                {(["body", "headers", "cookies", "tests", "console"] as ResponseTabType[]).map((t) => (
                   <TabsTrigger
                     key={t}
                     value={t}
@@ -476,6 +478,18 @@ export function ResponseViewer({
                           : "bg-red-500/15 text-red-500",
                       )}>
                         {testResults.filter((r) => r.passed).length}/{testResults.length}
+                      </span>
+                    )}
+                    {t === "console" && consoleLogs && consoleLogs.length > 0 && (
+                      <span className={cn(
+                        "ml-1.5 text-[10px] rounded-full px-1.5",
+                        consoleLogs.some((l) => l.level === "error")
+                          ? "bg-red-500/15 text-red-500"
+                          : consoleLogs.some((l) => l.level === "warn")
+                          ? "bg-yellow-500/15 text-yellow-500"
+                          : "bg-zinc-500/15 text-zinc-400",
+                      )}>
+                        {consoleLogs.length}
                       </span>
                     )}
                   </TabsTrigger>
@@ -687,6 +701,46 @@ export function ResponseViewer({
                 <div className="flex flex-col items-center justify-center h-32 gap-2 text-zinc-400 dark:text-zinc-700">
                   <CheckCircle2 className="h-6 w-6" />
                   <p className="text-xs">No test results — add tests in the Scripts tab</p>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="console" className="flex-1 overflow-auto m-0 p-0 min-h-0">
+              {consoleLogs && consoleLogs.length > 0 ? (
+                <div className="flex flex-col divide-y divide-stone-200/50 dark:divide-zinc-800/50 font-mono text-xs">
+                  {consoleLogs.map((entry, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "flex items-start gap-2.5 px-3 py-2 hover:bg-stone-50/60 dark:hover:bg-zinc-900/60",
+                        entry.level === "error" && "bg-red-500/5",
+                        entry.level === "warn" && "bg-yellow-500/5",
+                      )}
+                    >
+                      <span className={cn(
+                        "shrink-0 mt-0.5 text-[10px] font-bold uppercase tracking-wide w-8",
+                        entry.level === "log"   && "text-zinc-400",
+                        entry.level === "info"  && "text-blue-500",
+                        entry.level === "warn"  && "text-yellow-500",
+                        entry.level === "error" && "text-red-500",
+                      )}>
+                        {entry.level}
+                      </span>
+                      <span className={cn(
+                        "flex-1 min-w-0 break-all whitespace-pre-wrap leading-relaxed",
+                        entry.level === "error" ? "text-red-500" :
+                        entry.level === "warn"  ? "text-yellow-600 dark:text-yellow-400" :
+                        entry.level === "info"  ? "text-blue-500" :
+                        "text-zinc-700 dark:text-zinc-300",
+                      )}>
+                        {entry.args.join(" ")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-32 gap-2 text-zinc-400 dark:text-zinc-700">
+                  <p className="text-xs">No output — use <code className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 rounded">console.log()</code> in a script</p>
                 </div>
               )}
             </TabsContent>

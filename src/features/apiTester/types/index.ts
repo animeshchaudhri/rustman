@@ -38,8 +38,14 @@ export type RequestBodyType = "json" | "text" | "form-data" | "none";
 export type ApiKeyLocation = "header" | "query";
 export type ResponseBodyView = "pretty" | "raw";
 export type RequestTabType = "params" | "headers" | "body" | "auth" | "scripts";
-export type ResponseTabType = "body" | "headers" | "cookies" | "tests";
+export type ResponseTabType = "body" | "headers" | "cookies" | "tests" | "console";
 export type PanelLayout = "vertical" | "horizontal";
+
+export interface ConsoleEntry {
+  level: "log" | "warn" | "error" | "info";
+  args: string[];
+  timestamp: number;
+}
 
 export interface TestResult {
   name: string;
