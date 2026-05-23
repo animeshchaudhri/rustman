@@ -3,6 +3,8 @@ import Editor from "@monaco-editor/react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Play, Info } from "lucide-react";
+import { BASE_EDITOR_OPTIONS, getEditorTheme } from "../editorConfig";
+import { useMonacoShortcuts } from "../hooks/useMonacoShortcuts";
 
 interface ScriptsTabProps {
   preRequestScript: string;
@@ -27,6 +29,7 @@ const PRESET_SNIPPETS = {
 export function ScriptsTab({ preRequestScript, onPreRequestScriptChange, testScript, onTestScriptChange }: ScriptsTabProps) {
   const { resolved } = useTheme();
   const [activeScript, setActiveScript] = useState<"pre" | "test">("pre");
+  const onMount = useMonacoShortcuts();
 
   const currentValue = activeScript === "pre" ? preRequestScript : testScript;
   const currentOnChange = activeScript === "pre" ? onPreRequestScriptChange : onTestScriptChange;
@@ -42,7 +45,7 @@ export function ScriptsTab({ preRequestScript, onPreRequestScriptChange, testScr
             className={cn(
               "px-3 py-1 rounded-md text-xs font-medium transition-colors",
               activeScript === s
-                ? "bg-orange-600/20 text-orange-400 border border-orange-500/30"
+                ? "bg-brand-600/20 text-brand-400 border border-brand-500/30"
                 : "text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800",
             )}
           >
@@ -80,18 +83,9 @@ export function ScriptsTab({ preRequestScript, onPreRequestScriptChange, testScr
           language="javascript"
           value={currentValue}
           onChange={(v) => currentOnChange(v ?? "")}
-          theme={resolved === "dark" ? "vs-dark" : "vs"}
-          options={{
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            fontSize: 13,
-            lineNumbers: "on",
-            wordWrap: "on",
-            folding: true,
-            padding: { top: 8, bottom: 8 },
-            tabSize: 2,
-            suggest: { showKeywords: true },
-          }}
+          theme={getEditorTheme(resolved)}
+          onMount={onMount}
+          options={BASE_EDITOR_OPTIONS}
         />
       </div>
     </div>

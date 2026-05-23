@@ -5,6 +5,8 @@ import Editor from "@monaco-editor/react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Braces, FileUp, Trash2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { BASE_EDITOR_OPTIONS, getEditorTheme } from "../editorConfig";
+import { useMonacoShortcuts } from "../hooks/useMonacoShortcuts";
 
 interface RequestBodyProps {
   bodyType: RequestBodyType;
@@ -44,6 +46,7 @@ function JsonStatus({ json }: { json: string }) {
 export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, formDataFields, onFormDataChange }: RequestBodyProps) {
   const { resolved } = useTheme();
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const onMount = useMonacoShortcuts();
 
   const addFormField = () => {
     onFormDataChange([...formDataFields, { id: crypto.randomUUID(), key: "", value: "", type: "text", enabled: true }]);
@@ -76,7 +79,7 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
             className={cn(
               "px-3 py-1 rounded-md text-xs font-medium transition-colors",
               bodyType === bt.value
-                ? "bg-orange-600/20 text-orange-400 border border-orange-500/30"
+                ? "bg-brand-600/20 text-brand-400 border border-brand-500/30"
                 : "text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800",
             )}
           >
@@ -124,21 +127,14 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
               language={bodyType === "json" ? "json" : "plaintext"}
               value={body}
               onChange={(v) => onBodyChange(v ?? "")}
-              theme={resolved === "dark" ? "vs-dark" : "vs"}
+              theme={getEditorTheme(resolved)}
+              onMount={onMount}
               options={{
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                fontSize: 13,
-                lineNumbers: "on",
-                wordWrap: "on",
-                folding: true,
+                ...BASE_EDITOR_OPTIONS,
                 bracketPairColorization: { enabled: true },
-                padding: { top: 8, bottom: 8 },
-                suggest: { showKeywords: true },
                 formatOnPaste: bodyType === "json",
                 formatOnType: bodyType === "json",
-                renderWhitespace: "selection",
-                tabSize: 2,
+                renderWhitespace: "selection" as const,
               }}
             />
           </div>
@@ -174,7 +170,7 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
                         type="checkbox"
                         checked={f.enabled}
                         onChange={(e) => updateFormField(f.id, { enabled: e.target.checked })}
-                        className="w-3.5 h-3.5 accent-orange-500 cursor-pointer"
+                        className="w-3.5 h-3.5 accent-brand-500 cursor-pointer"
                       />
 
                       <button
@@ -197,7 +193,7 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
                         autoCorrect="off"
                         autoCapitalize="none"
                         spellCheck={false}
-                        className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-orange-500/60 px-1 py-0.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
+                        className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-brand-500/60 px-1 py-0.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
                       />
 
                       {f.type === "text" ? (
@@ -209,7 +205,7 @@ export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, fo
                           autoCorrect="off"
                           autoCapitalize="none"
                           spellCheck={false}
-                          className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-orange-500/60 px-1 py-0.5 text-xs font-mono text-zinc-500 dark:text-zinc-400 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
+                          className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-brand-500/60 px-1 py-0.5 text-xs font-mono text-zinc-500 dark:text-zinc-400 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
                         />
                       ) : (
                         <div className="flex items-center gap-1.5">

@@ -4,7 +4,7 @@ import { Clock, RotateCcw, Trash2 } from "lucide-react";
 
 const METHOD_BADGE: Record<string, string> = {
   GET: "text-emerald-400",
-  POST: "text-orange-400",
+  POST: "text-brand-400",
   PUT: "text-blue-400",
   PATCH: "text-teal-400",
   DELETE: "text-red-400",
@@ -42,7 +42,7 @@ function groupByDate(entries: HistoryEntry[]): Record<string, HistoryEntry[]> {
 function statusColor(status: number): string {
   if (status >= 200 && status < 300) return "text-emerald-400";
   if (status >= 300 && status < 400) return "text-sky-400";
-  if (status >= 400 && status < 500) return "text-orange-400";
+  if (status >= 400 && status < 500) return "text-brand-400";
   if (status >= 500) return "text-red-400";
   return "text-zinc-500 dark:text-zinc-500";
 }
@@ -129,7 +129,7 @@ export function HistorySidebar({
                 </div>
 
                 <button
-                  className="opacity-0 group-hover:opacity-100 shrink-0 p-0.5 text-zinc-500 dark:text-zinc-500 hover:text-orange-400 hover:bg-stone-200 dark:hover:bg-zinc-700 rounded transition-all"
+                  className="opacity-0 group-hover:opacity-100 shrink-0 p-0.5 text-zinc-500 dark:text-zinc-500 hover:text-brand-400 hover:bg-stone-200 dark:hover:bg-zinc-700 rounded transition-all"
                   onClick={(e) => {
                     e.stopPropagation();
                     onReplayRequest(entry);

@@ -2,12 +2,11 @@ name: Release
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release (e.g. 1.2.3). Leave empty to auto-generate."
+        description: "Version to release (e.g. 1.2.3)"
         required: false
         type: string
 
@@ -33,8 +32,7 @@ jobs:
             VERSION="${{ github.event.inputs.version }}"
             TAG="v$VERSION"
           else
-            # Auto-version: 0.1.<run_number> — monotonically increasing, valid semver
-            VERSION="0.1.${{ github.run_number }}"
+            VERSION="0.2.${{ github.run_number }}"
             TAG="v$VERSION"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -47,7 +45,7 @@ jobs:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: "Rustman ${{ steps.ver.outputs.tag }}"
           body: |
-            🦀 **Rustman ${{ steps.ver.outputs.tag }}**
+            **Rustman ${{ steps.ver.outputs.tag }}**
 
             Built from commit [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}).
 
@@ -78,8 +76,9 @@ jobs:
 
       - name: Patch version in tauri.conf.json (Unix)
         if: runner.os != 'Windows'
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          VERSION="${{ needs.prepare.outputs.version }}"
           python3 - <<'EOF'
           import json, os
           v = os.environ['VERSION']
@@ -90,8 +89,6 @@ jobs:
               json.dump(conf, f, indent=2)
           print(f"Patched version to {v}")
           EOF
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
 
       - name: Patch version in tauri.conf.json (Windows)
         if: runner.os == 'Windows'
@@ -102,6 +99,46 @@ jobs:
           $conf.version = $version
           $conf | ConvertTo-Json -Depth 20 | Set-Content src-tauri/tauri.conf.json -Encoding utf8
           Write-Host "Patched version to $version"
+
+      - name: Prepare signing key (Unix)
+        if: runner.os != 'Windows'
+        env:
+          RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$RAW_KEY" ]; then
+            echo "No signing key — disabling updater artifacts"
+            python3 -c "
+          import json
+          with open('src-tauri/tauri.conf.json') as f:
+              c = json.load(f)
+          c['bundle']['createUpdaterArtifacts'] = False
+          with open('src-tauri/tauri.conf.json', 'w') as f:
+              json.dump(c, f, indent=2)
+          "
+          elif ! printf '%s' "$RAW_KEY" | grep -q 'untrusted comment'; then
+            {
+              printf 'TAURI_SIGNING_PRIVATE_KEY<<_SIGEOF_\n'
+              printf 'untrusted comment: minisign secret key\n'
+              printf '%s\n' "$RAW_KEY"
+              printf '_SIGEOF_\n'
+            } >> "$GITHUB_ENV"
+          fi
+
+      - name: Prepare signing key (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $key = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
+          if (-not $key) {
+            $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+            $conf.bundle.createUpdaterArtifacts = $false
+            $conf | ConvertTo-Json -Depth 20 | Set-Content src-tauri/tauri.conf.json -Encoding utf8
+            Write-Host "No signing key — disabled updater artifacts"
+          } elseif ($key -notmatch 'untrusted comment') {
+            $fixedKey = "untrusted comment: minisign secret key`n$key"
+            "TAURI_SIGNING_PRIVATE_KEY=$fixedKey" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            Write-Host "Prepended missing comment line to signing key"
+          }
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -127,7 +164,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.prepare.outputs.release-id }}

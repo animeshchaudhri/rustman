@@ -1,17 +1,15 @@
+mod curl;
 mod proxy;
-mod storage;
 mod response_store;
+mod storage;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
-use storage::AppDb;
-use response_store::BodyStore;
-use tauri::Manager;
 
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+use proxy::HttpClient;
+use response_store::BodyStore;
+use storage::AppDb;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,10 +22,17 @@ pub fn run() {
             let conn = storage::init_db(app.handle()).expect("Failed to init database");
             app.manage(AppDb(Mutex::new(conn)));
             app.manage(BodyStore(Mutex::new(HashMap::new())));
+
+            let http_client = reqwest::Client::builder()
+                .build()
+                .expect("Failed to build HTTP client");
+            app.manage(HttpClient(http_client));
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet,
+            curl::parse_curl,
+            curl::generate_curl,
             proxy::proxy_request,
             storage::db_get_collections,
             storage::db_create_collection,
@@ -55,4 +60,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

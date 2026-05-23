@@ -35,7 +35,7 @@ export function RequestParams({ params, onAddParam, onParamChange, onRemoveParam
         <span className="text-xs text-zinc-500 dark:text-zinc-500">
           {enabledCount > 0 ? (
             <>
-              <span className="text-orange-400 font-medium">{enabledCount}</span> active param{enabledCount !== 1 ? "s" : ""}
+              <span className="text-brand-400 font-medium">{enabledCount}</span> active param{enabledCount !== 1 ? "s" : ""}
             </>
           ) : (
             "No active params"
@@ -77,7 +77,7 @@ export function RequestParams({ params, onAddParam, onParamChange, onRemoveParam
                   type="checkbox"
                   checked={p.enabled}
                   onChange={(e) => onParamChange(p.id, "enabled", e.target.checked)}
-                  className="w-3.5 h-3.5 accent-orange-500 cursor-pointer"
+                  className="w-3.5 h-3.5 accent-brand-500 cursor-pointer"
                 />
                 <input
                   value={p.key}
@@ -87,7 +87,7 @@ export function RequestParams({ params, onAddParam, onParamChange, onRemoveParam
                   autoCorrect="off"
                   autoCapitalize="none"
                   spellCheck={false}
-                  className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-orange-500/60 px-1 py-0.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
+                  className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-brand-500/60 px-1 py-0.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
                 />
                 <input
                   value={p.value}
@@ -97,7 +97,7 @@ export function RequestParams({ params, onAddParam, onParamChange, onRemoveParam
                   autoCorrect="off"
                   autoCapitalize="none"
                   spellCheck={false}
-                  className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-orange-500/60 px-1 py-0.5 text-xs font-mono text-zinc-500 dark:text-zinc-400 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
+                  className="w-full bg-transparent border-b border-transparent hover:border-stone-300 dark:hover:border-zinc-700 focus:border-brand-500/60 px-1 py-0.5 text-xs font-mono text-zinc-500 dark:text-zinc-400 placeholder:text-zinc-500 dark:placeholder:text-zinc-700 focus:outline-none transition-colors"
                 />
                 <button
                   onClick={() => onRemoveParam(p.id)}
