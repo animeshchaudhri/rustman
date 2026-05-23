@@ -1,9 +1,0 @@
-[
-  {
-    "date": "2025-01-01",
-    "macrostructure": "Workbench",
-    "theme": "custom (warm stone + orange primary)",
-    "enrichment": "none",
-    "brief": "Rustman API tester — desktop app redesign, light/dark theme fix, JSON tree view, URL param sync"
-  }
-]
