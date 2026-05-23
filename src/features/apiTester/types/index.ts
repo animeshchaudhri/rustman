@@ -38,7 +38,15 @@ export type RequestBodyType = "json" | "text" | "form-data" | "none";
 export type ApiKeyLocation = "header" | "query";
 export type ResponseBodyView = "pretty" | "raw";
 export type RequestTabType = "params" | "headers" | "body" | "auth" | "scripts";
-export type ResponseTabType = "body" | "headers" | "cookies";
+export type ResponseTabType = "body" | "headers" | "cookies" | "tests";
+export type PanelLayout = "vertical" | "horizontal";
+
+export interface TestResult {
+  name: string;
+  passed: boolean;
+  error?: string;
+  duration?: number;
+}
 
 export interface ApiResponse {
   status?: number;

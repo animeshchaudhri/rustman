@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ApiResponse, ResponseBodyView, ResponseTabType } from "../types";
+import { ApiResponse, ResponseBodyView, ResponseTabType, PanelLayout, TestResult } from "../types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Clock, Database, XCircle,
   ArrowUpDown, Copy, Check, Search, X, WrapText, AlignLeft,
+  PanelBottomOpen, PanelRightOpen, CheckCircle2, AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { bodyGetSlice, bodyGetFull, bodySearchLines, type BodySlice } from "@/lib/db";
@@ -19,6 +20,9 @@ interface ResponseViewerProps {
   bodyView: ResponseBodyView;
   onBodyViewChange: (view: ResponseBodyView) => void;
   tabId: string;
+  testResults?: TestResult[];
+  layout: PanelLayout;
+  onLayoutChange: (l: PanelLayout) => void;
 }
 
 type JsonPrimitive = string | number | boolean | null;
@@ -107,6 +111,9 @@ export function ResponseViewer({
   bodyView,
   onBodyViewChange,
   tabId,
+  testResults,
+  layout,
+  onLayoutChange,
 }: ResponseViewerProps) {
   const [copied, setCopied] = useState(false);
   const [search, setSearch] = useState("");
@@ -270,7 +277,7 @@ export function ResponseViewer({
     const target = el.querySelector(`[data-line="${globalIdx}"]`) as HTMLElement | null;
     if (target) {
       target.scrollIntoView({ block: "center", behavior: "smooth" });
-      target.classList.add("bg-orange-400/20");
+      target.classList.add("bg-brand-400/20");
       setTimeout(() => target.classList.remove("bg-orange-400/20"), 1200);
     }
   }, []);
@@ -380,28 +387,39 @@ export function ResponseViewer({
             <span className="text-xs text-zinc-400 dark:text-zinc-700">Response</span>
           )}
         </div>
-        {response && !isLoading && (
-          <div className="flex items-center gap-3 shrink-0">
-            {responseTime !== null && (
-              <div className="flex items-center gap-1 text-xs">
-                <Clock className="h-3 w-3 text-zinc-400 dark:text-zinc-600" />
-                <span className={cn(
-                  "tabular-nums font-semibold",
-                  responseTime < 300 ? "text-emerald-500 dark:text-emerald-400" :
-                  responseTime < 1000 ? "text-yellow-600 dark:text-yellow-400" : "text-red-500 dark:text-red-400"
-                )}>
-                  {responseTime < 1000 ? `${responseTime}ms` : `${(responseTime / 1000).toFixed(2)}s`}
-                </span>
-              </div>
-            )}
-            {responseSize !== null && (
-              <div className="flex items-center gap-1 text-xs">
-                <Database className="h-3 w-3 text-zinc-400 dark:text-zinc-600" />
-                <span className="tabular-nums text-zinc-500 dark:text-zinc-400">{formatSize(responseSize)}</span>
-              </div>
-            )}
-          </div>
-        )}
+        <div className="flex items-center gap-3 shrink-0">
+          {response && !isLoading && (
+            <>
+              {responseTime !== null && (
+                <div className="flex items-center gap-1 text-xs">
+                  <Clock className="h-3 w-3 text-zinc-400 dark:text-zinc-600" />
+                  <span className={cn(
+                    "tabular-nums font-semibold",
+                    responseTime < 300 ? "text-emerald-500 dark:text-emerald-400" :
+                    responseTime < 1000 ? "text-yellow-600 dark:text-yellow-400" : "text-red-500 dark:text-red-400"
+                  )}>
+                    {responseTime < 1000 ? `${responseTime}ms` : `${(responseTime / 1000).toFixed(2)}s`}
+                  </span>
+                </div>
+              )}
+              {responseSize !== null && (
+                <div className="flex items-center gap-1 text-xs">
+                  <Database className="h-3 w-3 text-zinc-400 dark:text-zinc-600" />
+                  <span className="tabular-nums text-zinc-500 dark:text-zinc-400">{formatSize(responseSize)}</span>
+                </div>
+              )}
+            </>
+          )}
+          <button
+            onClick={() => onLayoutChange(layout === "vertical" ? "horizontal" : "vertical")}
+            title={layout === "vertical" ? "Switch to side-by-side" : "Switch to stacked"}
+            className="h-6 w-6 flex items-center justify-center rounded text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            {layout === "vertical"
+              ? <PanelRightOpen className="h-3.5 w-3.5" />
+              : <PanelBottomOpen className="h-3.5 w-3.5" />}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
@@ -434,13 +452,13 @@ export function ResponseViewer({
           <Tabs value={activeTab} onValueChange={onTabChange as (v: string) => void} className="flex flex-col h-full min-h-0">
             <div className="shrink-0 flex items-center border-b border-stone-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-2 gap-1">
               <TabsList className="bg-transparent rounded-none h-8 gap-0 p-0">
-                {(["body", "headers", "cookies"] as ResponseTabType[]).map((t) => (
+                {(["body", "headers", "cookies", "tests"] as ResponseTabType[]).map((t) => (
                   <TabsTrigger
                     key={t}
                     value={t}
                     className={cn(
                       "text-xs px-3 py-0 h-8 rounded-none capitalize border-b-2 border-transparent",
-                      "data-[state=active]:border-orange-500 data-[state=active]:bg-transparent data-[state=active]:text-orange-400",
+                      "data-[state=active]:border-brand-500 data-[state=active]:bg-transparent data-[state=active]:text-brand-400",
                       "text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors",
                     )}
                   >
@@ -448,6 +466,16 @@ export function ResponseViewer({
                     {t === "headers" && response.headers && (
                       <span className="ml-1.5 text-[10px] bg-stone-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-500 rounded-full px-1.5">
                         {Object.keys(response.headers).length}
+                      </span>
+                    )}
+                    {t === "tests" && testResults && testResults.length > 0 && (
+                      <span className={cn(
+                        "ml-1.5 text-[10px] rounded-full px-1.5",
+                        testResults.every((r) => r.passed)
+                          ? "bg-emerald-500/15 text-emerald-500"
+                          : "bg-red-500/15 text-red-500",
+                      )}>
+                        {testResults.filter((r) => r.passed).length}/{testResults.length}
                       </span>
                     )}
                   </TabsTrigger>
@@ -605,6 +633,61 @@ export function ResponseViewer({
                 </pre>
               ) : (
                 <div className="flex items-center justify-center h-20 text-xs text-zinc-400 dark:text-zinc-700">No cookies</div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="tests" className="flex-1 overflow-auto m-0 p-0 min-h-0">
+              {testResults && testResults.length > 0 ? (
+                <div className="flex flex-col divide-y divide-stone-200/50 dark:divide-zinc-800/50">
+                  <div className="flex items-center gap-3 px-4 py-2 bg-stone-50/60 dark:bg-zinc-900/60">
+                    <span className="text-xs text-emerald-500 font-semibold">
+                      {testResults.filter((r) => r.passed).length} passed
+                    </span>
+                    <span className="text-zinc-400 dark:text-zinc-600 text-xs">/</span>
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                      {testResults.length} total
+                    </span>
+                    {testResults.some((r) => !r.passed) && (
+                      <span className="text-xs text-red-500 font-semibold ml-auto">
+                        {testResults.filter((r) => !r.passed).length} failed
+                      </span>
+                    )}
+                  </div>
+                  {testResults.map((result, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "flex items-start gap-3 px-4 py-2.5 hover:bg-stone-50/60 dark:hover:bg-zinc-900/60",
+                        !result.passed && "bg-red-500/5",
+                      )}
+                    >
+                      {result.passed
+                        ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                        : <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0 mt-0.5" />}
+                      <div className="flex-1 min-w-0">
+                        <p className={cn(
+                          "text-xs font-medium",
+                          result.passed ? "text-zinc-700 dark:text-zinc-300" : "text-red-600 dark:text-red-400",
+                        )}>
+                          {result.name}
+                        </p>
+                        {result.error && (
+                          <p className="text-[11px] font-mono text-red-500/80 mt-0.5 break-all">{result.error}</p>
+                        )}
+                      </div>
+                      {result.duration !== undefined && (
+                        <span className="text-[10px] text-zinc-400 dark:text-zinc-600 shrink-0 tabular-nums">
+                          {result.duration}ms
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-32 gap-2 text-zinc-400 dark:text-zinc-700">
+                  <CheckCircle2 className="h-6 w-6" />
+                  <p className="text-xs">No test results — add tests in the Scripts tab</p>
+                </div>
               )}
             </TabsContent>
           </Tabs>

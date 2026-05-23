@@ -16,7 +16,7 @@ import {
 
 const METHOD_BADGE: Record<string, string> = {
   GET: "text-emerald-500 dark:text-emerald-400 bg-emerald-500/10",
-  POST: "text-orange-500 dark:text-orange-400 bg-orange-400/10",
+  POST: "text-brand-500 dark:text-brand-400 bg-brand-400/10",
   PUT: "text-blue-500 dark:text-blue-400 bg-blue-400/10",
   PATCH: "text-teal-500 dark:text-teal-400 bg-teal-400/10",
   DELETE: "text-red-500 dark:text-red-400 bg-red-400/10",
@@ -59,6 +59,7 @@ export function CollectionsSidebar({
   const [renaming, setRenaming] = useState<{ id: string; value: string; type: "c" | "r"; collectionId?: string } | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [newCollName, setNewCollName] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const toggleExpand = (id: string) => {
@@ -89,7 +90,7 @@ export function CollectionsSidebar({
         onImportCollection(result.collection, result.requests);
         setExpanded((prev) => new Set([...prev, result.collection.id]));
       } catch (err) {
-        alert(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
+        setImportError(err instanceof Error ? err.message : String(err));
       }
     };
     reader.readAsText(file);
@@ -129,6 +130,18 @@ export function CollectionsSidebar({
         <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
       </div>
 
+      {importError && (
+        <div className="mx-2 mt-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg flex items-start gap-2">
+          <span className="text-xs text-red-400 flex-1 break-words">Import failed: {importError}</span>
+          <button
+            onClick={() => setImportError(null)}
+            className="text-red-400 hover:text-red-300 shrink-0 text-xs leading-none mt-0.5"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto py-1">
         {newCollName !== null && (
           <div className="px-2 py-1">
@@ -151,7 +164,7 @@ export function CollectionsSidebar({
               autoCorrect="off"
               autoCapitalize="none"
               spellCheck={false}
-              className="w-full bg-white dark:bg-zinc-700 border border-orange-500/50 rounded px-2 py-1 text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none placeholder:text-zinc-500 dark:placeholder:text-zinc-500"
+              className="w-full bg-white dark:bg-zinc-700 border border-brand-500/50 rounded px-2 py-1 text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none placeholder:text-zinc-500 dark:placeholder:text-zinc-500"
             />
           </div>
         )}
@@ -198,7 +211,7 @@ export function CollectionsSidebar({
                     autoCorrect="off"
                     autoCapitalize="none"
                     spellCheck={false}
-                    className="flex-1 bg-white dark:bg-zinc-700 border border-orange-500/50 rounded px-1.5 py-0.5 text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none"
+                    className="flex-1 bg-white dark:bg-zinc-700 border border-brand-500/50 rounded px-1.5 py-0.5 text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none"
                   />
                 ) : (
                   <span className="flex-1 text-xs text-zinc-700 dark:text-zinc-300 truncate font-medium">
@@ -254,7 +267,7 @@ export function CollectionsSidebar({
                           autoCorrect="off"
                           autoCapitalize="none"
                           spellCheck={false}
-                          className="flex-1 bg-white dark:bg-zinc-700 border border-orange-500/50 rounded px-1.5 py-0.5 text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none"
+                          className="flex-1 bg-white dark:bg-zinc-700 border border-brand-500/50 rounded px-1.5 py-0.5 text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none"
                         />
                       ) : (
                         <span className="flex-1 text-xs text-zinc-500 dark:text-zinc-400 truncate">{req.name}</span>
