@@ -81,6 +81,8 @@ const requestStateKeys: Array<keyof RequestTab> = [
   "cookieString",
   "cookies",
   "formDataFields",
+  "preRequestScript",
+  "testScript",
 ];
 
 export const buildTabName = (method: string, urlInput: string, fallback = "Untitled Request") => {

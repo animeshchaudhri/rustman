@@ -41,7 +41,7 @@ export function SaveRequestDialog({
         setCollectionId(defaultCollectionId ?? collections[0].id);
       }
     }
-  }, [open]);
+  }, [open, defaultName, defaultCollectionId, collections]);
 
   if (!open) return null;
 

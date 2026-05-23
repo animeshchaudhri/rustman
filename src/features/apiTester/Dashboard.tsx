@@ -55,6 +55,7 @@ import type {
   HeaderType,
   HistoryEntry,
   PanelLayout,
+  ConsoleEntry,
   ParsedCurl,
   RequestBodyType,
   RequestTabType,
@@ -92,6 +93,7 @@ interface TabResponse {
   isLoading: boolean;
   error: string | null;
   testResults: TestResult[];
+  consoleLogs: ConsoleEntry[];
 }
 
 function formatRelativeTime(ts: number): string {
@@ -294,7 +296,7 @@ export default function ApiTester() {
     (tabId: string, patch: Partial<TabResponse>) => {
       setResponses((prev) => ({
         ...prev,
-        [tabId]: { ...{ response: null, responseTime: null, responseSize: null, isLoading: false, error: null, testResults: [] }, ...(prev[tabId] ?? {}), ...patch },
+        [tabId]: { ...{ response: null, responseTime: null, responseSize: null, isLoading: false, error: null, testResults: [], consoleLogs: [] }, ...(prev[tabId] ?? {}), ...patch },
       }));
     },
     [],
@@ -565,7 +567,7 @@ export default function ApiTester() {
     if (!fullUrl) return;
 
     const tabId = activeTabId;
-    setTabResponse(tabId, { isLoading: true, response: null, error: null, responseTime: null, responseSize: null, testResults: [] });
+    setTabResponse(tabId, { isLoading: true, response: null, error: null, responseTime: null, responseSize: null, testResults: [], consoleLogs: [] });
 
     let aborted = false;
     abortRef.current = () => {
@@ -575,8 +577,9 @@ export default function ApiTester() {
     };
 
     const envVars = activeEnv?.variables ?? {};
+    const preLogs: ConsoleEntry[] = [];
     const scriptEnv = tab.preRequestScript
-      ? await runPreRequestScript(tab.preRequestScript, { ...envVars })
+      ? await runPreRequestScript(tab.preRequestScript, { ...envVars }).then((r) => { preLogs.push(...r.logs); return r.vars; })
       : envVars;
 
     const headerObj: Record<string, string> = {};
@@ -670,9 +673,10 @@ export default function ApiTester() {
         cookies: res.headers.get("set-cookie"),
       };
 
-      const testResults = tab.testScript
+      const { results: testResults, logs: postLogs } = tab.testScript
         ? runTestScript(tab.testScript, apiResponse, duration, scriptEnv)
-        : [];
+        : { results: [], logs: [] };
+      const consoleLogs = [...preLogs, ...postLogs];
 
       startTransition(() => {
         setTabResponse(tabId, {
@@ -682,9 +686,11 @@ export default function ApiTester() {
           responseSize: size,
           error: null,
           testResults,
+          consoleLogs,
         });
       });
       if (testResults.length > 0) setActiveResponseTab("tests");
+      else if (consoleLogs.length > 0) setActiveResponseTab("console");
 
       
       const historyEntry: HistoryEntry = {
@@ -1322,6 +1328,7 @@ export default function ApiTester() {
               onBodyViewChange={setResponseBodyView}
               tabId={activeTabId}
               testResults={activeResponse.testResults}
+              consoleLogs={activeResponse.consoleLogs}
               layout={layout}
               onLayoutChange={setLayout}
             />

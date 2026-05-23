@@ -1,4 +1,4 @@
-import type { ApiResponse, TestResult } from "../types";
+import type { ApiResponse, ConsoleEntry, TestResult } from "../types";
 
 function makePmExpect(val: unknown): Record<string, unknown> {
   const assert = (condition: boolean, msg: string) => {
@@ -50,12 +50,25 @@ function makePmExpect(val: unknown): Record<string, unknown> {
   return chain;
 }
 
+function serialize(val: unknown): string {
+  if (typeof val === "string") return val;
+  try { return JSON.stringify(val, null, 2); } catch { return String(val); }
+}
+
+function makeConsole(logs: ConsoleEntry[]) {
+  const push = (level: ConsoleEntry["level"]) => (...args: unknown[]) => {
+    logs.push({ level, args: args.map(serialize), timestamp: Date.now() });
+  };
+  return { log: push("log"), warn: push("warn"), error: push("error"), info: push("info") };
+}
+
 export async function runPreRequestScript(
   script: string,
   envVars: Record<string, string>,
-): Promise<Record<string, string>> {
-  if (!script.trim()) return envVars;
+): Promise<{ vars: Record<string, string>; logs: ConsoleEntry[] }> {
+  if (!script.trim()) return { vars: envVars, logs: [] };
   const updatedVars = { ...envVars };
+  const logs: ConsoleEntry[] = [];
   const pm = {
     environment: {
       get: (key: string) => updatedVars[key] ?? "",
@@ -66,12 +79,12 @@ export async function runPreRequestScript(
     const AsyncFn = Object.getPrototypeOf(async function () {}).constructor as new (
       ...args: string[]
     ) => (...args: unknown[]) => Promise<void>;
-    const fn = new AsyncFn("pm", script);
-    await fn(pm);
+    const fn = new AsyncFn("pm", "console", script);
+    await fn(pm, makeConsole(logs));
   } catch (e) {
-    console.warn("[pre-request script]", e);
+    logs.push({ level: "error", args: [e instanceof Error ? e.message : String(e)], timestamp: Date.now() });
   }
-  return updatedVars;
+  return { vars: updatedVars, logs };
 }
 
 export function runTestScript(
@@ -79,9 +92,10 @@ export function runTestScript(
   apiResponse: ApiResponse,
   duration: number,
   envVars: Record<string, string>,
-): TestResult[] {
-  if (!script.trim()) return [];
+): { results: TestResult[]; logs: ConsoleEntry[] } {
+  if (!script.trim()) return { results: [], logs: [] };
   const results: TestResult[] = [];
+  const logs: ConsoleEntry[] = [];
   const updatedVars = { ...envVars };
 
   const contentType =
@@ -137,11 +151,11 @@ export function runTestScript(
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const fn = new Function("pm", script);
-    fn(pm);
+    const fn = new Function("pm", "console", script);
+    fn(pm, makeConsole(logs));
   } catch (e) {
-    console.warn("[test script]", e);
+    logs.push({ level: "error", args: [e instanceof Error ? e.message : String(e)], timestamp: Date.now() });
   }
 
-  return results;
+  return { results, logs };
 }
