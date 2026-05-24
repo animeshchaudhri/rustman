@@ -13,7 +13,7 @@ No subscriptions. No cloud sync. No telemetry. Your requests stay on your machin
 | | Rustman | Postman | Bruno |
 |---|---|---|---|
 | Price | Free forever | Freemium / $14mo | Free |
-| Install size | ~10 MB | ~350 MB | ~100 MB |
+| Install size | ~20 MB | ~350 MB | ~100 MB |
 | No account | ✓ | ✗ | ✓ |
 | Zero telemetry | ✓ | ✗ | ✓ |
 | Native HTTP (no CORS) | ✓ | ✗ | ✗ |

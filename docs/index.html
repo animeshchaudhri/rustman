@@ -6,7 +6,7 @@
   <title>Rustman — API Testing for Developers</title>
   <meta name="description" content="A free, fully open-source, lightweight API testing desktop app. Built with Tauri v2 and Rust. No cloud, no accounts, no telemetry." />
   <meta property="og:title" content="Rustman — API Testing for Developers" />
-  <meta property="og:description" content="Free, open-source API client built with Tauri v2 + Rust. ~10 MB, offline-first, no sign-up." />
+  <meta property="og:description" content="Free, open-source API client built with Tauri v2 + Rust. ~20 MB, offline-first, no sign-up." />
   <meta property="og:type" content="website" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -302,7 +302,15 @@
 
     @media (max-width: 680px) {
       .fi-rail, .fc-list { display: none; }
-      .frame-body { grid-template-columns: 1fr; }
+      .frame-body { grid-template-columns: 1fr; min-height: 320px; }
+      .frame-section { padding-left: 0; padding-right: 0; padding-bottom: 4rem; }
+      .app-frame { border-radius: 0; border-left: none; border-right: none; }
+      .frame-bar { padding: 0.5rem 0.7rem; }
+      .req-tabs { overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; }
+      .req-tabs::-webkit-scrollbar { display: none; }
+      .rtab { white-space: nowrap; }
+      .url-txt { font-size: 0.62rem; }
+      .resp-body { height: 90px; }
     }
 
     /* ── BENTO GRID ── */
@@ -331,12 +339,15 @@
         grid-template-columns: repeat(2, 1fr);
         grid-template-rows: auto;
       }
-      .b-a, .b-g { grid-column: span 2; }
-      .b-b, .b-c, .b-d, .b-e, .b-f, .b-h { grid-column: span 1; }
+      /* Reset ALL explicit row/column placements — auto-placement takes over */
+      .b-a { grid-column: span 2; grid-row: auto; min-height: 340px; }
+      .b-g { grid-column: span 2; grid-row: auto; }
+      .b-b, .b-c, .b-d, .b-e, .b-f, .b-h { grid-column: span 1; grid-row: auto; }
     }
     @media (max-width: 540px) {
       .bento { grid-template-columns: 1fr; }
-      .b-a, .b-g { grid-column: span 1; }
+      .b-a  { grid-column: 1; grid-row: auto; min-height: 280px; }
+      .b-b, .b-c, .b-d, .b-e, .b-f, .b-g, .b-h { grid-column: 1; grid-row: auto; }
     }
 
     .bcard {
@@ -620,6 +631,7 @@
       width: 100%; border-collapse: separate; border-spacing: 0;
       border: 1px solid var(--bord2); border-radius: var(--r);
       overflow: hidden; font-size: 0.83rem;
+      min-width: 560px;
     }
     .cmp-table thead tr { background: var(--bg3); }
     .cmp-table th {
@@ -731,13 +743,106 @@
     footer a:hover { color: var(--dim); text-decoration: none; }
 
     /* ── RESPONSIVE ── */
-    @media (max-width: 600px) {
-      nav { padding: 0 1rem; }
+    .nav-links { display: flex; align-items: center; gap: 0.1rem; }
+    .cmp-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--r); }
+    .frame-tabs { overflow-x: auto; scrollbar-width: none; }
+    .frame-tabs::-webkit-scrollbar { display: none; }
+    .script-card pre { overflow-x: auto; }
+
+    /* Mobile feature list — hidden on desktop */
+    .mob-features { display: none; }
+
+    /* Mobile compare stats — hidden on desktop */
+    .mob-compare { display: none; }
+
+    @media (max-width: 680px) {
+      /* NAV */
+      nav { padding: 0 1rem; gap: 0.2rem; }
       .nav-links { display: none; }
-      .hero { padding: 4.5rem 1.25rem 3rem; }
-      .bento-section, .scripts-section, .compare-section, .dl-section, .frame-section
-        { padding-left: 1.25rem; padding-right: 1.25rem; }
+      .nav-gh { display: none; }
+      .logo-ver { display: none; }
+
+      /* HERO */
+      .hero { padding: 3rem 1.25rem 2.5rem; }
+      .hero p { font-size: 0.92rem; }
+      .hero-cta { flex-direction: column; align-items: stretch; }
+      .btn-dl, .btn-gh { justify-content: center; padding: 0.75rem 1.25rem; }
+
+      /* Hide desktop-heavy sections, show mobile alternates */
+      .frame-section { display: none; }
+      .bento { display: none; }
+      .mob-features { display: flex; flex-direction: column; gap: 0; }
+      .cmp-table { display: none; }
+      .mob-compare { display: grid; }
+
+      /* Section spacing */
+      .bento-section, .scripts-section, .compare-section, .dl-section
+        { padding-left: 1.25rem; padding-right: 1.25rem; padding-bottom: 3.5rem; }
+
+      /* Scripts */
+      .scripts-grid { grid-template-columns: 1fr; }
+      .script-card pre { font-size: 0.68rem; }
+
+      /* Download */
+      .dl-top { padding: 1.75rem 1.25rem; }
+      .dl-top h2 { font-size: 1.5rem; }
+      .dl-top p { font-size: 0.85rem; }
+      .dl-plats { grid-template-columns: 1fr; gap: 0.5rem; }
+      .dl-plat { flex-direction: row; justify-content: flex-start; gap: 1rem; padding: 0.9rem 1rem; }
+      .dl-btn { width: 100%; justify-content: center; }
+      .src-block pre { font-size: 0.7rem; }
+      .table-note { display: none; }
     }
+
+    @media (max-width: 380px) {
+      .hero h1 { font-size: 2rem; }
+      .nav-dl { padding: 0.3rem 0.65rem; font-size: 0.78rem; }
+    }
+
+    /* ── MOBILE FEATURE LIST ── */
+    .mob-feat {
+      display: flex; align-items: flex-start; gap: 1rem;
+      padding: 1.1rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .mob-feat:last-child { border-bottom: none; }
+    .mob-feat-ic {
+      width: 36px; height: 36px; border-radius: 9px;
+      background: var(--adim); border: 1px solid rgba(249,115,22,0.15);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .mob-feat-ic svg { width: 16px; height: 16px; stroke: var(--accent); fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+    .mob-feat-t { font-size: 0.88rem; font-weight: 700; color: var(--text); margin-bottom: 0.2rem; }
+    .mob-feat-d { font-size: 0.78rem; color: var(--dim); line-height: 1.55; }
+    .mob-feat-d code { font-family: "JetBrains Mono", monospace; font-size: 0.82em; background: var(--bg3); padding: 0.1em 0.3em; border-radius: 3px; color: var(--accent); }
+
+    /* ── MOBILE COMPARE ── */
+    .mob-compare {
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem; margin-bottom: 1.5rem;
+    }
+    .mob-stat {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--rs); padding: 1rem;
+    }
+    .mob-stat-v {
+      font-size: 1.25rem; font-weight: 900; letter-spacing: -0.03em;
+      color: var(--accent); margin-bottom: 0.2rem;
+    }
+    .mob-stat-l { font-size: 0.7rem; color: var(--muted); line-height: 1.4; }
+    .mob-why {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 1.1rem 1.25rem;
+      grid-column: span 2;
+    }
+    .mob-why-title { font-size: 0.78rem; font-weight: 700; color: var(--text); margin-bottom: 0.65rem; }
+    .mob-why-row {
+      display: flex; align-items: center; gap: 0.6rem;
+      font-size: 0.76rem; color: var(--dim); padding: 0.3rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .mob-why-row:last-child { border-bottom: none; }
+    .mob-why-row .cv { color: var(--green); font-weight: 700; flex-shrink: 0; }
   </style>
   <script defer src="https://analytics.animesh.us/script.js" data-website-id="b1397736-939c-4843-bf24-384fb2289df3"></script>
 </head>
@@ -751,9 +856,11 @@
     <span class="logo-ver">v0.2.0</span>
   </a>
   <div class="nav-sp"></div>
-  <a href="#features" class="nav-a">Features</a>
-  <a href="#scripts" class="nav-a">Scripting</a>
-  <a href="#compare" class="nav-a">Compare</a>
+  <div class="nav-links">
+    <a href="#features" class="nav-a">Features</a>
+    <a href="#scripts" class="nav-a">Scripting</a>
+    <a href="#compare" class="nav-a">Compare</a>
+  </div>
   <a href="https://github.com/animeshchaudhri/rustman" class="nav-gh" target="_blank" rel="noopener">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
     GitHub
@@ -764,7 +871,7 @@
 <!-- HERO -->
 <section class="hero">
   <div class="hero-kicker">Built with Rust + Tauri v2 &nbsp;·&nbsp; <span>MIT License</span></div>
-  <h1>Stop paying for<br>your API client. <em>Seriously.</em></h1>
+  <h1>Stop paying for your API client. <em>Seriously.</em></h1>
   <p>Rustman is a desktop API tester that runs on your machine, keeps your data local, and costs absolutely nothing — no account, no cloud sync, no 30-second trial timers.</p>
   <div class="hero-cta">
     <a href="#download" class="btn-dl">
@@ -893,7 +1000,7 @@
     <div class="bcard b-c">
       <div class="bcard-label">Lightweight</div>
       <div class="bcard-title">Install size</div>
-      <div class="size-display">~10<span style="font-size:1.2rem;color:var(--dim)">MB</span></div>
+      <div class="size-display">~20<span style="font-size:1.2rem;color:var(--dim)">MB</span></div>
       <div class="size-bar">
         <div class="size-bar-row">
           <span style="color:var(--accent);width:68px">Rustman</span>
@@ -1003,6 +1110,42 @@
     </div>
 
   </div>
+
+  <!-- Mobile feature list (hidden on desktop) -->
+  <div class="mob-features">
+    <div class="mob-feat">
+      <div class="mob-feat-ic"><svg viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></div>
+      <div><div class="mob-feat-t">Native Rust HTTP</div><div class="mob-feat-d">Runs through reqwest — no browser CORS limits, no size caps, no 30s timeouts.</div></div>
+    </div>
+    <div class="mob-feat">
+      <div class="mob-feat-ic"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
+      <div><div class="mob-feat-t">Zero telemetry</div><div class="mob-feat-d">Your requests never leave your machine. No analytics, no hidden pings, ever.</div></div>
+    </div>
+    <div class="mob-feat">
+      <div class="mob-feat-ic"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+      <div><div class="mob-feat-t">Pre &amp; Post Scripts</div><div class="mob-feat-d">Async JS sandbox with <code>pm.*</code> API and WebCrypto — runs before and after every request.</div></div>
+    </div>
+    <div class="mob-feat">
+      <div class="mob-feat-ic"><svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
+      <div><div class="mob-feat-t">Test Runner</div><div class="mob-feat-d">Write <code>pm.test()</code> assertions in the post-request script. See pass/fail with per-test timing.</div></div>
+    </div>
+    <div class="mob-feat">
+      <div class="mob-feat-ic"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
+      <div><div class="mob-feat-t">Monaco Editor</div><div class="mob-feat-d">The same editor as VS Code — full keyboard shortcuts, syntax highlighting, autocomplete.</div></div>
+    </div>
+    <div class="mob-feat">
+      <div class="mob-feat-ic"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg></div>
+      <div><div class="mob-feat-t">Collections &amp; History</div><div class="mob-feat-d">Organize requests into collections. Replay from history. All stored in local SQLite.</div></div>
+    </div>
+    <div class="mob-feat">
+      <div class="mob-feat-ic"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+      <div><div class="mob-feat-t">All auth types</div><div class="mob-feat-d">Bearer, Basic, API Key, Cookie, JWT — plus environment variable substitution.</div></div>
+    </div>
+    <div class="mob-feat">
+      <div class="mob-feat-ic"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
+      <div><div class="mob-feat-t">6 accent themes</div><div class="mob-feat-d">Dark and light mode. Flame, Violet, Cobalt, Emerald, Rose, Midnight — persisted automatically.</div></div>
+    </div>
+  </div>
 </section>
 
 <!-- SCRIPTS -->
@@ -1051,6 +1194,22 @@ pm.<span class="pf">test</span>(<span class="ps">"Fast response"</span>, () => {
   <h2 style="font-size:clamp(1.6rem,3vw,2.2rem);font-weight:800;letter-spacing:-0.03em;margin-bottom:.75rem">Rustman vs the rest</h2>
   <p style="font-size:.95rem;color:var(--dim);max-width:520px;line-height:1.75;margin-bottom:2rem">How it stacks up against Postman and Bruno so you can make an informed switch.</p>
 
+  <!-- Mobile compare (hidden on desktop) -->
+  <div class="mob-compare">
+    <div class="mob-stat"><div class="mob-stat-v">Free</div><div class="mob-stat-l">vs $14/mo Postman</div></div>
+    <div class="mob-stat"><div class="mob-stat-v">~20 MB</div><div class="mob-stat-l">vs 350 MB Postman</div></div>
+    <div class="mob-stat"><div class="mob-stat-v">0 bytes</div><div class="mob-stat-l">sent to any server</div></div>
+    <div class="mob-stat"><div class="mob-stat-v">No login</div><div class="mob-stat-l">account never required</div></div>
+    <div class="mob-why">
+      <div class="mob-why-title">Only Rustman has</div>
+      <div class="mob-why-row"><span class="cv">✓</span> Native HTTP engine — no CORS, no size limits</div>
+      <div class="mob-why-row"><span class="cv">✓</span> Virtualised response viewer for huge payloads</div>
+      <div class="mob-why-row"><span class="cv">✓</span> Full Monaco editor (not a basic textarea)</div>
+      <div class="mob-why-row"><span class="cv">✓</span> Session restore — pick up exactly where you left off</div>
+    </div>
+  </div>
+
+  <div class="cmp-wrap">
   <table class="cmp-table">
     <thead>
       <tr>
@@ -1063,7 +1222,7 @@ pm.<span class="pf">test</span>(<span class="ps">"Fast response"</span>, () => {
     <tbody>
       <tr><td class="fname">Price</td><td class="cu"><span class="cv">Free forever</span></td><td><span class="cp">Freemium / $14mo</span></td><td><span class="cv">Free</span></td></tr>
       <tr><td class="fname">Open source</td><td class="cu"><span class="cv">✓</span></td><td><span class="cx">✗ Proprietary</span></td><td><span class="cv">✓</span></td></tr>
-      <tr><td class="fname">Install size</td><td class="cu"><span class="cv">~10 MB</span></td><td><span class="cx">~350 MB</span></td><td><span class="cp">~100 MB</span></td></tr>
+      <tr><td class="fname">Install size</td><td class="cu"><span class="cv">~20 MB</span></td><td><span class="cx">~350 MB</span></td><td><span class="cp">~100 MB</span></td></tr>
       <tr><td class="fname">No account required</td><td class="cu"><span class="cv">✓</span></td><td><span class="cx">✗ Mandatory</span></td><td><span class="cv">✓</span></td></tr>
       <tr><td class="fname">Zero telemetry</td><td class="cu"><span class="cv">✓ 100% local</span></td><td><span class="cx">✗ Cloud sync</span></td><td><span class="cv">✓</span></td></tr>
       <tr><td class="fname">Works offline</td><td class="cu"><span class="cv">✓</span></td><td><span class="cp">Limited</span></td><td><span class="cv">✓</span></td></tr>
@@ -1078,6 +1237,7 @@ pm.<span class="pf">test</span>(<span class="ps">"Fast response"</span>, () => {
       <tr><td class="fname">WebSocket / GraphQL</td><td class="cu"><span class="cx">Planned</span></td><td><span class="cv">✓</span></td><td><span class="cp">Partial</span></td></tr>
     </tbody>
   </table>
+  </div>
   <p class="table-note">Based on publicly available info. Postman pricing subject to change.</p>
 </section>
 
@@ -1086,7 +1246,7 @@ pm.<span class="pf">test</span>(<span class="ps">"Fast response"</span>, () => {
   <div class="sec-label" style="justify-content:center">Download</div>
   <div class="dl-top">
     <h2>Get Rustman</h2>
-    <p>Free, open source, ~10 MB. No sign-up required. No telemetry installed.</p>
+    <p>Free, open source, ~20 MB. No sign-up required. No telemetry installed.</p>
     <a class="dl-btn" href="https://github.com/animeshchaudhri/rustman/releases/latest" target="_blank" rel="noopener">
       <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
       Download Latest Release
