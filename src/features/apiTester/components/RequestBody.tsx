@@ -24,23 +24,32 @@ const BODY_TYPES: { value: RequestBodyType; label: string; desc: string }[] = [
   { value: "form-data", label: "Form Data", desc: "multipart/form-data" },
 ];
 
+function stripJsonComments(s: string): string {
+  return s
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/[^\n\r]*/g, "")
+    .trim();
+}
+
 function JsonStatus({ json }: { json: string }) {
   if (!json.trim()) return null;
-  try {
-    JSON.parse(json);
+  const isValid = (() => {
+    try { JSON.parse(json); return true; } catch { /* fall through */ }
+    try { JSON.parse(stripJsonComments(json)); return true; } catch { /* fall through */ }
+    return false;
+  })();
+  if (isValid) {
     return (
       <span className="flex items-center gap-1 text-[10px] text-emerald-500 dark:text-emerald-400">
         <CheckCircle2 className="h-3 w-3" />Valid JSON
       </span>
     );
-  } catch (e: unknown) {
-    const msg = e instanceof SyntaxError ? e.message : "Invalid JSON";
-    return (
-      <span className="flex items-center gap-1 text-[10px] text-red-500 dark:text-red-400" title={msg}>
-        <AlertCircle className="h-3 w-3" />Invalid JSON
-      </span>
-    );
   }
+  return (
+    <span className="flex items-center gap-1 text-[10px] text-red-500 dark:text-red-400">
+      <AlertCircle className="h-3 w-3" />Invalid JSON
+    </span>
+  );
 }
 
 export function RequestBody({ bodyType, body, onBodyChange, onBodyTypeChange, formDataFields, onFormDataChange }: RequestBodyProps) {
