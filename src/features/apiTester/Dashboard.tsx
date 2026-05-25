@@ -609,7 +609,14 @@ export default function ApiTester() {
 
     if (tab.bodyType === "json" || tab.bodyType === "text") {
       if (tab.body) {
-        requestOptions.body = tab.body;
+        // Strip JS-style comments (// and /* */) before sending JSON to avoid invalid JSON errors
+        const bodyToSend = tab.bodyType === "json"
+          ? tab.body
+              .replace(/\/\*[\s\S]*?\*\//g, "")
+              .replace(/\/\/[^\n\r]*/g, "")
+              .trim()
+          : tab.body;
+        requestOptions.body = bodyToSend;
         const hasContentType = Object.keys(headerObj).some(
           (k) => k.toLowerCase() === "content-type",
         );
