@@ -578,9 +578,14 @@ export default function ApiTester() {
 
     const envVars = activeEnv?.variables ?? {};
     const preLogs: ConsoleEntry[] = [];
-    const scriptEnv = tab.preRequestScript
-      ? await runPreRequestScript(tab.preRequestScript, { ...envVars }).then((r) => { preLogs.push(...r.logs); return r.vars; })
-      : envVars;
+    let scriptEnv = { ...envVars };
+    let scriptBody: string | undefined;
+    if (tab.preRequestScript) {
+      const scriptResult = await runPreRequestScript(tab.preRequestScript, { ...envVars }, tab.body ?? "");
+      preLogs.push(...scriptResult.logs);
+      scriptEnv = scriptResult.vars;
+      scriptBody = scriptResult.body;
+    }
 
     const headerObj: Record<string, string> = {};
     tab.headers.forEach((h) => {
@@ -608,15 +613,10 @@ export default function ApiTester() {
     let proxyFormFields: ProxyFormField[] | undefined;
 
     if (tab.bodyType === "json" || tab.bodyType === "text") {
-      if (tab.body) {
-        // Strip JS-style comments (// and /* */) before sending JSON to avoid invalid JSON errors
-        const bodyToSend = tab.bodyType === "json"
-          ? tab.body
-              .replace(/\/\*[\s\S]*?\*\//g, "")
-              .replace(/\/\/[^\n\r]*/g, "")
-              .trim()
-          : tab.body;
-        requestOptions.body = bodyToSend;
+      // Use body modified by pre-request script if available, otherwise use tab body
+      const rawBody = scriptBody ?? tab.body;
+      if (rawBody) {
+        requestOptions.body = rawBody;
         const hasContentType = Object.keys(headerObj).some(
           (k) => k.toLowerCase() === "content-type",
         );
@@ -681,7 +681,7 @@ export default function ApiTester() {
       };
 
       const { results: testResults, logs: postLogs } = tab.testScript
-        ? runTestScript(tab.testScript, apiResponse, duration, scriptEnv)
+        ? await runTestScript(tab.testScript, apiResponse, duration, scriptEnv)
         : { results: [], logs: [] };
       const consoleLogs = [...preLogs, ...postLogs];
 

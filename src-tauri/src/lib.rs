@@ -1,6 +1,7 @@
 mod curl;
 mod proxy;
 mod response_store;
+mod script_runner;
 mod storage;
 
 use std::collections::HashMap;
@@ -56,6 +57,7 @@ pub fn run() {
             response_store::body_search,
             response_store::body_search_lines,
             response_store::body_clear_prefix,
+            script_runner::run_script,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
