@@ -17,12 +17,66 @@ const PRESET_SNIPPETS = {
   preRequest: [
     { label: "Log env variable", code: `// Access environment variable\nconsole.log(pm.environment.get("baseUrl"));\n` },
     { label: "Set random ID", code: `pm.environment.set("randomId", Math.random().toString(36).slice(2));\n` },
+    {
+      label: "AES-256-CBC encrypt body", code: `const crypto = require("crypto");
+
+const rawBody = req.getBody();
+const aesKey = pm.environment.get("aesKey"); // set in Environments
+
+const bodyString = typeof rawBody === "string" ? rawBody : JSON.stringify(rawBody);
+
+const iv = crypto.randomBytes(16);
+const ivBase64 = iv.toString("base64");
+
+const cipher = crypto.createCipheriv("aes-256-cbc", Buffer.from(aesKey, "utf8"), iv);
+let encrypted = cipher.update(bodyString, "utf8", "base64");
+encrypted += await cipher.final("base64");
+
+const finalEncryptedRequest = ivBase64 + "." + encrypted;
+req.setBody(JSON.stringify({ EncryptedPayload: finalEncryptedRequest }));
+console.log("Encrypted:", finalEncryptedRequest);
+`,
+    },
   ],
   tests: [
     { label: "Status 200", code: `pm.test("Status is 200", () => {\n  pm.response.to.have.status(200);\n});\n` },
     { label: "JSON body", code: `pm.test("Response is JSON", () => {\n  pm.response.to.be.json;\n});\n` },
     { label: "Response time", code: `pm.test("Response time < 500ms", () => {\n  pm.expect(pm.response.responseTime).to.be.below(500);\n});\n` },
     { label: "Contains key", code: `pm.test("Has 'id' key", () => {\n  const json = pm.response.json();\n  pm.expect(json).to.have.property("id");\n});\n` },
+    {
+      label: "AES-256-CBC decrypt response", code: `const crypto = require("crypto");
+
+const body = res.json();
+const aesKey = pm.environment.get("aesKey"); // set in Environments
+
+const [ivBase64, encryptedData] = body.EncryptedPayload.split(".");
+const iv = Buffer.from(ivBase64, "base64");
+
+const decipher = crypto.createDecipheriv("aes-256-cbc", Buffer.from(aesKey, "utf8"), iv);
+decipher.update(encryptedData, "base64");
+const decrypted = await decipher.final("utf8");
+
+console.log("Decrypted:", decrypted);
+pm.environment.set("decryptedResponse", decrypted);
+`,
+    },
+    {
+      label: "HMAC-SHA256 verify", code: `const crypto = require("crypto");
+
+const secret = pm.environment.get("hmacSecret");
+const body = res.text();
+
+const hmac = crypto.createHmac("sha256", Buffer.from(secret, "utf8"));
+hmac.update(body);
+const sig = await hmac.digest("hex");
+
+pm.test("HMAC signature matches", () => {
+  const expected = res.getHeader("x-signature");
+  pm.expect(sig).to.equal(expected);
+});
+console.log("Computed HMAC:", sig);
+`,
+    },
   ],
 };
 
@@ -72,8 +126,8 @@ export function ScriptsTab({ preRequestScript, onPreRequestScriptChange, testScr
         <Info className="h-3 w-3 text-zinc-400 dark:text-zinc-600 shrink-0" />
         <p className="text-[10px] text-zinc-400 dark:text-zinc-600">
           {activeScript === "pre"
-            ? "Runs before the request is sent. Use pm.environment.set() to inject variables."
-            : "Runs after response is received. Use pm.test() and pm.expect() for assertions."}
+            ? "Runs before the request is sent. Globals: pm, req, require('crypto'), Buffer."
+            : "Runs after response is received. Globals: pm, res, require('crypto'), Buffer."}
         </p>
       </div>
 

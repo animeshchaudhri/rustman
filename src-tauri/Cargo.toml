@@ -24,3 +24,10 @@ reqwest = { version = "0.11", features = ["json", "cookies", "blocking", "multip
 tokio = { version = "1", features = ["full"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 base64 = "0.21"
+rquickjs = "0.11.0"
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+sha2 = "0.10"
+hmac = "0.12"
+rand = "0.8"
+hex = "0.4"

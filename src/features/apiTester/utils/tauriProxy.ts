@@ -81,16 +81,40 @@ export const tauriProxyFetch = async (
     throw new Error(response.error);
   }
 
-  const responseHeaders = new Headers();
-  Object.entries(response.headers).forEach(([key, value]) => {
-    responseHeaders.set(key, value);
-  });
+  // Use a plain wrapper instead of the browser Headers API to avoid
+  // restrictions on set-cookie values that contain newlines or are
+  // otherwise "forbidden" response headers.
+  const rawHeaders = response.headers as Record<string, string>;
+  const headers = {
+    get(name: string): string | null {
+      const key = Object.keys(rawHeaders).find(
+        (k) => k.toLowerCase() === name.toLowerCase(),
+      );
+      return key !== undefined ? rawHeaders[key] : null;
+    },
+    entries(): [string, string][] {
+      return Object.entries(rawHeaders);
+    },
+    set(name: string, value: string): void {
+      rawHeaders[name] = value;
+    },
+    append(name: string, value: string): void {
+      const key = Object.keys(rawHeaders).find(
+        (k) => k.toLowerCase() === name.toLowerCase(),
+      );
+      if (key !== undefined) {
+        rawHeaders[key] = rawHeaders[key] + '\n' + value;
+      } else {
+        rawHeaders[name] = value;
+      }
+    },
+  };
 
   return {
     status: response.status,
     statusText: STATUS_TEXTS[response.status] || 'Unknown Status',
     ok: response.status >= 200 && response.status < 300,
-    headers: responseHeaders,
+    headers: headers,
     bodySize: response.body_size,
     bodyStored: response.body_stored,
     text: async () => response.body,
