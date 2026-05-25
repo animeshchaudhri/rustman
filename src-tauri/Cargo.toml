@@ -1,6 +1,6 @@
 [package]
 name = "rustman"
-version = "0.2.1"
+version = "0.3.0"
 description = "Rustman — a fast API testing tool built with Tauri"
 authors = ["animeshchaudhri"]
 edition = "2021"

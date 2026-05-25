@@ -135,7 +135,7 @@ function AboutPanel() {
             </p>
             <p className="text-[10px] text-zinc-500 dark:text-zinc-600 tracking-widest mt-0.5">API TESTING TOOL</p>
           </div>
-          <span className="text-[10px] bg-stone-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 px-2 py-0.5 rounded-full">v0.2.0</span>
+          <span className="text-[10px] bg-stone-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 px-2 py-0.5 rounded-full">v0.3.0</span>
         </div>
 
         <div className="bg-stone-100 dark:bg-zinc-800/40 rounded-xl border border-stone-200 dark:border-zinc-800 overflow-hidden">
