@@ -116,14 +116,9 @@ jobs:
           with open('src-tauri/tauri.conf.json', 'w') as f:
               json.dump(c, f, indent=2)
           "
-          elif ! printf '%s' "$RAW_KEY" | grep -q 'untrusted comment'; then
-            {
-              printf 'TAURI_SIGNING_PRIVATE_KEY<<_SIGEOF_\n'
-              printf 'untrusted comment: minisign secret key\n'
-              printf '%s\n' "$RAW_KEY"
-              printf '_SIGEOF_\n'
-            } >> "$GITHUB_ENV"
           fi
+          # Key is passed directly via secrets.TAURI_SIGNING_PRIVATE_KEY.
+          # Tauri natively handles both plain-text and base64-encoded keys.
 
       - name: Prepare signing key (Windows)
         if: runner.os == 'Windows'
@@ -135,11 +130,9 @@ jobs:
             $conf.bundle.createUpdaterArtifacts = $false
             $conf | ConvertTo-Json -Depth 20 | Set-Content src-tauri/tauri.conf.json -Encoding utf8
             Write-Host "No signing key — disabled updater artifacts"
-          } elseif ($key -notmatch 'untrusted comment') {
-            $fixedKey = "untrusted comment: minisign secret key`n$key"
-            "TAURI_SIGNING_PRIVATE_KEY=$fixedKey" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-            Write-Host "Prepended missing comment line to signing key"
           }
+          # Key is passed directly via secrets.TAURI_SIGNING_PRIVATE_KEY.
+          # Tauri natively handles both plain-text and base64-encoded keys.
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -165,7 +158,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.prepare.outputs.release-id }}
