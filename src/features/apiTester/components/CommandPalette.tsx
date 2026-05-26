@@ -196,6 +196,8 @@ export function CommandPalette({
       e.preventDefault();
       if (filtered[activeIndex]) handleSelect(filtered[activeIndex]);
     } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
       onClose();
     }
   };
@@ -203,7 +205,16 @@ export function CommandPalette({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh]">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh]"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+    >
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
