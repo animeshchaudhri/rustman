@@ -56,6 +56,58 @@ jobs:
           prerelease: false
           generate_release_notes: true
 
+  # ── Rustman iced · Linux binary ───────────────────────────────────────────────
+  build-linux-iced:
+    name: Build · Rustman iced · Linux x86_64
+    needs: prepare
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch version in Cargo.toml
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          echo "Patched Cargo.toml to $VERSION"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libxi-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxcb-xkb-dev \
+            libdbus-1-dev \
+            pkg-config \
+            cmake \
+            build-essential
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache build artefacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build (release)
+        run: cargo build --release
+
+      - name: Package binary
+        run: tar czf rustman-linux-x86_64.tar.gz -C target/release rustman
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          files: rustman-linux-x86_64.tar.gz
+
+  # ── Tauri builds (macOS + Windows) ───────────────────────────────────────────
   build:
     needs: prepare
     environment: prod

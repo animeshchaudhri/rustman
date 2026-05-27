@@ -1,0 +1,56 @@
+name: CI — Rustman iced
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/ci-iced.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/ci-iced.yml"
+
+jobs:
+  build-linux:
+    name: Build · Linux x86_64
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libxi-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxcb-xkb-dev \
+            libdbus-1-dev \
+            pkg-config \
+            cmake \
+            build-essential
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache build artefacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build (release)
+        run: cargo build --release
+
+      - name: Upload binary artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustman-linux-x86_64
+          path: target/release/rustman
+          if-no-files-found: error
+          retention-days: 7

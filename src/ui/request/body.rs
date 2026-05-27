@@ -1,0 +1,294 @@
+use iced::{
+    widget::{button, column, container, row, scrollable, text, text_editor, text_input, Space},
+    Background, Border, Color, Element, Length,
+};
+
+use crate::{
+    domain::request::{BodyType, FormField, FormFieldType},
+    message::{Message, RequestMsg},
+    state::tabs::RequestTabState,
+    ui::{theme::Palette, widgets::json_highlighter::{JsonHighlighter, JsonHighlightSettings}},
+};
+
+pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
+    let type_tabs = row![
+        body_type_btn("None", BodyType::None, &tab.body_type),
+        body_type_btn("JSON", BodyType::Json, &tab.body_type),
+        body_type_btn("Text", BodyType::Text, &tab.body_type),
+        body_type_btn("Form", BodyType::FormData, &tab.body_type),
+    ]
+    .spacing(2)
+    .padding([6, 8]);
+
+    let body_panel: Element<Message> = match tab.body_type {
+        BodyType::None => container(
+            column![
+                Space::new(0, 20),
+                text("No body").size(13).color(Palette::text_subtle()),
+                text("Select JSON, Text, or Form to add a body")
+                    .size(11)
+                    .color(Palette::text_subtle()),
+            ]
+            .spacing(4)
+            .align_x(iced::Alignment::Center),
+        )
+        .center_x(Length::Fill)
+        .padding([24, 8])
+        .into(),
+
+        BodyType::Json | BodyType::Text => {
+            let is_json = matches!(tab.body_type, BodyType::Json);
+            let line_count = tab.body_editor.text().lines().count().max(1);
+
+            let mut line_nums = column![].spacing(0);
+            for n in 1..=(line_count + 1) {
+                line_nums = line_nums.push(
+                    container(
+                        text(format!("{n}"))
+                            .size(12)
+                            .color(Palette::text_subtle())
+                            .font(iced::Font::MONOSPACE),
+                    )
+                    .padding(iced::Padding { top: 0.0, right: 6.0, bottom: 0.0, left: 6.0 })
+                    .width(40),
+                );
+            }
+
+            let indent_label = if tab.body_indent_tabs { "Tabs" } else { "Spaces" };
+            let toolbar = container(
+                row![
+                    text(if is_json { "JSON" } else { "Text" })
+                        .size(10)
+                        .color(if is_json { Palette::accent() } else { Palette::text_muted() }),
+                    Space::with_width(Length::Fill),
+                    button(
+                        text(format!("Indent: {indent_label}"))
+                            .size(10)
+                            .color(Palette::text_subtle()),
+                    )
+                    .on_press(Message::Request(RequestMsg::ToggleBodyIndentStyle))
+                    .style(iced::widget::button::text)
+                    .padding([2, 6]),
+                    if is_json {
+                        button(text("{ } Format").size(10).color(Palette::text_muted()))
+                            .on_press(Message::Request(RequestMsg::FormatBody))
+                            .style(iced::widget::button::text)
+                            .padding([2, 6])
+                    } else {
+                        button(text("").size(10))
+                            .style(iced::widget::button::text)
+                            .padding([2, 0])
+                    },
+                    text(format!("{line_count}L")).size(10).color(Palette::text_subtle()),
+                ]
+                .spacing(8)
+                .align_y(iced::Alignment::Center)
+                .padding([3, 8]),
+            )
+            .style(|_| iced::widget::container::Style {
+                background: Some(Background::Color(Color {
+                    r: 0.07,
+                    g: 0.07,
+                    b: 0.08,
+                    a: 1.0,
+                })),
+                border: Border {
+                    color: Palette::border_subtle(),
+                    width: 0.0,
+                    radius: 0.0.into(),
+                },
+                ..Default::default()
+            })
+            .width(Length::Fill);
+
+            let editor_row = row![
+                container(scrollable(line_nums).style(crate::ui::theme::thin_scrollbar))
+                    .style(|_| iced::widget::container::Style {
+                        background: Some(Background::Color(Color {
+                            r: 0.065,
+                            g: 0.065,
+                            b: 0.075,
+                            a: 1.0,
+                        })),
+                        border: Border {
+                            color: Palette::border_subtle(),
+                            width: 0.0,
+                            radius: 0.0.into(),
+                        },
+                        ..Default::default()
+                    })
+                    .width(44)
+                    .height(Length::Fill),
+                text_editor(&tab.body_editor)
+                    .on_action(|a| Message::Request(RequestMsg::BodyEdited(a)))
+                    .height(Length::Fill)
+                    .font(iced::Font::MONOSPACE)
+                    .style(editor_style)
+                    .highlight_with::<JsonHighlighter>(
+                        JsonHighlightSettings { enabled: is_json },
+                        |h, _theme| iced::advanced::text::highlighter::Format {
+                            color: Some(h.color()),
+                            font: None,
+                        },
+                    ),
+            ]
+            .spacing(0)
+            .height(Length::Fill);
+
+            column![toolbar, editor_row].spacing(0).height(Length::Fill).into()
+        }
+
+        BodyType::FormData => form_data_view(&tab.form_fields),
+    };
+
+    column![type_tabs, body_panel]
+        .spacing(0)
+        .height(Length::Fill)
+        .into()
+}
+
+fn body_type_btn<'a>(
+    label: &'static str,
+    variant: BodyType,
+    current: &BodyType,
+) -> Element<'a, Message> {
+    let active = current == &variant;
+    button(text(label).size(11))
+        .on_press(Message::Request(RequestMsg::BodyTypeChanged(
+            variant.as_str().to_owned(),
+        )))
+        .style(move |t, s| type_btn_style(t, s, active))
+        .padding([3, 10])
+        .into()
+}
+
+fn form_data_view(fields: &[FormField]) -> Element<'_, Message> {
+    let mut col = column![].spacing(0);
+    for (i, field) in fields.iter().enumerate() {
+        let is_file = field.field_type == FormFieldType::File;
+        let accent = Palette::accent();
+        let muted = Palette::text_muted();
+
+        let type_btn = button(
+            text(if is_file { "File" } else { "Text" }).size(10).color(if is_file { accent } else { muted }),
+        )
+        .on_press(Message::Request(RequestMsg::FormFieldTypeToggled(i)))
+        .style(move |_, _| iced::widget::button::Style {
+            background: if is_file { Some(Background::Color(Color { r: accent.r * 0.2, g: accent.g * 0.2, b: accent.b * 0.2, a: 1.0 })) } else { None },
+            text_color: if is_file { accent } else { muted },
+            border: iced::Border { color: if is_file { accent } else { Color::TRANSPARENT }, width: 1.0, radius: 3.0.into() },
+            ..Default::default()
+        })
+        .padding([2, 6]);
+
+        let value_widget: Element<Message> = if is_file {
+            let label = field.file_name.as_deref().unwrap_or("Choose file…");
+            row![
+                button(text(label).size(11).color(Palette::text()))
+                    .on_press(Message::Request(RequestMsg::FormFieldPickFile(i)))
+                    .style(|_, _| iced::widget::button::Style {
+                        background: Some(Background::Color(Color { r: 0.12, g: 0.12, b: 0.14, a: 1.0 })),
+                        text_color: Palette::text(),
+                        border: iced::Border { color: Palette::border_subtle(), width: 1.0, radius: 3.0.into() },
+                        ..Default::default()
+                    })
+                    .padding([3, 8])
+                    .width(Length::Fill),
+            ]
+            .width(Length::Fill)
+            .into()
+        } else {
+            text_input("Value", &field.value)
+                .on_input(move |s| Message::Request(RequestMsg::FormFieldValueChanged(i, s)))
+                .size(12)
+                .padding([4, 6])
+                .width(Length::Fill)
+                .into()
+        };
+
+        let row_el = container(
+            row![
+                type_btn,
+                text_input("Key", &field.key)
+                    .on_input(move |s| Message::Request(RequestMsg::FormFieldKeyChanged(i, s)))
+                    .size(12)
+                    .padding([4, 6])
+                    .width(120),
+                value_widget,
+                button(text("✕").size(10).color(Palette::text_muted()))
+                    .on_press(Message::Request(RequestMsg::FormFieldRemoved(i)))
+                    .style(iced::widget::button::text)
+                    .padding([3, 6]),
+            ]
+            .spacing(6)
+            .align_y(iced::Alignment::Center),
+        )
+        .style(move |_| iced::widget::container::Style {
+            background: if i % 2 == 0 {
+                Some(Background::Color(Color { r: 0.095, g: 0.095, b: 0.105, a: 1.0 }))
+            } else {
+                None
+            },
+            ..Default::default()
+        })
+        .padding(iced::Padding { top: 2.0, right: 8.0, bottom: 2.0, left: 8.0 })
+        .width(Length::Fill);
+        col = col.push(row_el);
+    }
+    col = col.push(
+        container(
+            button(
+                row![
+                    text("+").size(13).color(Palette::accent()),
+                    text(" Add field").size(11).color(Palette::text_muted()),
+                ]
+                .spacing(4)
+                .align_y(iced::Alignment::Center),
+            )
+            .on_press(Message::Request(RequestMsg::FormFieldAdded))
+            .style(iced::widget::button::text)
+            .padding([6, 14]),
+        )
+        .width(Length::Fill),
+    );
+    scrollable(col).height(Length::Fill).into()
+}
+
+fn type_btn_style(
+    _theme: &iced::Theme,
+    _status: iced::widget::button::Status,
+    active: bool,
+) -> iced::widget::button::Style {
+    iced::widget::button::Style {
+        background: if active {
+            Some(Background::Color(Palette::accent_dim()))
+        } else {
+            None
+        },
+        text_color: if active { Palette::accent() } else { Palette::text_muted() },
+        border: Border {
+            color: if active { Palette::accent_dim() } else { Color::TRANSPARENT },
+            width: 1.0,
+            radius: 5.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+fn editor_style(
+    _theme: &iced::Theme,
+    _status: iced::widget::text_editor::Status,
+) -> iced::widget::text_editor::Style {
+    iced::widget::text_editor::Style {
+        background: Background::Color(Color { r: 0.07, g: 0.07, b: 0.08, a: 1.0 }),
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: 0.0.into(),
+        },
+        icon: Palette::text_muted(),
+        placeholder: Palette::text_subtle(),
+        value: Palette::text(),
+        selection: Color { r: Palette::accent().r, g: Palette::accent().g, b: Palette::accent().b, a: 0.25 },
+    }
+}
