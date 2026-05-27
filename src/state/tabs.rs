@@ -1,6 +1,5 @@
 use iced::widget::text_editor;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use tokio::sync::mpsc;
 
 use crate::domain::{
@@ -64,9 +63,7 @@ pub struct RequestTabState {
     pub search_visible: bool,
     /// true = use tabs for Format, false = 2-space indent
     pub body_indent_tabs: bool,
-    /// Collapsed JSON node paths in the tree view ("root", "root/key", "root/0/items", …)
-    pub json_collapsed: HashSet<String>,
-    /// true = show raw text, false = show JSON tree (when response is JSON)
+    /// true = show raw text, false = show pretty-printed JSON
     pub json_raw_mode: bool,
     /// Read-only content for the response body viewer (selectable text)
     pub response_viewer: text_editor::Content,
@@ -120,7 +117,6 @@ impl RequestTabState {
             search_query: String::new(),
             search_visible: false,
             body_indent_tabs: false,
-            json_collapsed: HashSet::new(),
             json_raw_mode: false,
             response_viewer: text_editor::Content::new(),
             response_viewer_lines: 0,
