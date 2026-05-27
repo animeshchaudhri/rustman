@@ -33,7 +33,7 @@ jobs:
             VERSION="${{ github.event.inputs.version }}"
             TAG="v$VERSION"
           else
-            BASE=$(node -p "require('./package.json').version")
+            BASE=$(grep '^version' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
             VERSION="${BASE}-dev.${{ github.run_number }}"
             TAG="v$VERSION"
           fi
@@ -107,113 +107,86 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.tag }}
           files: rustman-linux-x86_64.tar.gz
 
-  # ── Tauri builds (macOS + Windows) ───────────────────────────────────────────
-  build:
+  # ── Rustman iced · macOS universal binary ────────────────────────────────────
+  build-macos-iced:
+    name: Build · Rustman iced · macOS universal
     needs: prepare
-    environment: prod
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
-            tauri-args: --target universal-apple-darwin
-          - platform: windows-latest
-            rust-targets: x86_64-pc-windows-msvc
-            tauri-args: --target x86_64-pc-windows-msvc
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Patch version in tauri.conf.json (Unix)
-        if: runner.os != 'Windows'
+      - name: Patch version in Cargo.toml
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          python3 - <<'EOF'
-          import json, os
-          v = os.environ['VERSION']
-          with open('src-tauri/tauri.conf.json', 'r') as f:
-              conf = json.load(f)
-          conf['version'] = v
-          with open('src-tauri/tauri.conf.json', 'w') as f:
-              json.dump(conf, f, indent=2)
-          print(f"Patched version to {v}")
-          EOF
-
-      - name: Patch version in tauri.conf.json (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $version = "${{ needs.prepare.outputs.version }}"
-          $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
-          $conf.version = $version
-          $conf | ConvertTo-Json -Depth 20 | Set-Content src-tauri/tauri.conf.json -Encoding utf8
-          Write-Host "Patched version to $version"
-
-      - name: Prepare signing key (Unix)
-        if: runner.os != 'Windows'
-        env:
-          RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        run: |
-          if [ -z "$RAW_KEY" ]; then
-            echo "No signing key — disabling updater artifacts"
-            python3 -c "
-          import json
-          with open('src-tauri/tauri.conf.json') as f:
-              c = json.load(f)
-          c['bundle']['createUpdaterArtifacts'] = False
-          with open('src-tauri/tauri.conf.json', 'w') as f:
-              json.dump(c, f, indent=2)
-          "
-          fi
-          # Key is passed directly via secrets.TAURI_SIGNING_PRIVATE_KEY.
-          # Tauri natively handles both plain-text and base64-encoded keys.
-
-      - name: Prepare signing key (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $key = "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
-          if (-not $key) {
-            $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
-            $conf.bundle.createUpdaterArtifacts = $false
-            $conf | ConvertTo-Json -Depth 20 | Set-Content src-tauri/tauri.conf.json -Encoding utf8
-            Write-Host "No signing key — disabled updater artifacts"
-          }
-          # Key is passed directly via secrets.TAURI_SIGNING_PRIVATE_KEY.
-          # Tauri natively handles both plain-text and base64-encoded keys.
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: yarn
-          cache-dependency-path: yarn.lock
+          sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          echo "Patched Cargo.toml to $VERSION"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.rust-targets }}
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
-      - name: Cache Rust dependencies
+      - name: Cache build artefacts
         uses: Swatinem/rust-cache@v2
+
+      - name: Build arm64
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Build x86_64
+        run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Create universal binary
+        run: |
+          lipo -create \
+            target/aarch64-apple-darwin/release/rustman \
+            target/x86_64-apple-darwin/release/rustman \
+            -output rustman
+          tar czf rustman-macos-universal.tar.gz rustman
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          workspaces: src-tauri
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          files: rustman-macos-universal.tar.gz
 
-      - name: Install frontend dependencies
-        run: yarn install --frozen-lockfile
+  # ── Rustman iced · Windows x86_64 ────────────────────────────────────────────
+  build-windows-iced:
+    name: Build · Rustman iced · Windows x86_64
+    needs: prepare
+    permissions:
+      contents: write
+    runs-on: windows-latest
 
-      - name: Build and upload to release
-        uses: tauri-apps/tauri-action@v0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch version in Cargo.toml
+        shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          (Get-Content Cargo.toml) -replace '^version = ".*"', "version = `"$env:VERSION`"" | Set-Content Cargo.toml
+          Write-Host "Patched Cargo.toml to $env:VERSION"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache build artefacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build (release)
+        run: cargo build --release
+
+      - name: Package binary
+        shell: pwsh
+        run: Compress-Archive -Path target\release\rustman.exe -DestinationPath rustman-windows-x86_64.zip
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          releaseId: ${{ needs.prepare.outputs.release-id }}
-          args: ${{ matrix.tauri-args }}
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          files: rustman-windows-x86_64.zip
