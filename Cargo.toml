@@ -37,7 +37,7 @@ serde_json = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Git VCS for collections
-git2 = "0.19"
+git2 = { version = "0.19", features = ["vendored-libgit2", "vendored-openssl"] }
 
 # Syntax highlighting
 tree-sitter = "0.23"
