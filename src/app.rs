@@ -1268,15 +1268,20 @@ fn handle_response(state: &mut AppState, msg: ResponseMsg) -> Task<Message> {
             }
         }
         ResponseMsg::BodyViewToggled => {}
-        ResponseMsg::ToggleJsonNode(path) => {
-            let tab = state.tabs.active_tab_mut();
-            if !tab.json_collapsed.remove(&path) {
-                tab.json_collapsed.insert(path);
-            }
-        }
         ResponseMsg::ToggleJsonRaw => {
             let tab = state.tabs.active_tab_mut();
             tab.json_raw_mode = !tab.json_raw_mode;
+            if tab.json_raw_mode {
+                if let Some(r) = &tab.response {
+                    let raw = r.body.clone();
+                    tab.response_viewer_lines = raw.lines().count().max(1);
+                    tab.response_viewer = iced::widget::text_editor::Content::with_text(&raw);
+                }
+            } else if let Some(j) = &tab.parsed_json {
+                let pretty = serde_json::to_string_pretty(j).unwrap_or_default();
+                tab.response_viewer_lines = pretty.lines().count().max(1);
+                tab.response_viewer = iced::widget::text_editor::Content::with_text(&pretty);
+            }
         }
     }
     Task::none()
@@ -1295,7 +1300,6 @@ fn handle_app(state: &mut AppState, msg: AppMsg) -> Task<Message> {
         AppMsg::HttpResponse(result) => {
             if let Some(tab) = state.tabs.tabs.iter_mut().find(|t| t.id == result.tab_id) {
                 tab.is_loading = false;
-                tab.json_collapsed.clear();
                 tab.json_raw_mode = false;
                 tab.parsed_json = None;
                 tab.viewer_processing = true;
@@ -1352,10 +1356,15 @@ fn handle_app(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 return Task::perform(
                     async move {
                         tokio::task::spawn_blocking(move || {
-                            let parsed = serde_json::from_str::<serde_json::Value>(&body)
-                                .ok()
-                                .map(Box::new);
-                            AppMsg::ViewerReady { tab_id, content_text: body, parsed_json: parsed }
+                            let parsed = serde_json::from_str::<serde_json::Value>(&body).ok();
+                            let display = parsed.as_ref()
+                                .and_then(|j| serde_json::to_string_pretty(j).ok())
+                                .unwrap_or_else(|| body.clone());
+                            AppMsg::ViewerReady {
+                                tab_id,
+                                content_text: display,
+                                parsed_json: parsed.map(Box::new),
+                            }
                         })
                         .await
                         .unwrap_or(AppMsg::ViewerReady {

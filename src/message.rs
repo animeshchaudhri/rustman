@@ -142,7 +142,6 @@ pub enum ResponseMsg {
     CopyBody,
     CopyValue(String),
     FormatBody,
-    ToggleJsonNode(String),
     ToggleJsonRaw,
     ViewerAction(iced::widget::text_editor::Action),
 }
