@@ -144,14 +144,76 @@ jobs:
           lipo -create \
             target/aarch64-apple-darwin/release/rustman \
             target/x86_64-apple-darwin/release/rustman \
-            -output rustman
-          tar czf rustman-macos-universal.tar.gz rustman
+            -output rustman-universal
+
+      - name: Build .app bundle
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          mkdir -p Rustman.app/Contents/MacOS
+          mkdir -p Rustman.app/Contents/Resources
+          cp rustman-universal Rustman.app/Contents/MacOS/rustman
+
+          cat > Rustman.app/Contents/Info.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>
+            <string>rustman</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.animeshchaudhri.rustman</string>
+            <key>CFBundleName</key>
+            <string>Rustman</string>
+            <key>CFBundleDisplayName</key>
+            <string>Rustman</string>
+            <key>CFBundleVersion</key>
+            <string>${VERSION}</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${VERSION}</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleIconFile</key>
+            <string>AppIcon</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Convert icon to .icns
+        run: |
+          mkdir -p AppIcon.iconset
+          sips -z 16   16   public/icon.png --out AppIcon.iconset/icon_16x16.png
+          sips -z 32   32   public/icon.png --out AppIcon.iconset/icon_16x16@2x.png
+          sips -z 32   32   public/icon.png --out AppIcon.iconset/icon_32x32.png
+          sips -z 64   64   public/icon.png --out AppIcon.iconset/icon_32x32@2x.png
+          sips -z 128  128  public/icon.png --out AppIcon.iconset/icon_128x128.png
+          sips -z 256  256  public/icon.png --out AppIcon.iconset/icon_128x128@2x.png
+          sips -z 256  256  public/icon.png --out AppIcon.iconset/icon_256x256.png
+          iconutil -c icns AppIcon.iconset -o Rustman.app/Contents/Resources/AppIcon.icns
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "Rustman" \
+            --volicon "Rustman.app/Contents/Resources/AppIcon.icns" \
+            --window-size 800 400 \
+            --icon-size 120 \
+            --icon "Rustman.app" 200 185 \
+            --app-drop-link 600 185 \
+            --hide-extension "Rustman.app" \
+            "Rustman-macos-universal.dmg" \
+            "Rustman.app"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
-          files: rustman-macos-universal.tar.gz
+          files: Rustman-macos-universal.dmg
 
   # ── Rustman iced · Windows x86_64 ────────────────────────────────────────────
   build-windows-iced:
