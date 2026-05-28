@@ -59,7 +59,7 @@ Grab the latest binary from the [releases page](https://github.com/animeshchaudh
 
 | Platform | File |
 |---|---|
-| macOS (Apple Silicon + Intel) | `rustman-macos-universal.tar.gz` |
+| macOS (Apple Silicon + Intel) | `Rustman-macos-universal.dmg` |
 | Windows x86_64 | `rustman-windows-x86_64.zip` |
 | Linux x86_64 | `rustman-linux-x86_64.tar.gz` |
 
