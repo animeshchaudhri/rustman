@@ -1,5 +1,5 @@
 use iced::{
-    widget::{button, column, container, image, row, scrollable, svg, text, Space},
+    widget::{button, column, container, image, row, scrollable, svg, text, Space, Text},
     Background, Border, Color, Element, Length,
 };
 
@@ -7,33 +7,27 @@ const LOGO_SVG: &[u8] = include_bytes!("../../../public/rustman-logo.svg");
 
 use crate::{
     message::{AppMsg, ImportMsg, Message, SettingsMsg},
-    ui::theme::{Palette, ACCENT_PALETTE},
+    ui::{icons, theme::{Palette, ACCENT_PALETTE}},
 };
 
 
 pub fn view(state: &crate::app::AppState) -> Element<'_, Message> {
-    let avatar_bytes = state.profile_avatar.clone();
-    let collections: Vec<(String, String)> = state
-        .collections
-        .iter()
-        .map(|c| (c.id.clone(), c.name.clone()))
-        .collect();
+    let avatar_handle = state.profile_avatar.clone();
 
     let header = build_header();
     let profile = card(build_profile(
-        avatar_bytes,
+        avatar_handle,
         state.github_username.clone(),
         state.github_email.clone(),
         state.github_website.clone(),
         state.accent_idx,
     ));
-    let appearance = card(build_appearance(state.accent_idx, state.theme_is_dark));
-    let data = card(build_data_section(collections));
+    let appearance = card(build_appearance(state.accent_idx));
     let shortcuts = card(build_shortcuts());
     let footer = build_footer();
 
     scrollable(
-        column![header, profile, appearance, data, shortcuts, footer]
+        column![header, profile, appearance, shortcuts, footer]
             .spacing(8)
             .padding(iced::Padding { top: 0.0, right: 8.0, bottom: 20.0, left: 8.0 }),
     )
@@ -51,9 +45,9 @@ fn build_header() -> Element<'static, Message> {
             svg(logo_handle).width(36).height(36),
             column![
                 row![
-                    text("Rustman").size(13).color(Palette::text()).font(iced::Font::MONOSPACE),
-                    Space::with_width(5),
-                    container(text("v0.3.1").size(9).color(Palette::text_muted()).font(iced::Font::MONOSPACE))
+                    text("Rustman").size(13).color(Palette::text()).font(crate::ui::theme::MONO),
+                    Space::new().width(5),
+                    container(text("v0.3.1").size(9).color(Palette::text_muted()).font(crate::ui::theme::MONO))
                         .style(|_| iced::widget::container::Style {
                             background: Some(Background::Color(Color { r: 0.16, g: 0.16, b: 0.20, a: 1.0 })),
                             border: Border { color: Palette::border(), width: 1.0, radius: 4.0.into() },
@@ -74,7 +68,7 @@ fn build_header() -> Element<'static, Message> {
 }
 
 fn build_profile(
-    avatar_bytes: Option<Vec<u8>>,
+    avatar_handle: Option<image::Handle>,
     github_username: String,
     github_email: String,
     github_website: String,
@@ -83,8 +77,7 @@ fn build_profile(
     let accent = ACCENT_PALETTE.get(accent_idx).copied().unwrap_or(Palette::accent());
     let accent_dim = Color { r: accent.r * 0.62, g: accent.g * 0.62, b: accent.b * 0.63, a: 1.0 };
 
-    let avatar: Element<'static, Message> = if let Some(bytes) = avatar_bytes {
-        let handle = image::Handle::from_bytes(bytes);
+    let avatar: Element<'static, Message> = if let Some(handle) = avatar_handle {
         container(image(handle).width(36).height(36).content_fit(iced::ContentFit::Cover))
             .style(move |_| iced::widget::container::Style {
                 border: Border { color: accent, width: 2.0, radius: 18.0.into() },
@@ -142,69 +135,13 @@ fn build_profile(
     .into()
 }
 
-fn build_appearance(accent_idx: usize, theme_is_dark: bool) -> Element<'static, Message> {
-    let sh = Palette::surface_high();
-    let sr = Palette::surface_raised();
-    let bd = Palette::border();
-    let ac = Palette::accent();
-    let tm = Palette::text_muted();
-
-    let dark_style = move |_t: &iced::Theme, s: iced::widget::button::Status| {
-        let hov = matches!(s, iced::widget::button::Status::Hovered);
-        iced::widget::button::Style {
-            background: Some(Background::Color(if theme_is_dark || hov { sr } else { sh })),
-            border: Border {
-                color: if theme_is_dark { ac } else { bd },
-                width: 1.0,
-                radius: 5.0.into(),
-            },
-            text_color: if theme_is_dark { ac } else { tm },
-            ..Default::default()
-        }
-    };
-    let light_style = move |_t: &iced::Theme, s: iced::widget::button::Status| {
-        let hov = matches!(s, iced::widget::button::Status::Hovered);
-        iced::widget::button::Style {
-            background: Some(Background::Color(if !theme_is_dark || hov { sr } else { sh })),
-            border: Border {
-                color: if !theme_is_dark { ac } else { bd },
-                width: 1.0,
-                radius: 5.0.into(),
-            },
-            text_color: if !theme_is_dark { ac } else { tm },
-            ..Default::default()
-        }
-    };
-
-    let theme_row = row![
-        button(
-            text("🌑 Dark").size(11)
-                .color(if theme_is_dark { Palette::accent() } else { Palette::text_muted() })
-                .width(Length::Fill)
-                .align_x(iced::Alignment::Center),
-        )
-        .on_press(Message::Settings(SettingsMsg::ThemeDark))
-        .style(dark_style)
-        .padding([6, 8])
-        .width(Length::Fill),
-        button(
-            text("☀ Light").size(11)
-                .color(if !theme_is_dark { Palette::accent() } else { Palette::text_muted() })
-                .width(Length::Fill)
-                .align_x(iced::Alignment::Center),
-        )
-        .on_press(Message::Settings(SettingsMsg::ThemeLight))
-        .style(light_style)
-        .padding([6, 8])
-        .width(Length::Fill),
-    ]
-    .spacing(6);
+fn build_appearance(accent_idx: usize) -> Element<'static, Message> {
 
     let mut swatches = row![].spacing(5);
     for (i, &color) in ACCENT_PALETTE.iter().enumerate() {
         let is_selected = i == accent_idx;
         swatches = swatches.push(
-            button(Space::with_width(0))
+            button(Space::new().width(0))
                 .on_press(Message::Settings(SettingsMsg::AccentChanged(i)))
                 .style(move |_t, s| {
                     let hov = matches!(s, iced::widget::button::Status::Hovered);
@@ -228,8 +165,6 @@ fn build_appearance(accent_idx: usize, theme_is_dark: bool) -> Element<'static, 
 
     column![
         section_label("APPEARANCE"),
-        field_label("Theme"),
-        theme_row,
         field_label("Accent"),
         swatches,
     ]
@@ -239,8 +174,8 @@ fn build_appearance(accent_idx: usize, theme_is_dark: bool) -> Element<'static, 
 
 fn build_data_section(collections: Vec<(String, String)>) -> Element<'static, Message> {
     let import_row = row![
-        action_button("↓  Postman", Message::Import(ImportMsg::OpenPostmanDialog)),
-        action_button("↓  OpenAPI", Message::Import(ImportMsg::OpenOpenApiDialog)),
+        action_button(icons::import(), "Postman", Message::Import(ImportMsg::OpenPostmanDialog)),
+        action_button(icons::import(), "OpenAPI", Message::Import(ImportMsg::OpenOpenApiDialog)),
     ]
     .spacing(6);
 
@@ -258,7 +193,14 @@ fn build_data_section(collections: Vec<(String, String)>) -> Element<'static, Me
                 container(
                     row![
                         text(name).size(11).color(Palette::text()).width(Length::Fill),
-                        button(text("↑ Export").size(10).color(Palette::accent()))
+                        button(
+                            row![
+                                icons::export().size(11).color(Palette::accent()),
+                                text("Export").size(10).color(Palette::accent()),
+                            ]
+                            .spacing(4)
+                            .align_y(iced::Alignment::Center),
+                        )
                             .on_press(Message::Import(ImportMsg::ExportCollection(id)))
                             .style(|_t, status| {
                                 let hov = matches!(status, iced::widget::button::Status::Hovered);
@@ -296,10 +238,10 @@ fn build_shortcuts() -> Element<'static, Message> {
         ("Ctrl+P", "Palette"),
         ("Ctrl+F", "Search"),
         ("Ctrl+E", "Export cURL"),
-        ("Ctrl+↵", "Send"),
+        ("Ctrl+Enter", "Send"),
         ("Alt+1-9", "Switch tab"),
         ("Esc", "Close dialog"),
-        ("↑ ↓", "Navigate"),
+        ("Up/Down", "Navigate"),
     ];
 
     let mut grid = column![section_label("KEYBOARD SHORTCUTS")].spacing(4);
@@ -310,7 +252,7 @@ fn build_shortcuts() -> Element<'static, Message> {
                 container(
                     row![
                         container(
-                            text(*key).size(10).color(Palette::text()).font(iced::Font::MONOSPACE),
+                            text(*key).size(10).color(Palette::text()).font(crate::ui::theme::MONO),
                         )
                         .style(|_| iced::widget::container::Style {
                             background: Some(Background::Color(Color { r: 0.17, g: 0.17, b: 0.20, a: 1.0 })),
@@ -334,7 +276,7 @@ fn build_shortcuts() -> Element<'static, Message> {
 
 fn build_footer() -> Element<'static, Message> {
     container(
-        text("Rustman · purely in Rust + iced  🦀")
+        text("Rustman · purely in Rust + iced")
             .size(9)
             .color(Palette::text_subtle()),
     )
@@ -360,7 +302,7 @@ fn card(content: impl Into<Element<'static, Message>>) -> Element<'static, Messa
 
 fn section_label(label: &'static str) -> Element<'static, Message> {
     container(
-        text(label).size(9).color(Palette::text_subtle()).font(iced::Font::MONOSPACE),
+        text(label).size(9).color(Palette::text_subtle()).font(crate::ui::theme::MONO),
     )
     .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 2.0, left: 0.0 })
     .into()
@@ -376,7 +318,7 @@ fn full_link_row(label: &'static str, display: String, url: String, accent: Colo
     let chip_bg = Palette::surface_high();
     let chip_bd = Palette::border_subtle();
     row![
-        container(text(label).size(9).color(Palette::text_subtle()).font(iced::Font::MONOSPACE))
+        container(text(label).size(9).color(Palette::text_subtle()).font(crate::ui::theme::MONO))
             .style(move |_| iced::widget::container::Style {
                 background: Some(Background::Color(chip_bg)),
                 border: Border { color: chip_bd, width: 1.0, radius: 3.0.into() },
@@ -401,13 +343,18 @@ fn full_link_row(label: &'static str, display: String, url: String, accent: Colo
     .into()
 }
 
-fn action_button(label: &'static str, msg: Message) -> Element<'static, Message> {
+fn action_button(icon: Text<'static>, label: &'static str, msg: Message) -> Element<'static, Message> {
     let bg_normal = Palette::surface_high();
     let bg_hover = Palette::surface_raised();
     let bd = Palette::border();
     let fg = Palette::text();
     button(
-        text(label).size(11).color(fg).width(Length::Fill).align_x(iced::Alignment::Center),
+        container(
+            row![icon.size(12).color(fg), text(label).size(11).color(fg)]
+                .spacing(6)
+                .align_y(iced::Alignment::Center),
+        )
+        .center_x(Length::Fill),
     )
     .on_press(msg)
     .style(move |_t, status| {

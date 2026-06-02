@@ -1,0 +1,437 @@
+use base64::Engine as _;
+use iced::Task;
+
+use crate::app::request_ops::{format_body, save_request, send_request};
+use crate::app::session::persist_session;
+use crate::app::AppState;
+use crate::jobs::JobKind;
+use crate::message::{AppMsg, FormatTarget, Message, RequestMsg};
+use crate::services::curl;
+
+pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
+    let tab = state.tabs.active_tab_mut();
+    match msg {
+        RequestMsg::UndoUrl => {
+            if let Some(prev) = tab.url_undo.pop() {
+                tab.url = prev;
+                tab.modified = true;
+            }
+        }
+        RequestMsg::UrlChanged(v) => {
+            // Push to undo stack before changing (max 50 entries).
+            if tab.url != v {
+                tab.url_undo.push(tab.url.clone());
+                if tab.url_undo.len() > 50 { tab.url_undo.remove(0); }
+            }
+
+            if let Some(q_idx) = v.find('?') {
+                let base = v[..q_idx].to_owned();
+                let qs = &v[q_idx + 1..];
+                if !qs.is_empty() {
+                    let mut new_params: Vec<crate::domain::request::KeyValue> = qs
+                        .split('&')
+                        .filter(|pair| !pair.is_empty())
+                        .map(|pair| {
+                            let (k, val) = pair.split_once('=').unwrap_or((pair, ""));
+                            crate::domain::request::KeyValue {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                key: percent_decode(k),
+                                value: percent_decode(val),
+                                enabled: true,
+                            }
+                        })
+                        .collect();
+                    let existing_keys: std::collections::HashSet<String> =
+                        new_params.iter().map(|p| p.key.clone()).collect();
+                    for p in &tab.params {
+                        if !existing_keys.contains(&p.key) && !p.key.is_empty() {
+                            new_params.push(p.clone());
+                        }
+                    }
+                    tab.params = new_params;
+                    tab.url = base;
+                    tab.modified = true;
+                    return Task::none();
+                }
+            }
+            tab.url = v;
+            tab.modified = true;
+        }
+        RequestMsg::MethodChanged(v) => {
+            if let Ok(m) = v.parse() { tab.method = m; tab.modified = true; }
+        }
+        RequestMsg::TabSelected(t) => tab.active_request_tab = t,
+        RequestMsg::BodyEdited(msg) => {
+            tab.modified = true;
+            return tab.body_editor.update(&msg)
+                .map(|m| Message::Request(RequestMsg::BodyEdited(m)));
+        }
+        RequestMsg::PreRequestScriptEdited(action) => { tab.pre_request_editor.perform(action); tab.modified = true; }
+        RequestMsg::TestScriptEdited(action) => { tab.test_editor.perform(action); tab.modified = true; }
+        RequestMsg::NewTab => { state.tabs.new_tab(); persist_session(state); return Task::none(); }
+        RequestMsg::CloseTab(i) => { state.tabs.close_tab(i); persist_session(state); return Task::none(); }
+        RequestMsg::CloseCurrentTab => { let i = state.tabs.active; state.tabs.close_tab(i); persist_session(state); return Task::none(); }
+        RequestMsg::SwitchTab(i) => { state.tabs.switch_to(i); persist_session(state); return Task::none(); }
+        RequestMsg::Send => return send_request(state),
+        RequestMsg::HeaderAdded => { tab.headers.push(crate::domain::request::KeyValue::new_empty()); tab.modified = true; }
+        RequestMsg::HeaderRemoved(i) => { tab.headers.remove(i); tab.modified = true; }
+        RequestMsg::HeaderToggled(i) => { tab.headers[i].enabled = !tab.headers[i].enabled; tab.modified = true; }
+        RequestMsg::HeaderKeyChanged(i, v) => { tab.headers[i].key = v; tab.modified = true; }
+        RequestMsg::HeaderValueChanged(i, v) => { tab.headers[i].value = v; tab.modified = true; }
+        RequestMsg::ParamAdded => { tab.params.push(crate::domain::request::KeyValue::new_empty()); tab.modified = true; }
+        RequestMsg::ParamRemoved(i) => { tab.params.remove(i); tab.modified = true; }
+        RequestMsg::ParamToggled(i) => { tab.params[i].enabled = !tab.params[i].enabled; tab.modified = true; }
+        RequestMsg::ParamKeyChanged(i, v) => { tab.params[i].key = v; tab.modified = true; }
+        RequestMsg::ParamValueChanged(i, v) => { tab.params[i].value = v; tab.modified = true; }
+        RequestMsg::BearerTokenChanged(v) => tab.bearer_token = v,
+        RequestMsg::BasicUserChanged(v) => tab.basic_user = v,
+        RequestMsg::BasicPassChanged(v) => tab.basic_pass = v,
+        RequestMsg::ApiKeyNameChanged(v) => tab.api_key_name = v,
+        RequestMsg::ApiKeyValueChanged(v) => tab.api_key_value = v,
+        RequestMsg::AuthTypeChanged(v) => {
+            if let Ok(a) = v.parse() { tab.auth_type = a; }
+        }
+        RequestMsg::CookieStringChanged(v) => tab.cookie_string = v,
+        RequestMsg::JwtSecretChanged(v) => { tab.jwt_secret = v; tab.modified = true; }
+        RequestMsg::JwtSubjectChanged(v) => { tab.jwt_subject = v; tab.modified = true; }
+        RequestMsg::JwtAlgoChanged(v) => { tab.jwt_algo = v; tab.modified = true; }
+        RequestMsg::FormFieldTypeToggled(i) => {
+            use crate::domain::request::FormFieldType;
+            if i < tab.form_fields.len() {
+                tab.form_fields[i].field_type = if tab.form_fields[i].field_type == FormFieldType::Text {
+                    FormFieldType::File
+                } else {
+                    FormFieldType::Text
+                };
+                tab.modified = true;
+            }
+        }
+        RequestMsg::FormFieldPickFile(i) => {
+            return Task::perform(
+                async move {
+                    let file = rfd::AsyncFileDialog::new()
+                        .set_title("Select file")
+                        .pick_file()
+                        .await;
+                    if let Some(f) = file {
+                        let name = f.file_name();
+                        let bytes = f.read().await;
+                        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                        Some((i, name, b64))
+                    } else {
+                        None
+                    }
+                },
+                |res| match res {
+                    Some((idx, name, data)) => Message::Request(RequestMsg::FormFieldFilePicked(idx, name, data)),
+                    None => Message::App(AppMsg::Noop),
+                },
+            );
+        }
+        RequestMsg::FormFieldFilePicked(i, fname, data) => {
+            if i < tab.form_fields.len() {
+                tab.form_fields[i].file_name = Some(fname);
+                tab.form_fields[i].file_data = Some(data);
+                tab.modified = true;
+            }
+        }
+        RequestMsg::WsUrlChanged(v) => tab.ws.url = v,
+        RequestMsg::WsMessageChanged(v) => tab.ws.draft = v,
+        RequestMsg::WsConnect => {
+            tab.ws.connecting = true;
+            tab.ws.connected = false;
+            tab.ws.messages.clear();
+        }
+        RequestMsg::WsDisconnect => {
+            tab.ws.outgoing_tx = None; 
+            tab.ws.connected = false;
+            tab.ws.connecting = false;
+        }
+        RequestMsg::WsSend => {
+            if let Some(tx) = tab.ws.outgoing_tx.clone() {
+                let msg = std::mem::take(&mut tab.ws.draft);
+                tab.ws.messages.push(crate::state::tabs::WsMessage { text: msg.clone(), is_outgoing: true });
+                return Task::perform(
+                    async move { let _ = tx.send(msg).await; },
+                    |_| Message::App(AppMsg::Noop),
+                );
+            }
+        }
+        RequestMsg::ImportCurl(cmd) => {
+            let parsed = curl::parse(&cmd);
+            let has_body = parsed.body.is_some();
+            let has_headers = !parsed.header.is_empty();
+
+            if let Some(url) = parsed.url {
+                if let Some(q_idx) = url.find('?') {
+                    tab.url = url[..q_idx].to_owned();
+                    let qs = &url[q_idx + 1..];
+                    if !qs.is_empty() {
+                        tab.params = qs
+                            .split('&')
+                            .filter(|pair| !pair.is_empty())
+                            .map(|pair| {
+                                let (k, val) = pair.split_once('=').unwrap_or((pair, ""));
+                                crate::domain::request::KeyValue {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    key: percent_decode(k),
+                                    value: percent_decode(val),
+                                    enabled: true,
+                                }
+                            })
+                            .collect();
+                    }
+                } else {
+                    tab.url = url;
+                }
+            }
+            if let Some(method) = parsed.method {
+                if let Ok(m) = method.to_uppercase().parse() {
+                    tab.method = m;
+                }
+            }
+            let auth_detected = if let Some(auth_val) = parsed.header.get("Authorization") {
+                if let Some(token) = auth_val.strip_prefix("Bearer ") {
+                    tab.auth_type = crate::domain::request::AuthType::Bearer;
+                    tab.bearer_token = token.to_owned();
+                    true
+                } else if let Some(encoded) = auth_val.strip_prefix("Basic ") {
+                    tab.auth_type = crate::domain::request::AuthType::Basic;
+                    if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(encoded.trim()) {
+                        if let Ok(s) = std::str::from_utf8(&decoded) {
+                            if let Some((user, pass)) = s.split_once(':') {
+                                tab.basic_user = user.to_owned();
+                                tab.basic_pass = pass.to_owned();
+                            }
+                        }
+                    }
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            let headers_without_auth: Vec<_> = parsed.header.into_iter()
+                .filter(|(k, _)| !auth_detected || k != "Authorization")
+                .map(|(k, v)| crate::domain::request::KeyValue {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    key: k,
+                    value: v,
+                    enabled: true,
+                })
+                .collect();
+            if has_headers {
+                tab.headers = headers_without_auth;
+            }
+            if has_body {
+                if let Some(body) = parsed.body {
+                    let trimmed = body.trim();
+                    let is_json = trimmed.starts_with('{') || trimmed.starts_with('[');
+                    tab.body_type = if is_json {
+                        crate::domain::request::BodyType::Json
+                    } else {
+                        crate::domain::request::BodyType::Text
+                    };
+                    tab.body_editor = crate::state::tabs::make_code_editor(
+                        &body,
+                        if is_json { "json" } else { "txt" },
+                    );
+                }
+                tab.active_request_tab = crate::message::RequestTab::Body;
+            } else if auth_detected {
+                tab.active_request_tab = crate::message::RequestTab::Auth;
+            } else if !tab.params.is_empty() {
+                tab.active_request_tab = crate::message::RequestTab::Params;
+            } else if has_headers {
+                tab.active_request_tab = crate::message::RequestTab::Headers;
+            }
+            if !parsed.cookies.is_empty() {
+                tab.cookie_string = parsed.cookies.into_iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+            }
+            tab.modified = true;
+        }
+        RequestMsg::SaveRequest => {
+            let tab = state.tabs.active_tab();
+            if tab.saved_as.is_none() {
+                let name = if tab.url.is_empty() { tab.title.clone() } else { tab.url.clone() };
+                state.save_dialog_name = name;
+                state.save_dialog_collection_id = state.collections.first().map(|c| c.id.clone());
+                state.save_dialog_open = true;
+                return Task::none();
+            }
+            return save_request(state);
+        }
+        RequestMsg::FormatBody => {
+            let text = tab.body_editor.content();
+            return format_body(tab, text, FormatTarget::RequestBody);
+        }
+        RequestMsg::ToggleBodyIndentStyle => {
+            tab.body_indent_tabs = !tab.body_indent_tabs;
+            let style = if tab.body_indent_tabs {
+                iced_code_editor::IndentStyle::Tab
+            } else {
+                iced_code_editor::IndentStyle::Spaces(4)
+            };
+            tab.body_editor.set_indent_style(style);
+        }
+        RequestMsg::ExportCurl => {
+            use crate::services::curl::{generate, GenerateCurlInput, KvPair};
+            let body_text = tab.body_editor.content();
+            let body = if body_text.trim().is_empty() { None } else { Some(body_text) };
+            let headers: Vec<KvPair> = tab.headers.iter()
+                .filter(|h| h.enabled && !h.key.is_empty())
+                .map(|h| KvPair { key: h.key.clone(), value: h.value.clone() })
+                .collect();
+            let api_loc = match tab.api_key_location {
+                crate::domain::request::ApiKeyLocation::Header => None,
+                crate::domain::request::ApiKeyLocation::Query => Some("query".to_owned()),
+            };
+            let input = GenerateCurlInput {
+                method: tab.method.as_str().to_owned(),
+                url: tab.url.clone(),
+                headers,
+                body,
+                cookies: vec![],
+                auth_type: tab.auth_type.as_str().to_owned(),
+                bearer_token: if tab.bearer_token.is_empty() { None } else { Some(tab.bearer_token.clone()) },
+                basic_user: if tab.basic_user.is_empty() { None } else { Some(tab.basic_user.clone()) },
+                basic_pass: if tab.basic_pass.is_empty() { None } else { Some(tab.basic_pass.clone()) },
+                api_key_name: if tab.api_key_name.is_empty() { None } else { Some(tab.api_key_name.clone()) },
+                api_key_value: if tab.api_key_value.is_empty() { None } else { Some(tab.api_key_value.clone()) },
+                api_key_location: api_loc,
+            };
+            let curl_cmd = generate(&input);
+            state.curl_modal_command = curl_cmd;
+            state.curl_modal_open = true;
+        }
+        RequestMsg::CloseCurlModal => {
+            state.curl_modal_open = false;
+        }
+        RequestMsg::CopyCurlToClipboard => {
+            let cmd = state.curl_modal_command.clone();
+            state.status_message = Some("cURL command copied!".to_owned());
+            return iced::clipboard::write::<Message>(cmd);
+        }
+        RequestMsg::BodyTypeChanged(v) => {
+            if let Ok(b) = v.parse() {
+                tab.body_type = b;
+                tab.modified = true;
+            }
+        }
+        RequestMsg::FormFieldAdded => {
+            use crate::domain::request::{FormField, FormFieldType};
+            tab.form_fields.push(FormField {
+                id: uuid::Uuid::new_v4().to_string(),
+                key: String::new(),
+                value: String::new(),
+                field_type: FormFieldType::Text,
+                enabled: true,
+                file_name: None,
+                file_data: None,
+                mime_type: None,
+            });
+            tab.modified = true;
+        }
+        RequestMsg::FormFieldRemoved(i) => {
+            if i < tab.form_fields.len() {
+                tab.form_fields.remove(i);
+                tab.modified = true;
+            }
+        }
+        RequestMsg::FormFieldKeyChanged(i, v) => {
+            if let Some(f) = tab.form_fields.get_mut(i) {
+                f.key = v;
+                tab.modified = true;
+            }
+        }
+        RequestMsg::FormFieldValueChanged(i, v) => {
+            if let Some(f) = tab.form_fields.get_mut(i) {
+                f.value = v;
+                tab.modified = true;
+            }
+        }
+        RequestMsg::ApiKeyLocationChanged(v) => {
+            if let Ok(loc) = v.parse() {
+                tab.api_key_location = loc;
+            }
+        }
+        RequestMsg::Abort => {
+            tab.jobs.cancel(JobKind::Request);
+            tab.is_loading = false;
+        }
+        RequestMsg::CopyBodyToClipboard => {
+            let content = tab.body_editor.content();
+            state.status_message = Some("Body copied!".to_owned());
+            return iced::clipboard::write::<Message>(content);
+        }
+        RequestMsg::CommentToggle => {
+            use crate::message::RequestTab;
+            match tab.active_request_tab {
+                RequestTab::Scripts => {
+                    let toggled = toggle_js_comments(&tab.pre_request_editor.text());
+                    tab.pre_request_editor = iced::widget::text_editor::Content::with_text(&toggled);
+                }
+                RequestTab::Body => {
+                    let toggled = toggle_js_comments(&tab.body_editor.content());
+                    tab.reset_body_editor(&toggled);
+                }
+                _ => {}
+            }
+        }
+    }
+    Task::none()
+}
+
+/// Decode `%xx` percent-encoded sequences in a URL component.
+fn percent_decode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'+' {
+            out.push(' ');
+            i += 1;
+        } else if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(hi), Some(lo)) = (
+                (bytes[i + 1] as char).to_digit(16),
+                (bytes[i + 2] as char).to_digit(16),
+            ) {
+                out.push((hi * 16 + lo) as u8 as char);
+                i += 3;
+            } else {
+                out.push('%');
+                i += 1;
+            }
+        } else {
+            out.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    out
+}
+
+/// Toggle `// ` comments on every non-empty line. If ALL non-empty lines already
+/// start with `//` they are removed; otherwise `// ` is prepended to each.
+fn toggle_js_comments(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let all_commented = lines.iter()
+        .filter(|l| !l.trim().is_empty())
+        .all(|l| l.trim_start().starts_with("//"));
+    lines.iter().map(|l| {
+        if l.trim().is_empty() {
+            l.to_string()
+        } else if all_commented {
+            let trimmed = l.trim_start();
+            let without = trimmed.strip_prefix("// ").or_else(|| trimmed.strip_prefix("//")).unwrap_or(trimmed);
+            let leading = &l[..l.len() - trimmed.len()];
+            format!("{leading}{without}")
+        } else {
+            format!("// {l}")
+        }
+    }).collect::<Vec<_>>().join("\n")
+}

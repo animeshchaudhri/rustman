@@ -13,6 +13,6 @@ pub fn view(method: &HttpMethod) -> Element<'static, Message> {
     text(method.as_str())
         .size(11)
         .color(color)
-        .font(iced::Font::MONOSPACE)
+        .font(crate::ui::theme::MONO)
         .into()
 }

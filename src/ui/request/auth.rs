@@ -7,6 +7,7 @@ use crate::{
     domain::request::AuthType,
     message::{Message, RequestMsg},
     state::tabs::RequestTabState,
+    ui::styles,
 };
 
 const AUTH_TYPES: &[&str] = &["none", "bearer", "basic", "apikey", "jwt-user", "cookie"];
@@ -101,7 +102,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
             .spacing(8)
             .align_y(iced::Alignment::Center),
             row![
-                iced::widget::Space::with_width(80),
+                iced::widget::Space::new().width(80),
                 text("Token is generated per-request (exp = now + 1h)").size(10)
                     .color(crate::ui::theme::Palette::text_subtle()),
             ]
@@ -112,7 +113,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         .into(),
 
         AuthType::None => {
-            iced::widget::Space::new(0, 0).into()
+            iced::widget::Space::new().into()
         }
     };
 
@@ -130,7 +131,8 @@ fn labeled_input<'a>(
             .on_input(on_input)
             .size(12)
             .padding([4, 8])
-            .width(Length::Fill),
+            .width(Length::Fill)
+            .style(styles::field_input),
     ]
     .spacing(8)
     .align_y(iced::Alignment::Center)

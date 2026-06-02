@@ -1,4 +1,5 @@
 use iced::widget::text_editor;
+use iced_code_editor::CodeEditor;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
@@ -7,8 +8,8 @@ use crate::domain::{
     request::{ApiKeyLocation, AuthType, BodyType, FormField, HttpMethod, KeyValue},
     response::{ConsoleEntry, HttpResponse, TestResult},
 };
+use crate::jobs::JobManager;
 
-/// Live WebSocket state for a tab.
 #[derive(Debug, Default)]
 pub struct WsState {
     pub url: String,
@@ -25,8 +26,6 @@ pub struct WsMessage {
     pub is_outgoing: bool,
 }
 
-/// A single request tab — everything needed to render and send one request.
-#[derive(Debug)]
 pub struct RequestTabState {
     pub id: String,
     pub title: String,
@@ -35,7 +34,7 @@ pub struct RequestTabState {
     pub headers: Vec<KeyValue>,
     pub params: Vec<KeyValue>,
     pub body_type: BodyType,
-    pub body_editor: text_editor::Content,
+    pub body_editor: CodeEditor,
     pub form_fields: Vec<FormField>,
     pub auth_type: AuthType,
     pub bearer_token: String,
@@ -59,24 +58,15 @@ pub struct RequestTabState {
     pub modified: bool,
     pub console: Vec<ConsoleEntry>,
     pub test_results: Vec<TestResult>,
-    pub search_query: String,
-    pub search_visible: bool,
-    /// true = use tabs for Format, false = 2-space indent
     pub body_indent_tabs: bool,
-    /// true = show raw text, false = show pretty-printed JSON
-    pub json_raw_mode: bool,
-    /// Read-only content for the response body viewer (selectable text)
-    pub response_viewer: text_editor::Content,
-    /// Line count of response_viewer — stored so view() never calls .text() to count lines
+    pub response_editor: CodeEditor,
     pub response_viewer_lines: usize,
-    /// True while background JSON parse + Content build is in progress
     pub viewer_processing: bool,
-    /// Pre-parsed JSON value — set once in update() when response arrives, never in view()
     pub parsed_json: Option<serde_json::Value>,
-    /// WebSocket state
     pub ws: WsState,
-    /// collection_id + saved_request_id if this tab is linked to a saved request
     pub saved_as: Option<(String, String)>,
+    pub jobs: JobManager,
+    pub url_undo: Vec<String>,
 }
 
 impl RequestTabState {
@@ -89,7 +79,7 @@ impl RequestTabState {
             headers: Vec::new(),
             params: Vec::new(),
             body_type: BodyType::None,
-            body_editor: text_editor::Content::new(),
+            body_editor: make_code_editor("", "json"),
             form_fields: Vec::new(),
             auth_type: AuthType::None,
             bearer_token: String::new(),
@@ -114,16 +104,39 @@ impl RequestTabState {
             modified: false,
             console: Vec::new(),
             test_results: Vec::new(),
-            search_query: String::new(),
-            search_visible: false,
             body_indent_tabs: false,
-            json_raw_mode: false,
-            response_viewer: text_editor::Content::new(),
+            response_editor: make_code_editor("", "txt"),
             response_viewer_lines: 0,
             viewer_processing: false,
             parsed_json: None,
             saved_as: None,
+            jobs: JobManager::default(),
+            url_undo: Vec::new(),
         }
+    }
+
+    pub fn set_viewer_content(&mut self, text: &str, is_json: bool) {
+        self.response_viewer_lines = text.lines().count().max(1);
+        let syntax = if is_json { "json" } else { "txt" };
+        self.response_editor = make_code_editor(text, syntax);
+    }
+
+    pub fn reset_body_editor(&mut self, text: &str) {
+        let syntax = body_syntax(&self.body_type);
+        let indent = if self.body_indent_tabs {
+            iced_code_editor::IndentStyle::Tab
+        } else {
+            iced_code_editor::IndentStyle::Spaces(4)
+        };
+        let mut ed = make_code_editor(text, syntax);
+        ed.set_indent_style(indent);
+        self.body_editor = ed;
+    }
+
+    pub fn sync_editor_themes(&mut self) {
+        let style = crate::ui::theme::Palette::code_editor_style();
+        self.body_editor.set_theme(style);
+        self.response_editor.set_theme(style);
     }
 
     pub fn from_saved(req: &SavedRequest) -> Self {
@@ -134,7 +147,7 @@ impl RequestTabState {
         tab.headers = req.headers.clone();
         tab.params = req.params.clone();
         tab.body_type = req.body_type.clone();
-        tab.body_editor = text_editor::Content::with_text(&req.body);
+        tab.body_editor = make_code_editor(&req.body, body_syntax(&req.body_type));
         tab.form_fields = req.form_data_fields.clone();
         tab.auth_type = req.auth_type.clone();
         tab.bearer_token = req.bearer_token.clone();
@@ -153,6 +166,25 @@ impl RequestTabState {
         tab.saved_as = Some((req.collection_id.clone(), req.id.clone()));
         tab
     }
+}
+
+/// Syntax token for a given body type.
+pub fn body_syntax(body_type: &BodyType) -> &'static str {
+    match body_type {
+        BodyType::Json => "json",
+        _ => "txt",
+    }
+}
+
+/// Create a themed CodeEditor for the given content and syntax.
+pub fn make_code_editor(content: &str, syntax: &str) -> CodeEditor {
+    use crate::ui::theme::{Palette, MONO};
+    let mut ed = CodeEditor::new(content, syntax);
+    ed.set_theme(Palette::code_editor_style());
+    ed.set_font(MONO);
+    ed.set_font_size(12.0, true);
+    ed.set_indent_style(iced_code_editor::IndentStyle::Spaces(4));
+    ed
 }
 
 pub struct TabManager {
@@ -243,6 +275,10 @@ pub struct TabSnapshot {
     pub test_script: String,
     pub timeout_ms: u64,
     pub saved_as: Option<(String, String)>,
+    #[serde(default)]
+    pub active_request_tab: crate::message::RequestTab,
+    #[serde(default)]
+    pub active_response_tab: crate::message::ResponseTab,
 }
 
 fn default_jwt_algo() -> String { "HS256".to_owned() }
@@ -257,7 +293,7 @@ impl From<&RequestTabState> for TabSnapshot {
             headers: t.headers.clone(),
             params: t.params.clone(),
             body_type: t.body_type.clone(),
-            body: t.body_editor.text(),
+            body: t.body_editor.content(),
             form_fields: t.form_fields.clone(),
             auth_type: t.auth_type.clone(),
             bearer_token: t.bearer_token.clone(),
@@ -274,6 +310,8 @@ impl From<&RequestTabState> for TabSnapshot {
             test_script: t.test_editor.text(),
             timeout_ms: t.timeout_ms,
             saved_as: t.saved_as.clone(),
+            active_request_tab: t.active_request_tab.clone(),
+            active_response_tab: t.active_response_tab.clone(),
         }
     }
 }

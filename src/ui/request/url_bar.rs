@@ -7,8 +7,9 @@ use crate::{
     domain::request::HttpMethod,
     message::{Message, RequestMsg},
     state::tabs::RequestTabState,
-    ui::theme::Palette,
+    ui::{theme::Palette, icons},
 };
+
 
 pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     let methods: Vec<&str> = HttpMethod::all().iter().map(|m| m.as_str()).collect();
@@ -48,15 +49,12 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     .width(Length::Fill)
     .style(url_input_style);
 
-    let curl_btn = button(text("cURL").size(11).color(Palette::text_subtle()))
+    let curl_btn = button(icons::curl().size(11).color(Palette::text_subtle()))
         .on_press(Message::Request(RequestMsg::ExportCurl))
         .style(iced::widget::button::text)
         .padding([5, 6]);
 
-    let save_btn = button(text("Save").size(12))
-        .on_press(Message::Request(RequestMsg::SaveRequest))
-        .style(iced::widget::button::text)
-        .padding([5, 8]);
+  
 
     let send_btn = if tab.is_loading {
         button(
@@ -79,7 +77,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     };
 
     container(
-        row![method_picker, url_bar, curl_btn, save_btn, send_btn]
+        row![method_picker, url_bar,send_btn, curl_btn]
             .spacing(6)
             .align_y(iced::Alignment::Center)
             .padding([6, 10]),
@@ -108,7 +106,7 @@ fn url_input_style(
         background: Background::Color(Palette::surface_high()),
         border: Border {
             color: match status {
-                iced::widget::text_input::Status::Focused => Palette::accent(),
+                iced::widget::text_input::Status::Focused { .. } => Palette::accent(),
                 iced::widget::text_input::Status::Hovered => Palette::border(),
                 _ => Palette::border_subtle(),
             },

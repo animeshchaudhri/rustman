@@ -59,7 +59,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     }
 
     let search_input = text_input("Search requests, history, tabs…", &state.palette_query)
-        .id(iced::widget::text_input::Id::new("palette-search"))
+        .id("palette-search")
         .on_input(|s| Message::Palette(PaletteMsg::QueryChanged(s)))
         .size(14)
         .padding([10, 14])
@@ -77,7 +77,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         let row_el = button(
             row![
                 container(
-                    text(method).size(10).color(method_color).font(iced::Font::MONOSPACE)
+                    text(method).size(10).color(method_color).font(crate::ui::theme::MONO)
                 )
                 .width(50),
                 column![
@@ -100,7 +100,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
     let inner = column![
         search_input,
-        container(iced::widget::horizontal_rule(1)).padding([0, 0]),
+        container(iced::widget::rule::horizontal(1.0)).padding([0, 0]),
         scrollable(list).height(Length::Shrink),
     ]
     .spacing(0)
@@ -112,13 +112,13 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
     container(
         column![
-            iced::widget::Space::new(Length::Fill, Length::FillPortion(1)),
+            iced::widget::Space::new().width(Length::Fill).height(Length::FillPortion(1)),
             row![
-                iced::widget::Space::with_width(Length::Fill),
+                iced::widget::Space::new().width(Length::Fill),
                 modal,
-                iced::widget::Space::with_width(Length::Fill),
+                iced::widget::Space::new().width(Length::Fill),
             ],
-            iced::widget::Space::new(Length::Fill, Length::FillPortion(3)),
+            iced::widget::Space::new().width(Length::Fill).height(Length::FillPortion(3)),
         ]
     )
     .style(backdrop)

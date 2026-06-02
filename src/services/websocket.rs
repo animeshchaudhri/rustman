@@ -21,8 +21,6 @@ impl WsHandle {
     }
 }
 
-/// Connect to a WebSocket URL. Returns a handle for sending messages and a
-/// receiver for incoming events.
 pub async fn connect(url: String) -> Result<(WsHandle, mpsc::Receiver<WsEvent>), String> {
     let (stream, _) = connect_async(&url).await.map_err(|e| e.to_string())?;
     let (mut write, mut read) = stream.split();

@@ -6,7 +6,7 @@ use iced::{
 use crate::{
     message::{Message, RequestMsg},
     state::tabs::RequestTabState,
-    ui::theme::Palette,
+    ui::{icons, theme::Palette},
 };
 
 pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
@@ -36,25 +36,27 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     .align_y(iced::Alignment::Center)
     .padding([8, 10]);
 
+    let status_color = if ws.connected { Palette::SUCCESS } else { Palette::text_muted() };
     let status_bar = container(
-        text(if ws.connected {
-            "● Connected"
-        } else {
-            "○ Disconnected"
-        })
-        .size(11)
-        .color(if ws.connected { Palette::SUCCESS } else { Palette::text_muted() }),
+        row![
+            icons::dot(status_color),
+            text(if ws.connected { "Connected" } else { "Disconnected" })
+                .size(11)
+                .color(status_color),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center),
     )
     .padding([2, 12]);
 
     let mut feed = column![].spacing(2).padding([4, 8]);
     for msg in &ws.messages {
-        let label = if msg.is_outgoing { "→" } else { "←" };
+        let label = if msg.is_outgoing { icons::arrow_right() } else { icons::arrow_left() };
         let color = if msg.is_outgoing { Palette::accent() } else { Palette::SUCCESS };
         feed = feed.push(
             row![
-                text(label).size(11).color(color),
-                text(&msg.text).size(12).font(iced::Font::MONOSPACE),
+                label.size(11).color(color),
+                text(&msg.text).size(12).font(crate::ui::theme::MONO),
             ]
             .spacing(6),
         );

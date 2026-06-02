@@ -1,19 +1,19 @@
 use iced::{
-    widget::{button, column, container, horizontal_rule, row, scrollable, text, text_input},
+    widget::{button, column, container, row, scrollable, text, text_input},
     Background, Border, Color, Element, Length,
 };
 
 use crate::{
     app::AppState,
     message::{Message, SidebarMsg},
-    ui::theme::Palette,
+    ui::{icons, theme::Palette},
 };
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
     let action_bar = container(
         row![
             text("Environments").size(12).color(Palette::text_muted()),
-            iced::widget::Space::with_width(Length::Fill),
+            iced::widget::Space::new().width(Length::Fill),
             button(text("+ New").size(11).color(Palette::accent()))
                 .on_press(Message::Sidebar(SidebarMsg::EnvironmentCreated))
                 .style(iced::widget::button::text)
@@ -24,7 +24,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     )
     .width(Length::Fill);
 
-    let mut col = column![action_bar, horizontal_rule(1)].spacing(0);
+    let mut col = column![action_bar, iced::widget::rule::horizontal(1.0)].spacing(0);
 
     if state.environments.is_empty() {
         col = col.push(
@@ -45,7 +45,6 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         let is_active = env.is_active;
         let is_editing = state.sidebar.env_editing.as_deref() == Some(&env.id);
 
-        let activate_label = if is_active { "● Active" } else { "○ Use" };
         let activate_color = if is_active { Palette::SUCCESS } else { Palette::text_muted() };
         let edit_color = if is_editing { Palette::accent() } else { Palette::text_muted() };
 
@@ -60,15 +59,22 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                     .padding([3, 6])
                     .width(Length::Fill)
                     .style(name_input_style),
-                button(text(activate_label).size(10).color(activate_color))
+                button(
+                    row![
+                        icons::dot(activate_color),
+                        text(if is_active { "Active" } else { "Use" }).size(10).color(activate_color),
+                    ]
+                    .spacing(5)
+                    .align_y(iced::Alignment::Center),
+                )
                     .on_press(Message::Sidebar(SidebarMsg::EnvironmentSelected(env_id_act)))
                     .style(iced::widget::button::text)
                     .padding([2, 4]),
-                button(text("✎").size(11).color(edit_color))
+                button(icons::edit().size(11).color(edit_color))
                     .on_press(Message::Sidebar(SidebarMsg::EnvironmentToggleEdit(env_id_edit)))
                     .style(iced::widget::button::text)
                     .padding([2, 4]),
-                button(text("✕").size(10).color(Palette::text_muted()))
+                button(icons::close().size(10).color(Palette::text_muted()))
                     .on_press(Message::Sidebar(SidebarMsg::EnvironmentDeleted(env_id_del)))
                     .style(iced::widget::button::text)
                     .padding([2, 4]),
@@ -111,7 +117,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             col = col.push(preview);
         }
 
-        col = col.push(horizontal_rule(1));
+        col = col.push(iced::widget::rule::horizontal(1.0));
     }
 
     scrollable(col)
@@ -130,7 +136,7 @@ fn var_editor<'a>(
         row![
             text("Key").size(9).color(Palette::text_subtle()).width(Length::Fill),
             text("Value").size(9).color(Palette::text_subtle()).width(Length::Fill),
-            iced::widget::Space::with_width(20),
+            iced::widget::Space::new().width(20),
         ]
         .padding(iced::Padding { top: 3.0, right: 8.0, bottom: 3.0, left: 16.0 }),
     )
@@ -168,7 +174,7 @@ fn var_editor<'a>(
                     .padding([3, 4])
                     .width(Length::Fill)
                     .style(var_input_style),
-                button(text("✕").size(9).color(Palette::text_subtle()))
+                button(icons::close().size(9).color(Palette::text_subtle()))
                     .on_press(Message::Sidebar(SidebarMsg::EnvironmentVarRemoved(eid_r, i)))
                     .style(iced::widget::button::text)
                     .padding([2, 4]),
@@ -228,7 +234,7 @@ fn name_input_style(
         background: Background::Color(Color::TRANSPARENT),
         border: Border {
             color: match status {
-                iced::widget::text_input::Status::Focused => Palette::accent(),
+                iced::widget::text_input::Status::Focused { .. } => Palette::accent(),
                 _ => Color::TRANSPARENT,
             },
             width: 1.0,
@@ -249,7 +255,7 @@ fn var_input_style(
         background: Background::Color(Color::TRANSPARENT),
         border: Border {
             color: match status {
-                iced::widget::text_input::Status::Focused => Palette::accent(),
+                iced::widget::text_input::Status::Focused { .. } => Palette::accent(),
                 iced::widget::text_input::Status::Hovered => Palette::border_subtle(),
                 _ => Color::TRANSPARENT,
             },

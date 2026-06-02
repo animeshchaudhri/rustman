@@ -8,5 +8,5 @@ pub fn view(status: u16) -> Element<'static, Message> {
         400..=599 => Palette::ERROR,
         _ => Palette::text_muted(),
     };
-    text(status.to_string()).size(13).color(color).font(iced::Font::MONOSPACE).into()
+    text(status.to_string()).size(13).color(color).font(crate::ui::theme::MONO).into()
 }

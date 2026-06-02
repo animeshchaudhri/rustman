@@ -17,7 +17,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         col = col.push(
             text(format!("{prefix} {}", entry.message))
                 .size(12)
-                .font(iced::Font::MONOSPACE),
+                .font(crate::ui::theme::MONO),
         );
     }
     if tab.console.is_empty() {

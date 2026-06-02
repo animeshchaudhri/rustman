@@ -18,7 +18,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     let header = container(
         row![
             text("History").size(12).color(Palette::text_muted()),
-            iced::widget::Space::with_width(Length::Fill),
+            iced::widget::Space::new().width(Length::Fill),
             clear_btn,
         ]
         .align_y(iced::Alignment::Center)
@@ -40,7 +40,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         let item = button(
             column![
                 row![
-                    text(&entry.method).size(10).color(method_color).font(iced::Font::MONOSPACE),
+                    text(&entry.method).size(10).color(method_color).font(crate::ui::theme::MONO),
                     text(&entry.url).size(12).color(Palette::text()),
                 ]
                 .spacing(6)

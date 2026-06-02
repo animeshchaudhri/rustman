@@ -38,8 +38,7 @@ fn strip_curl_prefix(s: &str) -> &str {
     trimmed
 }
 
-// Expands `--flag=value` into ["--flag", "value"] so parse_tokens handles
-// a single canonical form rather than the `=` variant in every match arm.
+
 fn expand_long_flag_assignments(tokens: Vec<String>) -> Vec<String> {
     let mut out = Vec::with_capacity(tokens.len() + 4);
     for tok in tokens {
@@ -117,7 +116,6 @@ fn read_token(chars: &mut Peekable<Chars<'_>>) -> Option<String> {
                 had_content = true;
                 chars.next();
                 if chars.peek() == Some(&'\'') {
-                    // ANSI-C quoting $'...' — interpret escape sequences
                     chars.next();
                     loop {
                         match chars.next() {
@@ -315,8 +313,7 @@ fn append_body(body: &mut Option<String>, new_data: &str) {
     });
 }
 
-// Cookie attributes appear in Set-Cookie headers and sometimes get pasted
-// verbatim into -b arguments; we must not treat them as cookie name=value pairs.
+
 fn is_cookie_attribute(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
