@@ -11,7 +11,9 @@ path = "src/main.rs"
 
 [dependencies]
 # GUI
-iced = { version = "0.13", features = ["tokio", "advanced", "image", "svg"] }
+iced = { version = "0.14", features = ["tokio", "advanced", "image", "svg", "highlighter"] }
+# Full-featured code editor widget (line numbers, syntect highlight, selection, undo)
+iced-code-editor = "0.3.9"
 
 # HTTP
 reqwest = { version = "0.12", default-features = false, features = [
@@ -24,6 +26,8 @@ reqwest = { version = "0.12", default-features = false, features = [
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
+# Cooperative cancellation for background jobs (CancellationToken)
+tokio-util = "0.7"
 
 # WebSocket
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }
@@ -39,24 +43,13 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 # Git VCS for collections
 git2 = { version = "0.19", features = ["vendored-libgit2", "vendored-openssl"] }
 
-# Syntax highlighting
-tree-sitter = "0.23"
-tree-sitter-json = "0.23"
-tree-sitter-javascript = "0.23"
-
-# Script runner (pre-request / test scripts)
-rquickjs = { version = "0.11", features = ["futures"] }
-
-# gRPC
-tonic = "0.12"
-prost = "0.13"
-
 # Crypto (for JWT auth helper)
 base64 = "0.22"
 sha2 = "0.10"
 hmac = "0.12"
-hex = "0.4"
-rand = "0.8"
+
+# LRU cache for parsed response bodies
+lru = "0.12"
 
 # Misc
 uuid = { version = "1", features = ["v4"] }

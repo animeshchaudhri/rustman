@@ -6,7 +6,6 @@ use crate::domain::{
     request::{ApiKeyLocation, AuthType, BodyType, HttpMethod, KeyValue},
 };
 
-// ── OpenAPI 3.x deserialisation ───────────────────────────────────────────────
 
 #[derive(Deserialize)]
 struct OpenApiSpec {

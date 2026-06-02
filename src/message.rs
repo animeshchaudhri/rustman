@@ -72,7 +72,7 @@ pub enum RequestMsg {
     ParamRemoved(usize),
     // Body
     BodyTypeChanged(String),
-    BodyEdited(iced::widget::text_editor::Action),
+    BodyEdited(iced_code_editor::Message),
     FormFieldAdded,
     FormFieldRemoved(usize),
     FormFieldKeyChanged(usize, String),
@@ -111,6 +111,8 @@ pub enum RequestMsg {
     // Actions
     Send,
     Abort,
+    UndoUrl,
+    CopyBodyToClipboard,
     SaveRequest,
     ImportCurl(String),
     ExportCurl,
@@ -121,8 +123,9 @@ pub enum RequestMsg {
     CommentToggle,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
 pub enum RequestTab {
+    #[default]
     Params,
     Headers,
     Body,
@@ -136,18 +139,14 @@ pub enum RequestTab {
 #[derive(Debug, Clone)]
 pub enum ResponseMsg {
     TabSelected(ResponseTab),
-    BodyViewToggled,
-    SearchChanged(String),
-    ToggleSearch,
     CopyBody,
     CopyValue(String),
-    FormatBody,
-    ToggleJsonRaw,
-    ViewerAction(iced::widget::text_editor::Action),
+    ViewerEdited(iced_code_editor::Message),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
 pub enum ResponseTab {
+    #[default]
     Body,
     Headers,
     Cookies,
@@ -235,13 +234,38 @@ pub enum LayoutMsg {
 
 #[derive(Debug, Clone)]
 pub enum AppMsg {
-    HttpResponse(HttpResult),
+    /// A request completed. `generation` is the JobKind::Request stamp from the tab's
+    /// JobManager at spawn time; the result is applied only if it is still current.
+    HttpResponse { generation: u64, result: HttpResult },
     ScriptConsoleLog(String),
     AvatarLoaded(Vec<u8>),
     OpenUrl(String),
-    /// Large-body viewer content ready after background build
-    ViewerReady { tab_id: String, content_text: String, parsed_json: Option<Box<serde_json::Value>> },
+    /// Large-body viewer content ready after background build. `generation` is the
+    /// JobKind::Parse stamp; a stale build (superseded by a newer response) is dropped.
+    ViewerReady {
+        generation: u64,
+        tab_id: String,
+        content_text: String,
+        parsed_json: Option<Box<serde_json::Value>>,
+    },
+    /// Background pretty-print finished. Applied only if the JobKind::Format
+    /// `generation` is still current for the tab.
+    Formatted {
+        generation: u64,
+        tab_id: String,
+        target: FormatTarget,
+        text: String,
+    },
+    /// Window is closing — persist session before the process exits.
+    WindowCloseRequested(iced::window::Id),
     Noop,
+}
+
+/// Which buffer a background [`AppMsg::Formatted`] result should be written to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FormatTarget {
+    RequestBody,
+    ResponseBody,
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -252,6 +276,4 @@ pub enum SettingsMsg {
     EmailChanged(String),
     WebsiteChanged(String),
     AccentChanged(usize),
-    ThemeDark,
-    ThemeLight,
 }

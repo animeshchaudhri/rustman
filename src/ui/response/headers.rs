@@ -34,7 +34,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
                             text(format!("{}", i + 1))
                                 .size(10)
                                 .color(Palette::text_subtle())
-                                .font(iced::Font::MONOSPACE),
+                                .font(crate::ui::theme::MONO),
                         )
                         .width(32)
                         .padding([2, 4]),
@@ -42,7 +42,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
                             text(key)
                                 .size(11)
                                 .color(Palette::accent())
-                                .font(iced::Font::MONOSPACE),
+                                .font(crate::ui::theme::MONO),
                         )
                         .width(200)
                         .padding([2, 4]),
@@ -50,7 +50,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
                             text(val)
                                 .size(11)
                                 .color(Palette::text())
-                                .font(iced::Font::MONOSPACE),
+                                .font(crate::ui::theme::MONO),
                         )
                         .width(Length::Fill)
                         .padding([2, 4]),

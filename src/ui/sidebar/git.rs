@@ -1,12 +1,12 @@
 use iced::{
-    widget::{button, column, container, horizontal_rule, row, scrollable, text, Space},
+    widget::{button, column, container, row, scrollable, text, Space},
     Background, Border, Color, Element, Length,
 };
 
 use crate::{
     app::AppState,
     message::{GitMsg, Message},
-    ui::theme::Palette,
+    ui::{icons, theme::Palette},
 };
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
@@ -33,8 +33,8 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
     let commit_btn = button(
         row![
-            text("◉").size(10).color(Palette::accent()),
-            text(" Commit all").size(11).color(Palette::text()),
+            icons::git_branch().size(12).color(Palette::accent()),
+            text("Commit all").size(11).color(Palette::text()),
         ]
         .spacing(4)
         .align_y(iced::Alignment::Center),
@@ -81,7 +81,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     let log_header = container(
         row![
             text("Commit Log").size(10).color(Palette::text_muted()),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             text(format!("{} commits", state.git_log.len()))
                 .size(10)
                 .color(Palette::text_subtle()),
@@ -118,7 +118,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                             text(hash_owned)
                                 .size(10)
                                 .color(Palette::accent())
-                                .font(iced::Font::MONOSPACE),
+                                .font(crate::ui::theme::MONO),
                             text(" · ").size(10).color(Palette::text_subtle()),
                             text(ts_owned).size(10).color(Palette::text_subtle()),
                         ]
@@ -157,14 +157,14 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     scrollable(
         column![
             col_picker,
-            horizontal_rule(1),
+            iced::widget::rule::horizontal(1.0),
             action_row,
-            horizontal_rule(1),
+            iced::widget::rule::horizontal(1.0),
             status_section,
-            horizontal_rule(1),
+            iced::widget::rule::horizontal(1.0),
             log_header,
             log_col,
-            horizontal_rule(1),
+            iced::widget::rule::horizontal(1.0),
             note,
         ]
         .spacing(0),

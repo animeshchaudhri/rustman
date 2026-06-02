@@ -1,5 +1,5 @@
 use iced::{
-    widget::{button, column, container, row, scrollable, text, text_editor, text_input, Space},
+    widget::{button, column, container, row, scrollable, text, text_input, Space},
     Background, Border, Color, Element, Length,
 };
 
@@ -7,7 +7,7 @@ use crate::{
     domain::request::{BodyType, FormField, FormFieldType},
     message::{Message, RequestMsg},
     state::tabs::RequestTabState,
-    ui::{theme::Palette, widgets::json_highlighter::{JsonHighlighter, JsonHighlightSettings}},
+    ui::{icons, theme::Palette},
 };
 
 pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
@@ -23,7 +23,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     let body_panel: Element<Message> = match tab.body_type {
         BodyType::None => container(
             column![
-                Space::new(0, 20),
+                Space::new().height(20),
                 text("No body").size(13).color(Palette::text_subtle()),
                 text("Select JSON, Text, or Form to add a body")
                     .size(11)
@@ -38,29 +38,13 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
 
         BodyType::Json | BodyType::Text => {
             let is_json = matches!(tab.body_type, BodyType::Json);
-            let line_count = tab.body_editor.text().lines().count().max(1);
-
-            let mut line_nums = column![].spacing(0);
-            for n in 1..=(line_count + 1) {
-                line_nums = line_nums.push(
-                    container(
-                        text(format!("{n}"))
-                            .size(12)
-                            .color(Palette::text_subtle())
-                            .font(iced::Font::MONOSPACE),
-                    )
-                    .padding(iced::Padding { top: 0.0, right: 6.0, bottom: 0.0, left: 6.0 })
-                    .width(40),
-                );
-            }
-
             let indent_label = if tab.body_indent_tabs { "Tabs" } else { "Spaces" };
             let toolbar = container(
                 row![
                     text(if is_json { "JSON" } else { "Text" })
                         .size(10)
                         .color(if is_json { Palette::accent() } else { Palette::text_muted() }),
-                    Space::with_width(Length::Fill),
+                    Space::new().width(Length::Fill),
                     button(
                         text(format!("Indent: {indent_label}"))
                             .size(10)
@@ -79,7 +63,6 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
                             .style(iced::widget::button::text)
                             .padding([2, 0])
                     },
-                    text(format!("{line_count}L")).size(10).color(Palette::text_subtle()),
                 ]
                 .spacing(8)
                 .align_y(iced::Alignment::Center)
@@ -101,41 +84,11 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
             })
             .width(Length::Fill);
 
-            let editor_row = row![
-                container(scrollable(line_nums).style(crate::ui::theme::thin_scrollbar))
-                    .style(|_| iced::widget::container::Style {
-                        background: Some(Background::Color(Color {
-                            r: 0.065,
-                            g: 0.065,
-                            b: 0.075,
-                            a: 1.0,
-                        })),
-                        border: Border {
-                            color: Palette::border_subtle(),
-                            width: 0.0,
-                            radius: 0.0.into(),
-                        },
-                        ..Default::default()
-                    })
-                    .width(44)
-                    .height(Length::Fill),
-                text_editor(&tab.body_editor)
-                    .on_action(|a| Message::Request(RequestMsg::BodyEdited(a)))
-                    .height(Length::Fill)
-                    .font(iced::Font::MONOSPACE)
-                    .style(editor_style)
-                    .highlight_with::<JsonHighlighter>(
-                        JsonHighlightSettings { enabled: is_json },
-                        |h, _theme| iced::advanced::text::highlighter::Format {
-                            color: Some(h.color()),
-                            font: None,
-                        },
-                    ),
-            ]
-            .spacing(0)
-            .height(Length::Fill);
+            let editor: Element<Message> = tab.body_editor
+                .view()
+                .map(|m| Message::Request(RequestMsg::BodyEdited(m)));
 
-            column![toolbar, editor_row].spacing(0).height(Length::Fill).into()
+            column![toolbar, editor].spacing(0).height(Length::Fill).into()
         }
 
         BodyType::FormData => form_data_view(&tab.form_fields),
@@ -215,7 +168,7 @@ fn form_data_view(fields: &[FormField]) -> Element<'_, Message> {
                     .padding([4, 6])
                     .width(120),
                 value_widget,
-                button(text("✕").size(10).color(Palette::text_muted()))
+                button(icons::close().size(10).color(Palette::text_muted()))
                     .on_press(Message::Request(RequestMsg::FormFieldRemoved(i)))
                     .style(iced::widget::button::text)
                     .padding([3, 6]),
@@ -275,20 +228,3 @@ fn type_btn_style(
     }
 }
 
-fn editor_style(
-    _theme: &iced::Theme,
-    _status: iced::widget::text_editor::Status,
-) -> iced::widget::text_editor::Style {
-    iced::widget::text_editor::Style {
-        background: Background::Color(Color { r: 0.07, g: 0.07, b: 0.08, a: 1.0 }),
-        border: Border {
-            color: Color::TRANSPARENT,
-            width: 0.0,
-            radius: 0.0.into(),
-        },
-        icon: Palette::text_muted(),
-        placeholder: Palette::text_subtle(),
-        value: Palette::text(),
-        selection: Color { r: Palette::accent().r, g: Palette::accent().g, b: Palette::accent().b, a: 0.25 },
-    }
-}

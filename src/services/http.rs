@@ -43,7 +43,6 @@ fn make_jwt(subject: &str, secret: &str) -> Result<String, String> {
     Ok(format!("{signing_input}.{sig}"))
 }
 
-// Bodies ≤ 10 MB are stored inline; larger bodies are left empty and flagged body_stored.
 const INLINE_BODY_THRESHOLD: usize = 10_000_000;
 
 #[derive(Debug, Clone)]

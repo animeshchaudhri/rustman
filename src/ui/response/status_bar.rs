@@ -35,7 +35,7 @@ pub fn view(resp: &HttpResponse) -> Element<'static, Message> {
         status_pill(status_label, pill_fg, pill_bg),
         meta_chip(dur_str),
         meta_chip(size_str),
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
     ]
     .spacing(8)
     .padding([6, 12])
@@ -61,7 +61,7 @@ fn status_pill(label: String, fg: Color, bg: Color) -> Element<'static, Message>
         text(label)
             .size(11)
             .color(fg)
-            .font(iced::Font::MONOSPACE),
+            .font(crate::ui::theme::MONO),
     )
     .style(move |_| iced::widget::container::Style {
         background: Some(Background::Color(bg)),

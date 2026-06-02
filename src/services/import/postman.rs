@@ -5,7 +5,6 @@ use crate::domain::{
     request::{ApiKeyLocation, AuthType, BodyType, FormField, FormFieldType, HttpMethod, KeyValue},
 };
 
-// ── Postman v2.1 deserialisation ──────────────────────────────────────────────
 
 #[derive(Deserialize)]
 struct PostmanCollection {

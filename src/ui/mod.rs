@@ -1,5 +1,7 @@
 pub mod command_palette;
+pub mod icons;
 pub mod layout;
+pub mod styles;
 pub mod request;
 pub mod response;
 pub mod sidebar;

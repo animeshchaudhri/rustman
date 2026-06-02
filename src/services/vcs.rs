@@ -7,7 +7,6 @@ use crate::domain::collection::{Collection, SavedRequest};
 
 const COLLECTIONS_DIR: &str = "collections";
 
-/// Initialise or open the git repository used for collection storage.
 pub fn open_repo(data_dir: &PathBuf) -> Result<Repository, String> {
     let repo_path = data_dir.join(COLLECTIONS_DIR);
     std::fs::create_dir_all(&repo_path).map_err(|e| e.to_string())?;

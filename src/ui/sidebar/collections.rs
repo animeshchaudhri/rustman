@@ -1,50 +1,33 @@
 use iced::{
-    widget::{button, column, container, horizontal_rule, row, scrollable, text, Space},
+    widget::{button, column, container, row, scrollable, text, Space},
     Background, Border, Color, Element, Length,
 };
 
 use crate::{
     app::AppState,
-    message::{Message, SidebarMsg},
-    ui::theme::Palette,
+    message::{ImportMsg, Message, SidebarMsg},
+    ui::{icons, theme::Palette},
 };
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
     let action_bar = container(
         row![
             text("Collections").size(11).color(Palette::text_muted()),
-            Space::with_width(Length::Fill),
-            button(
-                row![
-                    text("+").size(12).color(Palette::accent()),
-                    text(" New").size(11).color(Palette::text_muted()),
-                ]
-                .spacing(2)
-                .align_y(iced::Alignment::Center),
-            )
-            .on_press(Message::Sidebar(SidebarMsg::NewCollection))
-            .style(|_t, s| iced::widget::button::Style {
-                background: if matches!(s, iced::widget::button::Status::Hovered) {
-                    Some(Background::Color(Palette::surface_high()))
-                } else {
-                    None
-                },
-                text_color: Palette::text_muted(),
-                border: Border { radius: 4.0.into(), ..Default::default() },
-                ..Default::default()
-            })
-            .padding([3, 8]),
+            Space::new().width(Length::Fill),
+            icon_btn_only(icons::import(), "Import Postman/OpenAPI", Message::Import(ImportMsg::OpenPostmanDialog)),
+            icon_btn_only(icons::plus(), "New Collection", Message::Sidebar(SidebarMsg::NewCollection)),
         ]
         .align_y(iced::Alignment::Center)
-        .padding([6, 8]),
+        .spacing(2)
+        .padding([4, 6]),
     )
     .width(Length::Fill);
 
-    let mut col = column![action_bar, horizontal_rule(1)].spacing(0);
+    let mut col = column![action_bar, iced::widget::rule::horizontal(1.0)].spacing(0);
 
     for collection in &state.collections {
         let is_expanded = state.sidebar.expanded.contains(&collection.id);
-        let arrow = if is_expanded { "▼" } else { "▶" };
+        let arrow = if is_expanded { icons::chevron_down() } else { icons::chevron_right() };
 
         let col_id = collection.id.clone();
         let col_id_del = collection.id.clone();
@@ -52,7 +35,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         let header = row![
             button(
                 row![
-                    text(arrow).size(9).color(Palette::text_muted()),
+                    arrow.size(10).color(Palette::text_muted()),
                     text(&collection.name).size(12).color(Palette::text()),
                 ]
                 .spacing(6)
@@ -70,7 +53,18 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             })
             .width(Length::Fill)
             .padding([5, 8]),
-            button(text("×").size(12).color(Palette::text_subtle()))
+            button(icons::export().size(11))
+                .on_press(Message::Import(ImportMsg::ExportCollection(col_id_del.clone())))
+                .style(|_t, s| iced::widget::button::Style {
+                    text_color: if matches!(s, iced::widget::button::Status::Hovered) {
+                        Palette::accent()
+                    } else {
+                        Color::TRANSPARENT
+                    },
+                    ..Default::default()
+                })
+                .padding([3, 4]),
+            button(icons::close().size(12))
                 .on_press(Message::Sidebar(SidebarMsg::DeleteCollection(col_id_del)))
                 .style(|_t, s| iced::widget::button::Style {
                     background: if matches!(s, iced::widget::button::Status::Hovered) {
@@ -81,7 +75,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                     text_color: if matches!(s, iced::widget::button::Status::Hovered) {
                         Palette::ERROR
                     } else {
-                        Palette::text_subtle()
+                        Color::TRANSPARENT
                     },
                     border: Border { radius: 3.0.into(), ..Default::default() },
                     ..Default::default()
@@ -123,7 +117,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                                 text(req.method.as_str())
                                     .size(9)
                                     .color(method_color)
-                                    .font(iced::Font::MONOSPACE),
+                                    .font(crate::ui::theme::MONO),
                             )
                             .width(32),
                             text(&req.name).size(12).color(Palette::text()),
@@ -135,7 +129,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                     .style(move |t, s| req_item_style(t, s, is_selected))
                     .width(Length::Fill)
                     .padding(iced::Padding { top: 4.0, right: 4.0, bottom: 4.0, left: 24.0 }),
-                    button(text("×").size(11).color(Palette::text_subtle()))
+                    button(icons::close().size(11))
                         .on_press(Message::Sidebar(SidebarMsg::DeleteRequest {
                             id: req_id,
                             collection_id: col_id,
@@ -149,7 +143,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                             text_color: if matches!(s, iced::widget::button::Status::Hovered) {
                                 Palette::ERROR
                             } else {
-                                Palette::text_subtle()
+                                Color::TRANSPARENT
                             },
                             border: Border { radius: 3.0.into(), ..Default::default() },
                             ..Default::default()
@@ -190,6 +184,22 @@ fn method_color(method: &str) -> iced::Color {
         "DELETE" => Palette::DELETE,
         _ => Palette::HEAD,
     }
+}
+
+fn icon_btn_only(icon: iced::widget::Text<'static>, _tooltip: &str, msg: Message) -> iced::Element<'static, Message> {
+    button(icon.size(13).color(Palette::text_muted()))
+        .on_press(msg)
+        .style(|_t, s| iced::widget::button::Style {
+            background: if matches!(s, iced::widget::button::Status::Hovered) {
+                Some(Background::Color(Palette::surface_high()))
+            } else {
+                None
+            },
+            border: Border { radius: 4.0.into(), ..Default::default() },
+            ..Default::default()
+        })
+        .padding([4, 6])
+        .into()
 }
 
 fn req_item_style(
