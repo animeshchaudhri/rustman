@@ -22,6 +22,7 @@ reqwest = { version = "0.12", default-features = false, features = [
     "multipart",
     "stream",
     "rustls-tls",
+    "rustls-tls-native-roots",
 ] }
 
 # Async runtime
@@ -51,6 +52,13 @@ hmac = "0.12"
 # LRU cache for parsed response bodies
 lru = "0.12"
 
+# In-app self-update: reuses the existing (ring-based) reqwest to fetch a release
+# asset, then extracts + atomically swaps the binary. All pure-Rust, no C toolchain.
+self-replace = "1"
+flate2 = "1"
+tar = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
 # Misc
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
@@ -58,8 +66,14 @@ dirs = "5"
 open = "5"
 rfd = "0.14"
 
+[patch.crates-io]
+iced-code-editor = { path = "vendor/iced-code-editor" }
+
 [profile.release]
 strip = true
 lto = true
 codegen-units = 1
 opt-level = 3
+# Drop unwinding tables/landing pads for a smaller binary. A panic aborts the
+# process instead of unwinding (no per-task isolation) — revert if that bites.
+panic = "abort"

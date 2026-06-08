@@ -1,0 +1,14 @@
+# Traducciones en español
+search:
+  placeholder: "Buscar..."
+  close_tooltip: "Cerrar búsqueda (Esc)"
+  previous_match_tooltip: "Coincidencia anterior (Mayús+F3)"
+  next_match_tooltip: "Siguiente coincidencia (F3 / Enter)"
+
+replace:
+  placeholder: "Reemplazar..."
+  current_tooltip: "Reemplazar coincidencia actual"
+  all_tooltip: "Reemplazar todo"
+
+settings:
+  case_sensitive_label: "Distinguir mayúsculas"

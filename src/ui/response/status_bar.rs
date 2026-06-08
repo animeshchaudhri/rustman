@@ -7,15 +7,13 @@ use crate::{domain::response::HttpResponse, message::Message, ui::theme::Palette
 
 pub fn view(resp: &HttpResponse) -> Element<'static, Message> {
     if resp.status == 0 {
-        let err = resp
-            .error
-            .clone()
-            .unwrap_or_else(|| "Unknown error".to_owned());
+        // Transport failure (no HTTP status). Keep the bar to just the indicator;
+        // the full cause is shown in the response body.
         return row![
             status_pill("ERR".to_owned(), Palette::ERROR, Color { r: 0.15, g: 0.05, b: 0.05, a: 1.0 }),
-            text(err).size(12).color(Palette::text_muted()),
+            Space::new().width(Length::Fill),
         ]
-        .spacing(10)
+        .spacing(8)
         .padding([6, 12])
         .align_y(iced::Alignment::Center)
         .into();
@@ -24,7 +22,7 @@ pub fn view(resp: &HttpResponse) -> Element<'static, Message> {
     let (pill_fg, pill_bg) = status_colors(resp.status);
     let status_label = format!("{} {}", resp.status, resp.status_text);
 
-    let dur_str = format!("{}ms", resp.duration_ms);
+    let dur_str = format_duration(resp.duration_ms);
     let size_str = if resp.body_size < 1024 {
         format!("{} B", resp.body_size)
     } else {
@@ -41,6 +39,14 @@ pub fn view(resp: &HttpResponse) -> Element<'static, Message> {
     .padding([6, 12])
     .align_y(iced::Alignment::Center)
     .into()
+}
+
+fn format_duration(ms: u64) -> String {
+    if ms < 1000 {
+        format!("{ms} ms")
+    } else {
+        format!("{:.2} s", ms as f64 / 1000.0)
+    }
 }
 
 fn status_colors(code: u16) -> (Color, Color) {

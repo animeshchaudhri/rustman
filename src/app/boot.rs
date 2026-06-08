@@ -60,9 +60,11 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
                 t.id = snap.id;
                 t.title = snap.title;
                 t.method = snap.method;
-                t.url = snap.url;
+                let (url, params) =
+                    crate::domain::request::reconcile_url_params(&snap.url, &snap.params);
+                t.url = url;
                 t.headers = snap.headers;
-                t.params = snap.params;
+                t.params = params;
                 t.body_type = snap.body_type.clone();
                 t.body_editor = make_code_editor(&snap.body, body_syntax(&snap.body_type));
                 t.form_fields = snap.form_fields;
@@ -123,6 +125,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         theme_is_dark: true,
         panel_split: 5,
         ui_scale: 1.0,
+        update: crate::app::UpdateState::Idle,
     };
 
     let avatar_task = Task::perform(
@@ -138,5 +141,14 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         },
     );
 
-    (state, avatar_task)
+ 
+    let update_task = Task::perform(
+        crate::services::update::check(),
+        |res| match res {
+            Ok(opt) => Message::Update(crate::message::UpdateMsg::Checked(Ok(opt))),
+            Err(_) => Message::App(AppMsg::Noop),
+        },
+    );
+
+    (state, Task::batch([avatar_task, update_task]))
 }

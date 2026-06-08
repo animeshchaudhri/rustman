@@ -1,0 +1,14 @@
+# Traduções em português europeu
+search:
+  placeholder: "Pesquisar..."
+  close_tooltip: "Fechar diálogo de pesquisa (Esc)"
+  previous_match_tooltip: "Correspondência anterior (Shift+F3)"
+  next_match_tooltip: "Próxima correspondência (F3 / Enter)"
+
+replace:
+  placeholder: "Substituir..."
+  current_tooltip: "Substituir correspondência actual"
+  all_tooltip: "Substituir tudo"
+
+settings:
+  case_sensitive_label: "Diferenciar maiúsculas"

@@ -1,0 +1,14 @@
+# English translations
+search:
+  placeholder: "Search..."
+  close_tooltip: "Close search dialog (Esc)"
+  previous_match_tooltip: "Previous match (Shift+F3)"
+  next_match_tooltip: "Next match (F3 / Enter)"
+
+replace:
+  placeholder: "Replace..."
+  current_tooltip: "Replace current match"
+  all_tooltip: "Replace all matches"
+
+settings:
+  case_sensitive_label: "Case sensitive"

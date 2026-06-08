@@ -5,7 +5,7 @@ use iced::{
 
 use crate::{
     app::AppState,
-    message::{Message, RequestTab, ResponseTab, SidebarMsg, SidebarPanel},
+    message::{Message, RequestMsg, RequestTab, ResponseTab, SidebarMsg, SidebarPanel},
     ui::{icons, request, response, sidebar, theme::Palette},
 };
 
@@ -17,7 +17,11 @@ mod tab_bar;
 use style::{icon_btn_style, icon_rail_style, sidebar_style, surface_style};
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
-    let root = row![left_panel(state), main_area(state)].height(Length::Fill);
+    let main = row![left_panel(state), main_area(state)].height(Length::Fill);
+    let root: Element<Message> = match crate::ui::update_banner::view(state) {
+        Some(banner) => column![banner, main].into(),
+        None => main.into(),
+    };
 
     if state.palette_open {
         iced::widget::stack![root, crate::ui::command_palette::view(state)].into()
@@ -26,7 +30,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     } else if state.curl_modal_open {
         iced::widget::stack![root, dialogs::curl_modal(state)].into()
     } else {
-        root.into()
+        root
     }
 }
 
@@ -152,20 +156,32 @@ fn main_area(state: &AppState) -> Element<'_, Message> {
     .width(Length::Fill)
     .padding(2);
 
+    // One guard over the whole editor so Cmd/Ctrl+Z works in the URL bar, headers,
+    // params and auth fields alike. Inactive while a code editor is focused so the
+    // body/response editors keep their own undo. Guard delegates layout, so this
+    // doesn't change the panel proportions.
+    let editors_focused = active_tab.body_editor.has_keyboard_focus()
+        || active_tab.response_editor.has_keyboard_focus();
+
     container(
-        column![
-            tab_bar::multi_tab_bar(state),
-            iced::widget::rule::horizontal(1.0),
-            url_bar,
-            iced::widget::rule::horizontal(1.0),
-            request_panel,
-            iced::widget::rule::horizontal(1.0),
-            response_panel,
-            iced::widget::rule::horizontal(1.0),
-            status_bar::status_bar(state),
-        ]
-        .spacing(0)
-        .height(Length::Fill),
+        crate::ui::widgets::key_guard::key_guard(
+            column![
+                tab_bar::multi_tab_bar(state),
+                iced::widget::rule::horizontal(1.0),
+                url_bar,
+                iced::widget::rule::horizontal(1.0),
+                request_panel,
+                iced::widget::rule::horizontal(1.0),
+                response_panel,
+                iced::widget::rule::horizontal(1.0),
+                status_bar::status_bar(state),
+            ]
+            .spacing(0)
+            .height(Length::Fill),
+            !editors_focused,
+            Message::Request(RequestMsg::Undo),
+            Message::Request(RequestMsg::Redo),
+        ),
     )
     .width(Length::Fill)
     .height(Length::Fill)

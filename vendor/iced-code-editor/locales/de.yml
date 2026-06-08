@@ -1,0 +1,14 @@
+# Deutsche Übersetzungen
+search:
+  placeholder: "Suchen..."
+  close_tooltip: "Suchdialog schließen (Esc)"
+  previous_match_tooltip: "Vorheriger Treffer (Umschalt+F3)"
+  next_match_tooltip: "Nächster Treffer (F3 / Enter)"
+
+replace:
+  placeholder: "Ersetzen..."
+  current_tooltip: "Aktuellen Treffer ersetzen"
+  all_tooltip: "Alle ersetzen"
+
+settings:
+  case_sensitive_label: "Groß-/Kleinschreibung"

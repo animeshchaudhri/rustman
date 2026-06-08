@@ -66,7 +66,54 @@ pub struct RequestTabState {
     pub ws: WsState,
     pub saved_as: Option<(String, String)>,
     pub jobs: JobManager,
-    pub url_undo: Vec<String>,
+    pub undo: Vec<EditSnapshot>,
+    pub redo: Vec<EditSnapshot>,
+    pub last_edit: Option<EditKind>,
+    pub headers_bulk: Option<text_editor::Content>,
+    pub params_bulk: Option<text_editor::Content>,
+}
+
+/// Identifies the field an edit targets, so a run of keystrokes in one field
+/// coalesces into a single undo entry instead of one per character.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditKind {
+    Url,
+    HeaderKey(usize),
+    HeaderValue(usize),
+    ParamKey(usize),
+    ParamValue(usize),
+    HeadersBulk,
+    ParamsBulk,
+    Bearer,
+    BasicUser,
+    BasicPass,
+    ApiKeyName,
+    ApiKeyValue,
+    Cookie,
+    JwtSecret,
+    JwtSubject,
+    JwtAlgo,
+}
+
+/// A restorable checkpoint of the text-editable request fields. The body and
+/// script editors are excluded — they manage their own undo history.
+#[derive(Clone)]
+pub struct EditSnapshot {
+    url: String,
+    method: HttpMethod,
+    params: Vec<KeyValue>,
+    headers: Vec<KeyValue>,
+    auth_type: AuthType,
+    bearer_token: String,
+    basic_user: String,
+    basic_pass: String,
+    api_key_name: String,
+    api_key_value: String,
+    api_key_location: ApiKeyLocation,
+    cookie_string: String,
+    jwt_secret: String,
+    jwt_subject: String,
+    jwt_algo: String,
 }
 
 impl RequestTabState {
@@ -111,8 +158,61 @@ impl RequestTabState {
             parsed_json: None,
             saved_as: None,
             jobs: JobManager::default(),
-            url_undo: Vec::new(),
+            undo: Vec::new(),
+            redo: Vec::new(),
+            last_edit: None,
+            headers_bulk: None,
+            params_bulk: None,
         }
+    }
+
+    /// Capture the text-editable fields for the undo history.
+    pub fn edit_snapshot(&self) -> EditSnapshot {
+        EditSnapshot {
+            url: self.url.clone(),
+            method: self.method.clone(),
+            params: self.params.clone(),
+            headers: self.headers.clone(),
+            auth_type: self.auth_type.clone(),
+            bearer_token: self.bearer_token.clone(),
+            basic_user: self.basic_user.clone(),
+            basic_pass: self.basic_pass.clone(),
+            api_key_name: self.api_key_name.clone(),
+            api_key_value: self.api_key_value.clone(),
+            api_key_location: self.api_key_location.clone(),
+            cookie_string: self.cookie_string.clone(),
+            jwt_secret: self.jwt_secret.clone(),
+            jwt_subject: self.jwt_subject.clone(),
+            jwt_algo: self.jwt_algo.clone(),
+        }
+    }
+
+    /// Restore a snapshot produced by [`Self::edit_snapshot`].
+    pub fn restore_edit(&mut self, s: EditSnapshot) {
+        self.url = s.url;
+        self.method = s.method;
+        self.params = s.params;
+        self.headers = s.headers;
+        self.auth_type = s.auth_type;
+        self.bearer_token = s.bearer_token;
+        self.basic_user = s.basic_user;
+        self.basic_pass = s.basic_pass;
+        self.api_key_name = s.api_key_name;
+        self.api_key_value = s.api_key_value;
+        self.api_key_location = s.api_key_location;
+        self.cookie_string = s.cookie_string;
+        self.jwt_secret = s.jwt_secret;
+        self.jwt_subject = s.jwt_subject;
+        self.jwt_algo = s.jwt_algo;
+    }
+
+    /// Push the current state onto the undo stack (capped) and clear the redo stack.
+    pub fn push_undo(&mut self) {
+        self.undo.push(self.edit_snapshot());
+        if self.undo.len() > 200 {
+            self.undo.remove(0);
+        }
+        self.redo.clear();
     }
 
     pub fn set_viewer_content(&mut self, text: &str, is_json: bool) {
@@ -133,6 +233,17 @@ impl RequestTabState {
         self.body_editor = ed;
     }
 
+    /// Replace the whole body through the editor's edit history (select-all +
+    /// paste) so the change stays undoable, instead of rebuilding the editor.
+    pub fn replace_body_text(&mut self, text: String) -> iced::Task<iced_code_editor::Message> {
+        if text.is_empty() {
+            self.reset_body_editor(&text);
+            return iced::Task::none();
+        }
+        let _ = self.body_editor.update(&iced_code_editor::Message::SelectAll);
+        self.body_editor.update(&iced_code_editor::Message::Paste(text))
+    }
+
     pub fn sync_editor_themes(&mut self) {
         let style = crate::ui::theme::Palette::code_editor_style();
         self.body_editor.set_theme(style);
@@ -143,9 +254,10 @@ impl RequestTabState {
         let mut tab = Self::new();
         tab.title = req.name.clone();
         tab.method = req.method.clone();
-        tab.url = req.url.clone();
+        let (url, params) = crate::domain::request::reconcile_url_params(&req.url, &req.params);
+        tab.url = url;
         tab.headers = req.headers.clone();
-        tab.params = req.params.clone();
+        tab.params = params;
         tab.body_type = req.body_type.clone();
         tab.body_editor = make_code_editor(&req.body, body_syntax(&req.body_type));
         tab.form_fields = req.form_data_fields.clone();

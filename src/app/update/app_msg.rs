@@ -139,8 +139,9 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 if tab.jobs.is_current(JobKind::Format, generation) {
                     match target {
                         FormatTarget::RequestBody => {
-                            tab.reset_body_editor(&text);
                             tab.modified = true;
+                            return tab.replace_body_text(text)
+                                .map(|m| Message::Request(crate::message::RequestMsg::BodyEdited(m)));
                         }
                         FormatTarget::ResponseBody => {
                             if let Some(r) = tab.response.as_mut() {

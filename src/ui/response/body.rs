@@ -14,7 +14,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         return loading_view();
     }
 
-    if tab.response.is_none() {
+    let Some(resp) = tab.response.as_ref() else {
         return container(
             text("Send a request to see the response.").size(13).color(Palette::text_muted()),
         )
@@ -22,6 +22,10 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         .width(Length::Fill)
         .height(Length::Fill)
         .into();
+    };
+
+    if let Some(err) = &resp.error {
+        return error_view(err);
     }
 
     let toolbar = container(
@@ -57,6 +61,26 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     column![toolbar, body]
         .spacing(0)
         .height(Length::Fill)
+        .into()
+}
+
+fn error_view(err: &str) -> Element<'static, Message> {
+    let card = container(
+        column![
+            text("Request failed").size(14).color(Palette::ERROR),
+            text(err.to_owned()).size(12).color(Palette::text_muted()),
+        ]
+        .spacing(8)
+        .align_x(iced::Alignment::Center),
+    )
+    .max_width(560);
+
+    container(card)
+        .padding([24, 24])
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
         .into()
 }
 

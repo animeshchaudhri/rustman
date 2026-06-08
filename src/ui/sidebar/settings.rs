@@ -6,7 +6,8 @@ use iced::{
 const LOGO_SVG: &[u8] = include_bytes!("../../../public/rustman-logo.svg");
 
 use crate::{
-    message::{AppMsg, ImportMsg, Message, SettingsMsg},
+    app::UpdateState,
+    message::{AppMsg, ImportMsg, Message, SettingsMsg, UpdateMsg},
     ui::{icons, theme::{Palette, ACCENT_PALETTE}},
 };
 
@@ -23,11 +24,12 @@ pub fn view(state: &crate::app::AppState) -> Element<'_, Message> {
         state.accent_idx,
     ));
     let appearance = card(build_appearance(state.accent_idx));
+    let updates = card(build_updates(&state.update));
     let shortcuts = card(build_shortcuts());
     let footer = build_footer();
 
     scrollable(
-        column![header, profile, appearance, shortcuts, footer]
+        column![header, profile, appearance, updates, shortcuts, footer]
             .spacing(8)
             .padding(iced::Padding { top: 0.0, right: 8.0, bottom: 20.0, left: 8.0 }),
     )
@@ -47,7 +49,7 @@ fn build_header() -> Element<'static, Message> {
                 row![
                     text("Rustman").size(13).color(Palette::text()).font(crate::ui::theme::MONO),
                     Space::new().width(5),
-                    container(text("v0.3.1").size(9).color(Palette::text_muted()).font(crate::ui::theme::MONO))
+                    container(text(format!("v{}", crate::services::update::current_version())).size(9).color(Palette::text_muted()).font(crate::ui::theme::MONO))
                         .style(|_| iced::widget::container::Style {
                             background: Some(Background::Color(Color { r: 0.16, g: 0.16, b: 0.20, a: 1.0 })),
                             border: Border { color: Palette::border(), width: 1.0, radius: 4.0.into() },
@@ -172,6 +174,42 @@ fn build_appearance(accent_idx: usize) -> Element<'static, Message> {
     .into()
 }
 
+fn build_updates(update: &UpdateState) -> Element<'static, Message> {
+    let (status, status_color) = match update {
+        UpdateState::Idle => ("Checked automatically on launch".to_owned(), Palette::text_subtle()),
+        UpdateState::Checking => ("Checking…".to_owned(), Palette::text_muted()),
+        UpdateState::Available(info) => (format!("v{} available", info.version), Palette::accent()),
+        UpdateState::Installing => ("Downloading update…".to_owned(), Palette::text_muted()),
+        UpdateState::Ready(v) => (format!("v{v} installed — restart to apply"), Palette::SUCCESS),
+        UpdateState::UpToDate => ("You're on the latest version".to_owned(), Palette::SUCCESS),
+        UpdateState::Failed(e) => (format!("Check failed: {e}"), Palette::ERROR),
+    };
+    let busy = matches!(update, UpdateState::Checking | UpdateState::Installing);
+
+    let mut check = button(text("Check for updates").size(11).color(Palette::text()))
+        .style(|_t, status| {
+            let hov = matches!(status, iced::widget::button::Status::Hovered);
+            iced::widget::button::Style {
+                background: Some(Background::Color(if hov { Palette::surface_raised() } else { Palette::surface_high() })),
+                border: Border { color: Palette::border(), width: 1.0, radius: 6.0.into() },
+                text_color: Palette::text(),
+                ..Default::default()
+            }
+        })
+        .padding([6, 10]);
+    if !busy {
+        check = check.on_press(Message::Update(UpdateMsg::Check));
+    }
+
+    column![
+        section_label("UPDATES"),
+        text(status).size(11).color(status_color),
+        check,
+    ]
+    .spacing(6)
+    .into()
+}
+
 fn build_data_section(collections: Vec<(String, String)>) -> Element<'static, Message> {
     let import_row = row![
         action_button(icons::import(), "Postman", Message::Import(ImportMsg::OpenPostmanDialog)),
@@ -231,28 +269,30 @@ fn build_data_section(collections: Vec<(String, String)>) -> Element<'static, Me
 }
 
 fn build_shortcuts() -> Element<'static, Message> {
-    const PAIRS: &[(&str, &str)] = &[
-        ("Ctrl+T", "New tab"),
-        ("Ctrl+W", "Close tab"),
-        ("Ctrl+S", "Save"),
-        ("Ctrl+P", "Palette"),
-        ("Ctrl+F", "Search"),
-        ("Ctrl+E", "Export cURL"),
-        ("Ctrl+Enter", "Send"),
-        ("Alt+1-9", "Switch tab"),
-        ("Esc", "Close dialog"),
-        ("Up/Down", "Navigate"),
+    let cmd = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl+" };
+    let alt = if cfg!(target_os = "macos") { "⌥" } else { "Alt+" };
+    let pairs: Vec<(String, &str)> = vec![
+        (format!("{cmd}T"), "New tab"),
+        (format!("{cmd}W"), "Close tab"),
+        (format!("{cmd}S"), "Save"),
+        (format!("{cmd}P"), "Palette"),
+        (format!("{cmd}F"), "Search"),
+        (format!("{cmd}E"), "Export cURL"),
+        (format!("{cmd}Enter"), "Send"),
+        (format!("{alt}1-9"), "Switch tab"),
+        ("Esc".to_owned(), "Close dialog"),
+        ("↑/↓".to_owned(), "Navigate"),
     ];
 
     let mut grid = column![section_label("KEYBOARD SHORTCUTS")].spacing(4);
-    for chunk in PAIRS.chunks(2) {
+    for chunk in pairs.chunks(2) {
         let mut r = row![].spacing(4);
         for (key, desc) in chunk {
             r = r.push(
                 container(
                     row![
                         container(
-                            text(*key).size(10).color(Palette::text()).font(crate::ui::theme::MONO),
+                            text(key.clone()).size(10).color(Palette::text()).font(crate::ui::theme::MONO),
                         )
                         .style(|_| iced::widget::container::Style {
                             background: Some(Background::Color(Color { r: 0.17, g: 0.17, b: 0.20, a: 1.0 })),

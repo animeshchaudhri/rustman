@@ -12,6 +12,14 @@ pub struct ParsedCurl {
     pub header: HashMap<String, String>,
     pub body: Option<String>,
     pub cookies: HashMap<String, String>,
+    pub form: Vec<CurlForm>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CurlForm {
+    pub key: String,
+    pub value: String,
+    pub is_file: bool,
 }
 
 pub fn parse(input: &str) -> ParsedCurl {
@@ -143,10 +151,17 @@ fn read_token(chars: &mut Peekable<Chars<'_>>) -> Option<String> {
             }
 
             Some('\\') => {
-                had_content = true;
                 chars.next();
-                if let Some(c) = chars.next() {
-                    token.push(c);
+                match chars.peek().copied() {
+                    // A backslash at the start of a token followed by whitespace is a
+                    // line-continuation remnant (`cmd \<newline>` becomes `cmd \  ` once
+                    // a single-line paste strips the newline). Drop it.
+                    Some(c) if c.is_ascii_whitespace() && !had_content => {}
+                    Some(_) => {
+                        had_content = true;
+                        token.push(chars.next().unwrap());
+                    }
+                    None => {}
                 }
             }
 
@@ -217,15 +232,9 @@ fn parse_tokens(tokens: Vec<String>) -> ParsedCurl {
 
             "--data-urlencode" => {
                 if let Some(d) = iter.next() {
-                    if d.starts_with('@') {
-                        // '@file' references are not inlineable — skip
-                    } else {
-                        let value = if let Some(pos) = d.find('=') {
-                            d[pos + 1..].to_string()
-                        } else {
-                            d
-                        };
-                        append_body(&mut result.body, &value);
+                    if !d.starts_with('@') {
+                        let piece = d.strip_prefix('=').unwrap_or(&d);
+                        append_body(&mut result.body, piece);
                     }
                 }
             }
@@ -261,8 +270,16 @@ fn parse_tokens(tokens: Vec<String>) -> ParsedCurl {
                 result.method = Some("HEAD".to_string());
             }
 
-            "-F" | "--form" | "--form-string" => {
-                iter.next();
+            "-F" | "--form" => {
+                if let Some(raw) = iter.next() {
+                    apply_form(&raw, false, &mut result);
+                }
+            }
+
+            "--form-string" => {
+                if let Some(raw) = iter.next() {
+                    apply_form(&raw, true, &mut result);
+                }
             }
 
             flag if consumes_arg(flag) => {
@@ -274,7 +291,7 @@ fn parse_tokens(tokens: Vec<String>) -> ParsedCurl {
             }
 
             tok => {
-                if !tok.starts_with('-') && result.url.is_none() {
+                if !tok.starts_with('-') && !tok.trim().is_empty() && result.url.is_none() {
                     result.url = Some(tok.to_string());
                 }
             }
@@ -283,7 +300,8 @@ fn parse_tokens(tokens: Vec<String>) -> ParsedCurl {
 
     match result.method.as_deref() {
         None | Some("") => {
-            result.method = Some(if result.body.is_some() { "POST".to_string() } else { "GET".to_string() });
+            let has_payload = result.body.is_some() || !result.form.is_empty();
+            result.method = Some(if has_payload { "POST".to_string() } else { "GET".to_string() });
         }
         _ => {}
     }
@@ -303,6 +321,21 @@ fn apply_header(raw: &str, result: &mut ParsedCurl) {
         } else {
             result.header.insert(key.to_string(), val.to_string());
         }
+    }
+}
+
+fn apply_form(raw: &str, force_text: bool, result: &mut ParsedCurl) {
+    if let Some(eq) = raw.find('=') {
+        let key = raw[..eq].to_string();
+        let val = &raw[eq + 1..];
+        if !force_text {
+            if let Some(path) = val.strip_prefix('@') {
+                let path = path.split(';').next().unwrap_or(path).to_string();
+                result.form.push(CurlForm { key, value: path, is_file: true });
+                return;
+            }
+        }
+        result.form.push(CurlForm { key, value: val.to_string(), is_file: false });
     }
 }
 
@@ -487,6 +520,12 @@ where
                 }
                 return;
             }
+            'F' => {
+                if let Some(raw) = iter.next() {
+                    apply_form(&raw, false, result);
+                }
+                return;
+            }
             'u' => {
                 if let Some(creds) = iter.next() {
                     let encoded = general_purpose::STANDARD.encode(creds.as_bytes());
@@ -500,5 +539,60 @@ where
             _ => {}
         }
         i += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MULTILINE: &str = "curl \\\n  --url https://www.bajajfinservhealth.in/backend/hrx-search/v1/search/search?page=1&size=10 \\\n  --header 'x-origin: https://www.bajajfinservhealth.in' \\\n  --header 'incoming_source: hrx_dweb' \\\n  --header 'Accept: */*'";
+
+    /// A multi-line curl pasted into a single-line input loses its newlines (iced
+    /// strips control chars), leaving dangling `\` continuations. The URL and
+    /// headers must still parse instead of the URL collapsing to a stray space.
+    #[test]
+    fn multiline_paste_without_newlines() {
+        let pasted: String = MULTILINE.chars().filter(|c| !c.is_control()).collect();
+        let p = parse(&pasted);
+        assert_eq!(
+            p.url.as_deref(),
+            Some("https://www.bajajfinservhealth.in/backend/hrx-search/v1/search/search?page=1&size=10")
+        );
+        assert_eq!(p.header.get("x-origin").map(String::as_str), Some("https://www.bajajfinservhealth.in"));
+        assert_eq!(p.header.get("Accept").map(String::as_str), Some("*/*"));
+    }
+
+    #[test]
+    fn multiline_paste_with_newlines() {
+        let p = parse(MULTILINE);
+        assert_eq!(
+            p.url.as_deref(),
+            Some("https://www.bajajfinservhealth.in/backend/hrx-search/v1/search/search?page=1&size=10")
+        );
+    }
+
+    // Only a *leading* backslash-whitespace is dropped; an escaped space inside a
+    // token must still survive.
+    #[test]
+    fn escaped_space_inside_token_preserved() {
+        let p = parse("curl 'https://example.com' --data foo\\ bar");
+        assert_eq!(p.body.as_deref(), Some("foo bar"));
+    }
+
+    #[test]
+    fn full_pasted_curl_round_trips() {
+        const RAW: &str = "curl \\\n  --url https://www.bajajfinservhealth.in/backend/hrx-search/v1/search/search?page=1&size=10&index_type=Hospitals&pvdServices=Hospital&fetchEntities=false \\\n  --header 'x-origin: https://www.bajajfinservhealth.in' \\\n  --header 'sec-ch-ua: \"Not/A)Brand\";v=\"99\", \"Chromium\";v=\"148\"' \\\n  --header 'Accept: */*' \\\n  --cookie 'eventsObject={}; sharedLocation={\"city\":\"pune\"%2C\"lat\":\"18.520430\"}; locale=en'";
+        let pasted: String = RAW.chars().filter(|c| !c.is_control()).collect();
+        let p = parse(&pasted);
+
+        assert_eq!(
+            p.url.as_deref(),
+            Some("https://www.bajajfinservhealth.in/backend/hrx-search/v1/search/search?page=1&size=10&index_type=Hospitals&pvdServices=Hospital&fetchEntities=false")
+        );
+        assert_eq!(p.header.get("Accept").map(String::as_str), Some("*/*"));
+        assert_eq!(p.header.get("sec-ch-ua").map(String::as_str), Some("\"Not/A)Brand\";v=\"99\", \"Chromium\";v=\"148\""));
+        assert_eq!(p.cookies.get("locale").map(String::as_str), Some("en"));
+        assert_eq!(p.cookies.get("sharedLocation").map(String::as_str), Some("{\"city\":\"pune\",\"lat\":\"18.520430\"}"));
     }
 }

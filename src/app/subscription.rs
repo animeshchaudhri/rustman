@@ -83,31 +83,13 @@ fn ws_stream(conn: &WsConn) -> impl iced::futures::Stream<Item = Message> {
     })
 }
 
-fn global_keys(event: Event, status: event::Status, window_id: window::Id) -> Option<Message> {
+fn global_keys(event: Event, _status: event::Status, window_id: window::Id) -> Option<Message> {
     if let Event::Window(window::Event::CloseRequested) = event {
         return Some(Message::App(crate::message::AppMsg::WindowCloseRequested(window_id)));
     }
     let Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event else {
         return None;
     };
-
-    if let keyboard::Key::Character(z) = key.as_ref() {
-        if z == "z" && modifiers.command() && !modifiers.shift() {
-            return if matches!(status, event::Status::Ignored) {
-                Some(Message::Request(RequestMsg::UndoUrl))
-            } else {
-                None
-            };
-        }
-        
-        if z == "a" && modifiers.command() {
-            return if matches!(status, event::Status::Ignored) {
-                Some(Message::Request(RequestMsg::CopyBodyToClipboard))
-            } else {
-                None
-            };
-        }
-    }
 
     use keyboard::key::Named;
     match key.as_ref() {
