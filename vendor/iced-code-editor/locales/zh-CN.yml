@@ -1,0 +1,13 @@
+search:
+  placeholder: "搜索..."
+  close_tooltip: "关闭搜索对话框 (Esc)"
+  previous_match_tooltip: "上一个匹配 (Shift+F3)"
+  next_match_tooltip: "下一个匹配 (F3 / Enter)"
+
+replace:
+  placeholder: "替换..."
+  current_tooltip: "替换当前匹配"
+  all_tooltip: "替换全部"
+
+settings:
+  case_sensitive_label: "区分大小写"

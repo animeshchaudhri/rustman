@@ -146,6 +146,11 @@ jobs:
             target/x86_64-apple-darwin/release/rustman \
             -output rustman-universal
 
+      - name: Package universal binary (for in-app self-update)
+        run: |
+          cp rustman-universal rustman
+          tar czf Rustman-macos-universal.tar.gz rustman
+
       - name: Build .app bundle
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -213,7 +218,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
-          files: Rustman-macos-universal.dmg
+          files: |
+            Rustman-macos-universal.dmg
+            Rustman-macos-universal.tar.gz
 
   # ── Rustman iced · Windows x86_64 ────────────────────────────────────────────
   build-windows-iced:

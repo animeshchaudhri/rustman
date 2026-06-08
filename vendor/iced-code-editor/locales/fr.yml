@@ -1,0 +1,14 @@
+# Traductions françaises
+search:
+  placeholder: "Rechercher..."
+  close_tooltip: "Fermer la recherche (Échap)"
+  previous_match_tooltip: "Résultat précédent (Maj+F3)"
+  next_match_tooltip: "Résultat suivant (F3 / Entrée)"
+
+replace:
+  placeholder: "Remplacer..."
+  current_tooltip: "Remplacer l'occurrence actuelle"
+  all_tooltip: "Tout remplacer"
+
+settings:
+  case_sensitive_label: "Sensible à la casse"

@@ -9,10 +9,11 @@ pub(super) fn handle(state: &mut AppState, msg: ResponseMsg) -> Task<Message> {
             state.tabs.active_tab_mut().active_response_tab = t;
         }
         ResponseMsg::CopyBody => {
-            let body = state.tabs.active_tab()
-                .response.as_ref()
-                .map(|r| r.body.clone())
-                .unwrap_or_default();
+            let tab = state.tabs.active_tab();
+            let mut body = tab.response_editor.content();
+            if body.is_empty() {
+                body = tab.response.as_ref().map(|r| r.body.clone()).unwrap_or_default();
+            }
             state.status_message = Some("Copied!".to_owned());
             return clipboard::write::<Message>(body);
         }

@@ -14,6 +14,7 @@ mod save_dialog;
 mod settings;
 mod sidebar;
 mod storage;
+mod updater;
 mod ws;
 
 pub(crate) fn update(state: &mut AppState, message: Message) -> Task<Message> {
@@ -35,6 +36,7 @@ fn dispatch(state: &mut AppState, message: Message) -> Task<Message> {
         Message::App(msg) => app_msg::handle(state, msg),
         Message::Settings(msg) => settings::handle(state, msg),
         Message::Layout(msg) => handle_layout(state, msg),
+        Message::Update(msg) => updater::handle(state, msg),
     }
 }
 

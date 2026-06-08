@@ -1,0 +1,14 @@
+# Traduzioni italiane
+search:
+  placeholder: "Cerca..."
+  close_tooltip: "Chiudi finestra di ricerca (Esc)"
+  previous_match_tooltip: "Risultato precedente (Maiusc+F3)"
+  next_match_tooltip: "Risultato successivo (F3 / Invio)"
+
+replace:
+  placeholder: "Sostituisci..."
+  current_tooltip: "Sostituisci risultato corrente"
+  all_tooltip: "Sostituisci tutto"
+
+settings:
+  case_sensitive_label: "Distingui maiuscole"

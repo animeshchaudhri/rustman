@@ -134,7 +134,7 @@ fn convert_request(collection_id: &str, item: &PostmanRequestItem) -> SavedReque
         Some(PostmanUrl::Raw(s)) => (s.clone(), vec![]),
         Some(PostmanUrl::Object(o)) => {
             let raw = o.raw.clone().unwrap_or_default();
-            let params = o
+            let params: Vec<KeyValue> = o
                 .query
                 .as_deref()
                 .unwrap_or(&[])
@@ -146,7 +146,13 @@ fn convert_request(collection_id: &str, item: &PostmanRequestItem) -> SavedReque
                     enabled: !p.disabled,
                 })
                 .collect();
-            (raw, params)
+            // The query is kept in `params`; strip it from the URL so it isn't
+            // also sent inline (which would duplicate every query value).
+            let url = match raw.find('?') {
+                Some(i) if !params.is_empty() => raw[..i].to_string(),
+                _ => raw,
+            };
+            (url, params)
         }
         None => (String::new(), vec![]),
     };

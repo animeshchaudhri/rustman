@@ -54,6 +54,22 @@ pub struct AppState {
     pub panel_split: u16,
     /// UI zoom level (0.7 – 2.0). Applied via iced scale_factor.
     pub ui_scale: f64,
+    /// Auto-update progress for the banner + settings panel.
+    pub update: UpdateState,
+}
+
+/// State machine for the self-update flow.
+#[derive(Debug, Clone, Default)]
+pub enum UpdateState {
+    #[default]
+    Idle,
+    Checking,
+    Available(crate::services::update::UpdateInfo),
+    Installing,
+    /// Installed `version`; awaiting a restart to take effect.
+    Ready(String),
+    UpToDate,
+    Failed(String),
 }
 
 impl AppState {

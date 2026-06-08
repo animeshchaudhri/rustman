@@ -16,6 +16,7 @@ pub enum Message {
     App(AppMsg),
     Settings(SettingsMsg),
     Layout(LayoutMsg),
+    Update(UpdateMsg),
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -64,12 +65,16 @@ pub enum RequestMsg {
     HeaderValueChanged(usize, String),
     HeaderAdded,
     HeaderRemoved(usize),
+    HeadersBulkToggle,
+    HeadersBulkEdited(iced::widget::text_editor::Action),
     // Params
     ParamToggled(usize),
     ParamKeyChanged(usize, String),
     ParamValueChanged(usize, String),
     ParamAdded,
     ParamRemoved(usize),
+    ParamsBulkToggle,
+    ParamsBulkEdited(iced::widget::text_editor::Action),
     // Body
     BodyTypeChanged(String),
     BodyEdited(iced_code_editor::Message),
@@ -111,8 +116,8 @@ pub enum RequestMsg {
     // Actions
     Send,
     Abort,
-    UndoUrl,
-    CopyBodyToClipboard,
+    Undo,
+    Redo,
     SaveRequest,
     ImportCurl(String),
     ExportCurl,
@@ -208,6 +213,7 @@ pub enum PaletteMsg {
     MoveDown,
     MoveUp,
     Confirm,
+    ConfirmAt(usize),
 }
 
 // ── Import / Export ───────────────────────────────────────────────────────────
@@ -276,4 +282,22 @@ pub enum SettingsMsg {
     EmailChanged(String),
     WebsiteChanged(String),
     AccentChanged(usize),
+}
+
+// ── Auto-update ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub enum UpdateMsg {
+    /// Start a background check against GitHub releases.
+    Check,
+    /// Result of a check: `Some` when a newer version exists.
+    Checked(Result<Option<crate::services::update::UpdateInfo>, String>),
+    /// Download + replace the binary.
+    Install,
+    /// Result of an install: the new version on success.
+    Installed(Result<String, String>),
+    /// Hide the update banner.
+    Dismiss,
+    /// Relaunch into the updated binary.
+    Restart,
 }

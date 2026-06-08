@@ -6,58 +6,6 @@ use iced::{
 use crate::{app::AppState, message::{Message, PaletteMsg, SidebarMsg}, ui::theme::Palette};
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
-    let query = state.palette_query.to_lowercase();
-
-    let mut items: Vec<PaletteItem> = Vec::new();
-
-    for (i, tab) in state.tabs.tabs.iter().enumerate() {
-        if i == state.tabs.active {
-            continue;
-        }
-        let label = format!("{} {}", tab.method.as_str(), if tab.url.is_empty() { &tab.title } else { &tab.url });
-        if query.is_empty() || label.to_lowercase().contains(&query) {
-            items.push(PaletteItem {
-                method: tab.method.as_str().to_owned(),
-                name: tab.title.clone(),
-                url: tab.url.clone(),
-                source: "Open Tab".to_owned(),
-                action: Message::Request(crate::message::RequestMsg::SwitchTab(i)),
-            });
-        }
-    }
-
-    for (col_id, reqs) in &state.requests {
-        let col_name = state.collections.iter()
-            .find(|c| &c.id == col_id)
-            .map(|c| c.name.as_str())
-            .unwrap_or("Collection");
-        for req in reqs {
-            let label = format!("{} {} {}", req.method, req.name, req.url);
-            if query.is_empty() || label.to_lowercase().contains(&query) {
-                items.push(PaletteItem {
-                    method: req.method.as_str().to_owned(),
-                    name: req.name.clone(),
-                    url: req.url.clone(),
-                    source: col_name.to_owned(),
-                    action: Message::Sidebar(SidebarMsg::RequestOpened(req.clone())),
-                });
-            }
-        }
-    }
-
-    for entry in state.history.iter().take(20) {
-        let label = format!("{} {}", entry.method, entry.url);
-        if query.is_empty() || label.to_lowercase().contains(&query) {
-            items.push(PaletteItem {
-                method: entry.method.clone(),
-                name: entry.url.clone(),
-                url: entry.url.clone(),
-                source: "History".to_owned(),
-                action: Message::Sidebar(SidebarMsg::HistoryEntryOpened(entry.clone())),
-            });
-        }
-    }
-
     let search_input = text_input("Search requests, history, tabs…", &state.palette_query)
         .id("palette-search")
         .on_input(|s| Message::Palette(PaletteMsg::QueryChanged(s)))
@@ -66,33 +14,28 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         .width(Length::Fill);
 
     let mut list = column![].spacing(0);
-    for (i, item) in items.into_iter().take(12).enumerate() {
+    for (i, item) in items(state).into_iter().enumerate() {
         let selected = i == state.palette_selected;
         let method_color = method_color(&item.method);
-        let method = item.method;
-        let name = item.name;
-        let url = item.url;
-        let source = item.source;
-        let action = item.action;
         let row_el = button(
             row![
                 container(
-                    text(method).size(10).color(method_color).font(crate::ui::theme::MONO)
+                    text(item.method).size(10).color(method_color).font(crate::ui::theme::MONO)
                 )
                 .width(50),
                 column![
-                    text(name).size(13).color(Palette::text()),
-                    text(url).size(11).color(Palette::text_muted()),
+                    text(item.name).size(13).color(Palette::text()),
+                    text(item.url).size(11).color(Palette::text_muted()),
                 ]
                 .spacing(1)
                 .width(Length::Fill),
-                text(source).size(10).color(Palette::text_muted()),
+                text(item.source).size(10).color(Palette::text_muted()),
             ]
             .spacing(8)
             .align_y(iced::Alignment::Center)
             .padding([6u16, 12u16]),
         )
-        .on_press(action)
+        .on_press(Message::Palette(PaletteMsg::ConfirmAt(i)))
         .style(move |t, s| palette_row_style(t, s, selected))
         .width(Length::Fill);
         list = list.push(row_el);
@@ -127,12 +70,72 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     .into()
 }
 
-struct PaletteItem {
-    method: String,
-    name: String,
-    url: String,
-    source: String,
-    action: Message,
+pub struct PaletteItem {
+    pub method: String,
+    pub name: String,
+    pub url: String,
+    pub source: String,
+    pub action: Message,
+}
+
+/// Build the palette's filtered result list (open tabs, saved requests, history),
+/// capped at the 12 rows the view renders. Shared by the view and the update
+/// handler so a selection index always maps to the same action.
+pub fn items(state: &AppState) -> Vec<PaletteItem> {
+    let query = state.palette_query.to_lowercase();
+    let matches = |label: &str| query.is_empty() || label.to_lowercase().contains(&query);
+    let mut items: Vec<PaletteItem> = Vec::new();
+
+    for (i, tab) in state.tabs.tabs.iter().enumerate() {
+        if i == state.tabs.active {
+            continue;
+        }
+        let label = format!("{} {}", tab.method.as_str(), if tab.url.is_empty() { &tab.title } else { &tab.url });
+        if matches(&label) {
+            items.push(PaletteItem {
+                method: tab.method.as_str().to_owned(),
+                name: tab.title.clone(),
+                url: tab.url.clone(),
+                source: "Open Tab".to_owned(),
+                action: Message::Request(crate::message::RequestMsg::SwitchTab(i)),
+            });
+        }
+    }
+
+    for (col_id, reqs) in &state.requests {
+        let col_name = state.collections.iter()
+            .find(|c| &c.id == col_id)
+            .map(|c| c.name.as_str())
+            .unwrap_or("Collection");
+        for req in reqs {
+            let label = format!("{} {} {}", req.method, req.name, req.url);
+            if matches(&label) {
+                items.push(PaletteItem {
+                    method: req.method.as_str().to_owned(),
+                    name: req.name.clone(),
+                    url: req.url.clone(),
+                    source: col_name.to_owned(),
+                    action: Message::Sidebar(SidebarMsg::RequestOpened(req.clone())),
+                });
+            }
+        }
+    }
+
+    for entry in state.history.iter().take(20) {
+        let label = format!("{} {}", entry.method, entry.url);
+        if matches(&label) {
+            items.push(PaletteItem {
+                method: entry.method.clone(),
+                name: entry.url.clone(),
+                url: entry.url.clone(),
+                source: "History".to_owned(),
+                action: Message::Sidebar(SidebarMsg::HistoryEntryOpened(entry.clone())),
+            });
+        }
+    }
+
+    items.truncate(12);
+    items
 }
 
 fn method_color(method: &str) -> Color {

@@ -5,5 +5,6 @@ pub mod http;
 pub mod import;
 pub mod response_store;
 pub mod storage;
+pub mod update;
 pub mod vcs;
 pub mod websocket;

@@ -4,57 +4,37 @@ use iced::Task;
 use crate::app::request_ops::{format_body, save_request, send_request};
 use crate::app::session::persist_session;
 use crate::app::AppState;
+use crate::domain::request::{sync_params_from_url, sync_url_from_params};
 use crate::jobs::JobKind;
 use crate::message::{AppMsg, FormatTarget, Message, RequestMsg};
 use crate::services::curl;
+use crate::state::tabs::{EditKind, RequestTabState};
 
 pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
     let tab = state.tabs.active_tab_mut();
+    record_undo(tab, &msg);
     match msg {
-        RequestMsg::UndoUrl => {
-            if let Some(prev) = tab.url_undo.pop() {
-                tab.url = prev;
+        RequestMsg::Undo => {
+            if let Some(prev) = tab.undo.pop() {
+                tab.redo.push(tab.edit_snapshot());
+                tab.restore_edit(prev);
+                tab.last_edit = None;
+                tab.modified = true;
+            }
+        }
+        RequestMsg::Redo => {
+            if let Some(next) = tab.redo.pop() {
+                tab.undo.push(tab.edit_snapshot());
+                tab.restore_edit(next);
+                tab.last_edit = None;
                 tab.modified = true;
             }
         }
         RequestMsg::UrlChanged(v) => {
-            // Push to undo stack before changing (max 50 entries).
-            if tab.url != v {
-                tab.url_undo.push(tab.url.clone());
-                if tab.url_undo.len() > 50 { tab.url_undo.remove(0); }
-            }
-
-            if let Some(q_idx) = v.find('?') {
-                let base = v[..q_idx].to_owned();
-                let qs = &v[q_idx + 1..];
-                if !qs.is_empty() {
-                    let mut new_params: Vec<crate::domain::request::KeyValue> = qs
-                        .split('&')
-                        .filter(|pair| !pair.is_empty())
-                        .map(|pair| {
-                            let (k, val) = pair.split_once('=').unwrap_or((pair, ""));
-                            crate::domain::request::KeyValue {
-                                id: uuid::Uuid::new_v4().to_string(),
-                                key: percent_decode(k),
-                                value: percent_decode(val),
-                                enabled: true,
-                            }
-                        })
-                        .collect();
-                    let existing_keys: std::collections::HashSet<String> =
-                        new_params.iter().map(|p| p.key.clone()).collect();
-                    for p in &tab.params {
-                        if !existing_keys.contains(&p.key) && !p.key.is_empty() {
-                            new_params.push(p.clone());
-                        }
-                    }
-                    tab.params = new_params;
-                    tab.url = base;
-                    tab.modified = true;
-                    return Task::none();
-                }
-            }
+            tab.body_editor.lose_focus();
+            tab.response_editor.lose_focus();
             tab.url = v;
+            tab.params = sync_params_from_url(&tab.url, &tab.params);
             tab.modified = true;
         }
         RequestMsg::MethodChanged(v) => {
@@ -79,19 +59,55 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         RequestMsg::HeaderKeyChanged(i, v) => { tab.headers[i].key = v; tab.modified = true; }
         RequestMsg::HeaderValueChanged(i, v) => { tab.headers[i].value = v; tab.modified = true; }
         RequestMsg::ParamAdded => { tab.params.push(crate::domain::request::KeyValue::new_empty()); tab.modified = true; }
-        RequestMsg::ParamRemoved(i) => { tab.params.remove(i); tab.modified = true; }
-        RequestMsg::ParamToggled(i) => { tab.params[i].enabled = !tab.params[i].enabled; tab.modified = true; }
-        RequestMsg::ParamKeyChanged(i, v) => { tab.params[i].key = v; tab.modified = true; }
-        RequestMsg::ParamValueChanged(i, v) => { tab.params[i].value = v; tab.modified = true; }
-        RequestMsg::BearerTokenChanged(v) => tab.bearer_token = v,
-        RequestMsg::BasicUserChanged(v) => tab.basic_user = v,
-        RequestMsg::BasicPassChanged(v) => tab.basic_pass = v,
-        RequestMsg::ApiKeyNameChanged(v) => tab.api_key_name = v,
-        RequestMsg::ApiKeyValueChanged(v) => tab.api_key_value = v,
-        RequestMsg::AuthTypeChanged(v) => {
-            if let Ok(a) = v.parse() { tab.auth_type = a; }
+        RequestMsg::ParamRemoved(i) => { tab.params.remove(i); tab.url = sync_url_from_params(&tab.url, &tab.params); tab.modified = true; }
+        RequestMsg::ParamToggled(i) => { tab.params[i].enabled = !tab.params[i].enabled; tab.url = sync_url_from_params(&tab.url, &tab.params); tab.modified = true; }
+        RequestMsg::ParamKeyChanged(i, v) => { tab.params[i].key = v; tab.url = sync_url_from_params(&tab.url, &tab.params); tab.modified = true; }
+        RequestMsg::ParamValueChanged(i, v) => { tab.params[i].value = v; tab.url = sync_url_from_params(&tab.url, &tab.params); tab.modified = true; }
+        RequestMsg::HeadersBulkToggle => {
+            if let Some(content) = tab.headers_bulk.take() {
+                tab.headers = parse_bulk_kv(&content.text(), false);
+            } else {
+                let text = serialize_bulk_kv(&tab.headers);
+                tab.headers_bulk = Some(iced::widget::text_editor::Content::with_text(&text));
+            }
+            tab.modified = true;
         }
-        RequestMsg::CookieStringChanged(v) => tab.cookie_string = v,
+        RequestMsg::HeadersBulkEdited(action) => {
+            if let Some(content) = &mut tab.headers_bulk {
+                content.perform(action);
+                let text = content.text();
+                tab.headers = parse_bulk_kv(&text, false);
+                tab.modified = true;
+            }
+        }
+        RequestMsg::ParamsBulkToggle => {
+            if let Some(content) = tab.params_bulk.take() {
+                tab.params = parse_bulk_kv(&content.text(), true);
+                tab.url = sync_url_from_params(&tab.url, &tab.params);
+            } else {
+                let text = serialize_bulk_kv(&tab.params);
+                tab.params_bulk = Some(iced::widget::text_editor::Content::with_text(&text));
+            }
+            tab.modified = true;
+        }
+        RequestMsg::ParamsBulkEdited(action) => {
+            if let Some(content) = &mut tab.params_bulk {
+                content.perform(action);
+                let text = content.text();
+                tab.params = parse_bulk_kv(&text, true);
+                tab.url = sync_url_from_params(&tab.url, &tab.params);
+                tab.modified = true;
+            }
+        }
+        RequestMsg::BearerTokenChanged(v) => { tab.bearer_token = v; tab.modified = true; }
+        RequestMsg::BasicUserChanged(v) => { tab.basic_user = v; tab.modified = true; }
+        RequestMsg::BasicPassChanged(v) => { tab.basic_pass = v; tab.modified = true; }
+        RequestMsg::ApiKeyNameChanged(v) => { tab.api_key_name = v; tab.modified = true; }
+        RequestMsg::ApiKeyValueChanged(v) => { tab.api_key_value = v; tab.modified = true; }
+        RequestMsg::AuthTypeChanged(v) => {
+            if let Ok(a) = v.parse() { tab.auth_type = a; tab.modified = true; }
+        }
+        RequestMsg::CookieStringChanged(v) => { tab.cookie_string = v; tab.modified = true; }
         RequestMsg::JwtSecretChanged(v) => { tab.jwt_secret = v; tab.modified = true; }
         RequestMsg::JwtSubjectChanged(v) => { tab.jwt_subject = v; tab.modified = true; }
         RequestMsg::JwtAlgoChanged(v) => { tab.jwt_algo = v; tab.modified = true; }
@@ -163,27 +179,8 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             let has_headers = !parsed.header.is_empty();
 
             if let Some(url) = parsed.url {
-                if let Some(q_idx) = url.find('?') {
-                    tab.url = url[..q_idx].to_owned();
-                    let qs = &url[q_idx + 1..];
-                    if !qs.is_empty() {
-                        tab.params = qs
-                            .split('&')
-                            .filter(|pair| !pair.is_empty())
-                            .map(|pair| {
-                                let (k, val) = pair.split_once('=').unwrap_or((pair, ""));
-                                crate::domain::request::KeyValue {
-                                    id: uuid::Uuid::new_v4().to_string(),
-                                    key: percent_decode(k),
-                                    value: percent_decode(val),
-                                    enabled: true,
-                                }
-                            })
-                            .collect();
-                    }
-                } else {
-                    tab.url = url;
-                }
+                tab.url = url;
+                tab.params = sync_params_from_url(&tab.url, &[]);
             }
             if let Some(method) = parsed.method {
                 if let Ok(m) = method.to_uppercase().parse() {
@@ -252,6 +249,31 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
                     .map(|(k, v)| format!("{k}={v}"))
                     .collect::<Vec<_>>()
                     .join("; ");
+                if !auth_detected {
+                    tab.auth_type = crate::domain::request::AuthType::Cookie;
+                }
+            }
+            if !parsed.form.is_empty() {
+                use crate::domain::request::{FormField, FormFieldType};
+                tab.body_type = crate::domain::request::BodyType::FormData;
+                tab.form_fields = parsed.form.into_iter().map(|f| {
+                    let (field_type, value, file_name) = if f.is_file {
+                        (FormFieldType::File, String::new(), Some(f.value))
+                    } else {
+                        (FormFieldType::Text, f.value, None)
+                    };
+                    FormField {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        key: f.key,
+                        value,
+                        field_type,
+                        enabled: true,
+                        file_name,
+                        file_data: None,
+                        mime_type: None,
+                    }
+                }).collect();
+                tab.active_request_tab = crate::message::RequestTab::Body;
             }
             tab.modified = true;
         }
@@ -358,16 +380,12 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         RequestMsg::ApiKeyLocationChanged(v) => {
             if let Ok(loc) = v.parse() {
                 tab.api_key_location = loc;
+                tab.modified = true;
             }
         }
         RequestMsg::Abort => {
             tab.jobs.cancel(JobKind::Request);
             tab.is_loading = false;
-        }
-        RequestMsg::CopyBodyToClipboard => {
-            let content = tab.body_editor.content();
-            state.status_message = Some("Body copied!".to_owned());
-            return iced::clipboard::write::<Message>(content);
         }
         RequestMsg::CommentToggle => {
             use crate::message::RequestTab;
@@ -378,7 +396,9 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
                 }
                 RequestTab::Body => {
                     let toggled = toggle_js_comments(&tab.body_editor.content());
-                    tab.reset_body_editor(&toggled);
+                    tab.modified = true;
+                    return tab.replace_body_text(toggled)
+                        .map(|m| Message::Request(RequestMsg::BodyEdited(m)));
                 }
                 _ => {}
             }
@@ -387,32 +407,61 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
     Task::none()
 }
 
-/// Decode `%xx` percent-encoded sequences in a URL component.
-fn percent_decode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let bytes = s.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'+' {
-            out.push(' ');
-            i += 1;
-        } else if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let (Some(hi), Some(lo)) = (
-                (bytes[i + 1] as char).to_digit(16),
-                (bytes[i + 2] as char).to_digit(16),
-            ) {
-                out.push((hi * 16 + lo) as u8 as char);
-                i += 3;
-            } else {
-                out.push('%');
-                i += 1;
+/// What an incoming message means for the undo history.
+enum EditClass {
+    /// Not an undoable field edit (navigation, sending, undo/redo itself, …).
+    Skip,
+    /// A text edit; consecutive edits of the same kind collapse into one entry.
+    Coalesce(EditKind),
+    /// A structural edit (add/remove/toggle/import); always its own entry.
+    Discrete,
+}
+
+/// Record an undo checkpoint of the request fields *before* a mutating message is
+/// applied, coalescing runs of keystrokes in one field into a single entry.
+fn record_undo(tab: &mut RequestTabState, msg: &RequestMsg) {
+    match edit_class(msg) {
+        EditClass::Skip => {}
+        EditClass::Coalesce(kind) => {
+            if tab.last_edit != Some(kind) {
+                tab.push_undo();
+                tab.last_edit = Some(kind);
             }
-        } else {
-            out.push(bytes[i] as char);
-            i += 1;
+        }
+        EditClass::Discrete => {
+            tab.push_undo();
+            tab.last_edit = None;
         }
     }
-    out
+}
+
+fn edit_class(msg: &RequestMsg) -> EditClass {
+    use EditKind as K;
+    use RequestMsg as M;
+    match msg {
+        M::UrlChanged(_) => EditClass::Coalesce(K::Url),
+        M::HeaderKeyChanged(i, _) => EditClass::Coalesce(K::HeaderKey(*i)),
+        M::HeaderValueChanged(i, _) => EditClass::Coalesce(K::HeaderValue(*i)),
+        M::ParamKeyChanged(i, _) => EditClass::Coalesce(K::ParamKey(*i)),
+        M::ParamValueChanged(i, _) => EditClass::Coalesce(K::ParamValue(*i)),
+        M::HeadersBulkEdited(_) => EditClass::Coalesce(K::HeadersBulk),
+        M::ParamsBulkEdited(_) => EditClass::Coalesce(K::ParamsBulk),
+        M::BearerTokenChanged(_) => EditClass::Coalesce(K::Bearer),
+        M::BasicUserChanged(_) => EditClass::Coalesce(K::BasicUser),
+        M::BasicPassChanged(_) => EditClass::Coalesce(K::BasicPass),
+        M::ApiKeyNameChanged(_) => EditClass::Coalesce(K::ApiKeyName),
+        M::ApiKeyValueChanged(_) => EditClass::Coalesce(K::ApiKeyValue),
+        M::CookieStringChanged(_) => EditClass::Coalesce(K::Cookie),
+        M::JwtSecretChanged(_) => EditClass::Coalesce(K::JwtSecret),
+        M::JwtSubjectChanged(_) => EditClass::Coalesce(K::JwtSubject),
+        M::JwtAlgoChanged(_) => EditClass::Coalesce(K::JwtAlgo),
+        M::HeaderAdded | M::HeaderRemoved(_) | M::HeaderToggled(_)
+        | M::ParamAdded | M::ParamRemoved(_) | M::ParamToggled(_)
+        | M::HeadersBulkToggle | M::ParamsBulkToggle
+        | M::MethodChanged(_) | M::AuthTypeChanged(_) | M::ApiKeyLocationChanged(_)
+        | M::ImportCurl(_) => EditClass::Discrete,
+        _ => EditClass::Skip,
+    }
 }
 
 /// Toggle `// ` comments on every non-empty line. If ALL non-empty lines already
@@ -434,4 +483,99 @@ fn toggle_js_comments(text: &str) -> String {
             format!("// {l}")
         }
     }).collect::<Vec<_>>().join("\n")
+}
+
+/// Parse a bulk-edit text block into key/value rows. One entry per line,
+/// `Key: Value` (params also accept `key=value`); a leading `#` disables the row.
+fn parse_bulk_kv(text: &str, allow_eq: bool) -> Vec<crate::domain::request::KeyValue> {
+    text.lines()
+        .filter_map(|raw| {
+            let line = raw.trim();
+            if line.is_empty() {
+                return None;
+            }
+            let (enabled, line) = match line.strip_prefix('#') {
+                Some(rest) => (false, rest.trim()),
+                None => (true, line),
+            };
+            let sep = if allow_eq {
+                line.find(|c| c == ':' || c == '=')
+            } else {
+                line.find(':')
+            };
+            let (key, value) = match sep {
+                Some(i) => (line[..i].trim().to_owned(), line[i + 1..].trim().to_owned()),
+                None => (line.to_owned(), String::new()),
+            };
+            if key.is_empty() {
+                return None;
+            }
+            Some(crate::domain::request::KeyValue {
+                id: uuid::Uuid::new_v4().to_string(),
+                key,
+                value,
+                enabled,
+            })
+        })
+        .collect()
+}
+
+fn serialize_bulk_kv(items: &[crate::domain::request::KeyValue]) -> String {
+    items
+        .iter()
+        .filter(|kv| !kv.key.is_empty() || !kv.value.is_empty())
+        .map(|kv| {
+            let prefix = if kv.enabled { "" } else { "# " };
+            format!("{prefix}{}: {}", kv.key, kv.value)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[cfg(test)]
+mod undo_tests {
+    use super::*;
+
+    #[test]
+    fn coalesces_a_run_in_one_field() {
+        let mut tab = RequestTabState::new();
+        record_undo(&mut tab, &RequestMsg::HeaderValueChanged(0, "a".into()));
+        record_undo(&mut tab, &RequestMsg::HeaderValueChanged(0, "ab".into()));
+        assert_eq!(tab.undo.len(), 1, "same field keystrokes collapse");
+
+        record_undo(&mut tab, &RequestMsg::UrlChanged("x".into()));
+        assert_eq!(tab.undo.len(), 2, "a different field starts a new entry");
+    }
+
+    #[test]
+    fn structural_edits_each_get_an_entry() {
+        let mut tab = RequestTabState::new();
+        record_undo(&mut tab, &RequestMsg::HeaderAdded);
+        record_undo(&mut tab, &RequestMsg::HeaderAdded);
+        record_undo(&mut tab, &RequestMsg::ParamRemoved(0));
+        assert_eq!(tab.undo.len(), 3);
+    }
+
+    #[test]
+    fn non_edits_record_nothing() {
+        let mut tab = RequestTabState::new();
+        record_undo(&mut tab, &RequestMsg::Send);
+        record_undo(&mut tab, &RequestMsg::Undo);
+        record_undo(&mut tab, &RequestMsg::TabSelected(crate::message::RequestTab::Headers));
+        assert!(tab.undo.is_empty());
+    }
+
+    #[test]
+    fn snapshot_restores_all_fields() {
+        let mut tab = RequestTabState::new();
+        tab.url = "first".into();
+        tab.bearer_token = "tok1".into();
+        record_undo(&mut tab, &RequestMsg::UrlChanged("ignored".into()));
+        tab.url = "second".into();
+        tab.bearer_token = "tok2".into();
+        let prev = tab.undo.pop().unwrap();
+        tab.restore_edit(prev);
+        assert_eq!(tab.url, "first");
+        assert_eq!(tab.bearer_token, "tok1");
+    }
 }

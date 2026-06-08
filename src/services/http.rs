@@ -77,6 +77,16 @@ async fn do_send(
     env: Option<&AppEnvironment>,
 ) -> Result<HttpResponse, String> {
     let url = substitute(&req.url, env);
+    // The query is sent from `params`; if the URL also carries one (e.g. older
+    // imports), drop it so each value isn't sent twice (which APIs read as an array).
+    let will_add_query = req.params.iter().any(|p| p.enabled && !p.key.is_empty())
+        || (req.auth_type == AuthType::ApiKey
+            && req.api_key_location == ApiKeyLocation::Query
+            && !req.api_key_name.is_empty());
+    let url = match url.find('?') {
+        Some(i) if will_add_query => url[..i].to_string(),
+        _ => url,
+    };
     let method = Method::from_str(req.method.as_str())
         .map_err(|_| format!("Invalid HTTP method: {}", req.method))?;
 
@@ -129,6 +139,15 @@ async fn do_send(
             header_map.insert(HeaderName::from_static("authorization"), val);
         }
         _ => {}
+    }
+
+    if matches!(req.body_type, BodyType::Json)
+        && !header_map.contains_key(reqwest::header::CONTENT_TYPE)
+    {
+        header_map.insert(
+            reqwest::header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
     }
 
     builder = builder.headers(header_map);
@@ -186,7 +205,7 @@ async fn do_send(
         BodyType::None => {}
     }
 
-    let response = builder.send().await.map_err(|e| format!("Request failed: {e}"))?;
+    let response = builder.send().await.map_err(|e| describe_send_error(&e))?;
 
     let status = response.status().as_u16();
     let status_text = response.status().canonical_reason().unwrap_or("").to_owned();
@@ -230,8 +249,42 @@ fn maybe_pretty(raw: &str) -> String {
 pub fn build_client() -> Client {
     Client::builder()
         .cookie_store(true)
+        .user_agent(concat!("rustman/", env!("CARGO_PKG_VERSION")))
         .build()
         .expect("Failed to build HTTP client")
+}
+
+/// Categorise a send failure into a short, human label.
+fn classify_send_error(e: &reqwest::Error) -> &'static str {
+    if e.is_timeout() {
+        "Request timed out"
+    } else if e.is_connect() {
+        "Connection failed"
+    } else if e.is_redirect() {
+        "Too many redirects"
+    } else if e.is_body() || e.is_decode() {
+        "Failed to read response"
+    } else {
+        "Request failed"
+    }
+}
+
+/// The deepest message in an error's `source()` chain. reqwest's own `Display`
+/// stops at "error sending request for url (…)" and hides the real reason (TLS
+/// trust failure, DNS error, connection refused, …), so walk down to the leaf.
+fn root_cause(err: &dyn std::error::Error) -> String {
+    let mut cur = err;
+    while let Some(src) = cur.source() {
+        cur = src;
+    }
+    cur.to_string()
+}
+
+/// Build an actionable one-line message from a send failure: a category plus the
+/// underlying cause. The leaf cause is used rather than reqwest's top-level
+/// `Display` so the (possibly secret-bearing) request URL isn't echoed back.
+fn describe_send_error(e: &reqwest::Error) -> String {
+    format!("{}: {}", classify_send_error(e), root_cause(e))
 }
 
 // SavedRequest doesn't expose a timeout field yet; always use 30 s.
@@ -241,5 +294,41 @@ trait TimeoutExt {
 impl TimeoutExt for SavedRequest {
     fn timeout_field_or_default(&self) -> u64 {
         30_000
+    }
+}
+
+#[cfg(test)]
+mod error_tests {
+    use super::root_cause;
+    use std::fmt;
+
+    #[derive(Debug)]
+    struct Err(&'static str, Option<Box<Err>>);
+    impl fmt::Display for Err {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str(self.0)
+        }
+    }
+    impl std::error::Error for Err {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            self.1.as_deref().map(|e| e as &dyn std::error::Error)
+        }
+    }
+
+    #[test]
+    fn walks_to_leaf_cause() {
+        let chain = Err(
+            "error sending request",
+            Some(Box::new(Err(
+                "client error (Connect)",
+                Some(Box::new(Err("invalid peer certificate: UnknownIssuer", None))),
+            ))),
+        );
+        assert_eq!(root_cause(&chain), "invalid peer certificate: UnknownIssuer");
+    }
+
+    #[test]
+    fn single_error_returns_itself() {
+        assert_eq!(root_cause(&Err("boom", None)), "boom");
     }
 }

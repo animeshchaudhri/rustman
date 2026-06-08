@@ -1,0 +1,57 @@
+[package]
+edition = "2024"
+name = "iced-code-editor"
+version = "0.3.9"
+authors = ["LuDog71 <ludog71.trekker238@passmail.net>"]
+description = "A custom code editor widget for the Iced GUI framework with syntax highlighting, line numbers, and scrolling support."
+homepage = "https://github.com/LuDog71FR/iced-code-editor"
+documentation = "https://docs.rs/iced-code-editor"
+readme = "README.md"
+keywords = ["gui", "interface", "widgets", "iced", "editor"]
+categories = ["gui"]
+license = "MIT"
+repository = "https://github.com/LuDog71FR/iced-code-editor"
+resolver = "2"
+
+[features]
+lsp-process = ["dep:serde_json"]
+two-face = ["dep:two-face"]
+
+[lib]
+name = "iced_code_editor"
+path = "src/lib.rs"
+
+[dependencies.iced]
+version = "0.14"
+features = ["advanced", "highlighter", "canvas", "markdown"]
+
+[dependencies.iced_aw]
+version = "0.13"
+
+[dependencies.iced_font_awesome]
+version = "0.4"
+
+[dependencies.rust-i18n]
+version = "3"
+
+[dependencies.serde_json]
+version = "1"
+optional = true
+
+[dependencies.syntect]
+version = "5.3"
+features = ["default-fancy"]
+default-features = false
+
+[dependencies.two-face]
+version = "0.5"
+optional = true
+
+[dependencies.unicode-width]
+version = "0.2.2"
+
+[dependencies.web-time]
+version = "1"
+
+[lints.rust]
+unsafe_code = "forbid"
