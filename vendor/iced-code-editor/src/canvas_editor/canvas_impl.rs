@@ -1623,6 +1623,33 @@ impl canvas::Program<Message> for CodeEditor {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
+        // Font metrics may have been computed before the configured font was
+        // loaded into the renderer's font system (e.g. editors built during
+        // application boot measure against a fallback font). Re-measure here
+        // and redraw if the live value diverges from the cached one, so token
+        // x-offsets always match the font actually used for rendering.
+        let fresh_char_width = self.measure_single_char_width("a");
+        let fresh_full_char_width = self.measure_single_char_width("汉");
+        let live_char_width =
+            if fresh_char_width.is_finite() && fresh_char_width > 0.0 {
+                fresh_char_width
+            } else {
+                self.char_width
+            };
+        let live_full_char_width = if fresh_full_char_width.is_finite()
+            && fresh_full_char_width > 0.0
+        {
+            fresh_full_char_width
+        } else {
+            self.full_char_width
+        };
+        if (live_char_width - self.char_width).abs() > 0.01
+            || (live_full_char_width - self.full_char_width).abs() > 0.01
+        {
+            self.content_cache.clear();
+            self.overlay_cache.clear();
+        }
+
         let visual_lines: Rc<Vec<VisualLine>> =
             self.visual_lines_cached(bounds.width);
 
@@ -1696,8 +1723,8 @@ impl canvas::Program<Message> for CodeEditor {
                     gutter_width: self.gutter_width(),
                     line_height: self.line_height,
                     font_size: self.font_size,
-                    full_char_width: self.full_char_width,
-                    char_width: self.char_width,
+                    full_char_width: live_full_char_width,
+                    char_width: live_char_width,
                     font: self.font,
                     horizontal_scroll_offset: self.horizontal_scroll_offset,
                 };
@@ -1761,8 +1788,8 @@ impl canvas::Program<Message> for CodeEditor {
                     gutter_width: self.gutter_width(),
                     line_height: self.line_height,
                     font_size: self.font_size,
-                    full_char_width: self.full_char_width,
-                    char_width: self.char_width,
+                    full_char_width: live_full_char_width,
+                    char_width: live_char_width,
                     font: self.font,
                     horizontal_scroll_offset: self.horizontal_scroll_offset,
                 };

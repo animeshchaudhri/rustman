@@ -154,6 +154,7 @@ pub fn import(json: &str) -> Result<Vec<(Collection, Vec<SavedRequest>)>, String
                     jwt_algo: "HS256".to_owned(),
                     pre_request_script: String::new(),
                     test_script: String::new(),
+                    timeout_ms: 30_000,
                 });
             }
         }

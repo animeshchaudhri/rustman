@@ -1,5 +1,5 @@
 use iced::{
-    widget::{button, column, container, row, scrollable, text, Space},
+    widget::{button, column, container, row, scrollable, text, text_input, Space},
     Background, Border, Color, Element, Length,
 };
 
@@ -31,8 +31,23 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
         let col_id = collection.id.clone();
         let col_id_del = collection.id.clone();
+        let col_id_add = collection.id.clone();
+        let col_id_ren = collection.id.clone();
+        let renaming = state.sidebar.col_renaming.as_deref() == Some(collection.id.as_str());
 
-        let header = row![
+        let name_part: Element<Message> = if renaming {
+            let rid = collection.id.clone();
+            let rid_done = collection.id.clone();
+            text_input("Collection name", &collection.name)
+                .on_input(move |s| {
+                    Message::Sidebar(SidebarMsg::RenameCollection { id: rid.clone(), name: s })
+                })
+                .on_submit(Message::Sidebar(SidebarMsg::ToggleRenameCollection(rid_done)))
+                .size(12)
+                .padding([4, 8])
+                .width(Length::Fill)
+                .into()
+        } else {
             button(
                 row![
                     arrow.size(10).color(Palette::text_muted()),
@@ -52,9 +67,19 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                 ..Default::default()
             })
             .width(Length::Fill)
-            .padding([5, 8]),
+            .padding([5, 8])
+            .into()
+        };
+
+        let header = row![
+            name_part,
+            hover_icon_btn(icons::plus().size(12), Message::Sidebar(SidebarMsg::NewRequestIn(col_id_add))),
+            hover_icon_btn(
+                icons::edit().size(11),
+                Message::Sidebar(SidebarMsg::ToggleRenameCollection(col_id_ren)),
+            ),
             button(icons::export().size(11))
-                .on_press(Message::Import(ImportMsg::ExportCollection(col_id_del.clone())))
+                .on_press(Message::Import(ImportMsg::OpenExportDialog(col_id_del.clone())))
                 .style(|_t, s| iced::widget::button::Style {
                     text_color: if matches!(s, iced::widget::button::Status::Hovered) {
                         Palette::accent()
@@ -110,7 +135,25 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                 let req_id = req.id.clone();
                 let col_id = req.collection_id.clone();
 
-                let item_row = row![
+                let req_renaming = state.sidebar.req_renaming.as_deref() == Some(req.id.as_str());
+                let name_part: Element<Message> = if req_renaming {
+                    let rid = req.id.clone();
+                    let rcol = req.collection_id.clone();
+                    let rid_done = req.id.clone();
+                    text_input("Request name", &req.name)
+                        .on_input(move |s| {
+                            Message::Sidebar(SidebarMsg::RenameRequest {
+                                id: rid.clone(),
+                                collection_id: rcol.clone(),
+                                name: s,
+                            })
+                        })
+                        .on_submit(Message::Sidebar(SidebarMsg::ToggleRenameRequest(rid_done)))
+                        .size(12)
+                        .padding(iced::Padding { top: 4.0, right: 4.0, bottom: 4.0, left: 24.0 })
+                        .width(Length::Fill)
+                        .into()
+                } else {
                     button(
                         row![
                             container(
@@ -128,7 +171,16 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                     .on_press(Message::Sidebar(SidebarMsg::RequestOpened(req.clone())))
                     .style(move |t, s| req_item_style(t, s, is_selected))
                     .width(Length::Fill)
-                    .padding(iced::Padding { top: 4.0, right: 4.0, bottom: 4.0, left: 24.0 }),
+                    .padding(iced::Padding { top: 4.0, right: 4.0, bottom: 4.0, left: 24.0 })
+                    .into()
+                };
+
+                let item_row = row![
+                    name_part,
+                    hover_icon_btn(
+                        icons::edit().size(10),
+                        Message::Sidebar(SidebarMsg::ToggleRenameRequest(req.id.clone())),
+                    ),
                     button(icons::close().size(11))
                         .on_press(Message::Sidebar(SidebarMsg::DeleteRequest {
                             id: req_id,
@@ -184,6 +236,21 @@ fn method_color(method: &str) -> iced::Color {
         "DELETE" => Palette::DELETE,
         _ => Palette::HEAD,
     }
+}
+
+fn hover_icon_btn(icon: iced::widget::Text<'static>, msg: Message) -> iced::Element<'static, Message> {
+    button(icon)
+        .on_press(msg)
+        .style(|_t, s| iced::widget::button::Style {
+            text_color: if matches!(s, iced::widget::button::Status::Hovered) {
+                Palette::accent()
+            } else {
+                Palette::text_subtle()
+            },
+            ..Default::default()
+        })
+        .padding([3, 4])
+        .into()
 }
 
 fn icon_btn_only(icon: iced::widget::Text<'static>, _tooltip: &str, msg: Message) -> iced::Element<'static, Message> {

@@ -91,7 +91,8 @@ async fn do_send(
         .map_err(|_| format!("Invalid HTTP method: {}", req.method))?;
 
     let mut builder = client.request(method, &url);
-    builder = builder.timeout(Duration::from_millis(req.timeout_field_or_default()));
+    let timeout_ms = if req.timeout_ms < 1000 { 30_000 } else { req.timeout_ms };
+    builder = builder.timeout(Duration::from_millis(timeout_ms));
 
     let mut header_map = HeaderMap::new();
     for h in &req.headers {
@@ -285,16 +286,6 @@ fn root_cause(err: &dyn std::error::Error) -> String {
 /// `Display` so the (possibly secret-bearing) request URL isn't echoed back.
 fn describe_send_error(e: &reqwest::Error) -> String {
     format!("{}: {}", classify_send_error(e), root_cause(e))
-}
-
-// SavedRequest doesn't expose a timeout field yet; always use 30 s.
-trait TimeoutExt {
-    fn timeout_field_or_default(&self) -> u64;
-}
-impl TimeoutExt for SavedRequest {
-    fn timeout_field_or_default(&self) -> u64 {
-        30_000
-    }
 }
 
 #[cfg(test)]

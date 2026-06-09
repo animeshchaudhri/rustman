@@ -3,6 +3,10 @@ use serde::Serialize as _;
 
 pub fn pretty_json(text: &str, use_tabs: bool) -> Option<String> {
     let value = serde_json::from_str::<serde_json::Value>(text).ok()?;
+    pretty_value(&value, use_tabs)
+}
+
+pub fn pretty_value(value: &serde_json::Value, use_tabs: bool) -> Option<String> {
     if use_tabs {
         let mut buf = Vec::new();
         let formatter = serde_json::ser::PrettyFormatter::with_indent(b"\t");
@@ -10,6 +14,6 @@ pub fn pretty_json(text: &str, use_tabs: bool) -> Option<String> {
         value.serialize(&mut ser).ok()?;
         String::from_utf8(buf).ok()
     } else {
-        serde_json::to_string_pretty(&value).ok()
+        serde_json::to_string_pretty(value).ok()
     }
 }

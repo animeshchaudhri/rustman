@@ -8,20 +8,11 @@ use crate::services::storage;
 pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
     match msg {
         SidebarMsg::PanelSelected(panel) => {
-            if panel == crate::message::SidebarPanel::Git {
-                let data_dir = state.data_dir.clone();
-                let col_id = state.collections.first().map(|c| c.id.clone()).unwrap_or_default();
-                let task = Task::perform(
-                    async move {
-                        use crate::services::vcs;
-                        vcs::open_repo(&data_dir).map(|repo| vcs::collection_log(&repo, &col_id))
-                    },
-                    |result| Message::Git(crate::message::GitMsg::LogLoaded(result.unwrap_or_default())),
-                );
-                state.sidebar.panel = panel;
-                return task;
-            }
+            let is_git = panel == crate::message::SidebarPanel::Git;
             state.sidebar.panel = panel;
+            if is_git {
+                return Task::done(Message::Git(crate::message::GitMsg::Refresh));
+            }
         }
         SidebarMsg::CollectionToggled(id) => {
             if state.sidebar.expanded.contains(&id) {
@@ -75,6 +66,42 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
                 }
             }
         }
+        SidebarMsg::ToggleRenameCollection(id) => {
+            state.sidebar.col_renaming =
+                if state.sidebar.col_renaming.as_deref() == Some(&id) { None } else { Some(id) };
+        }
+        SidebarMsg::ToggleRenameRequest(id) => {
+            state.sidebar.req_renaming =
+                if state.sidebar.req_renaming.as_deref() == Some(&id) { None } else { Some(id) };
+        }
+        SidebarMsg::RenameRequest { id, collection_id, name } => {
+            if let Some(reqs) = state.requests.get_mut(&collection_id) {
+                if let Some(req) = reqs.iter_mut().find(|r| r.id == id) {
+                    req.name = name.clone();
+                    if let Some(db) = &state.db {
+                        let _ = storage::create_request(db, req);
+                    }
+                }
+            }
+            for tab in state.tabs.tabs.iter_mut() {
+                if tab.saved_as.as_ref().map(|(_, rid)| rid.as_str()) == Some(id.as_str()) {
+                    tab.title = name.clone();
+                }
+            }
+        }
+        SidebarMsg::NewRequestIn(collection_id) => {
+            let req = crate::domain::collection::SavedRequest::new_in(
+                collection_id.clone(),
+                "New Request".to_owned(),
+            );
+            if let Some(db) = &state.db {
+                let _ = storage::create_request(db, &req);
+            }
+            state.sidebar.expanded.insert(collection_id.clone());
+            state.requests.entry(collection_id).or_default().push(req.clone());
+            state.sidebar.selected_request = Some(req.id.clone());
+            state.tabs.open_request(&req);
+        }
         SidebarMsg::EnvironmentCreated => {
             let id = uuid::Uuid::new_v4().to_string();
             let env = AppEnvironment {
@@ -108,11 +135,20 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
             }
         }
         SidebarMsg::EnvironmentToggleEdit(id) => {
-            state.sidebar.env_editing = if state.sidebar.env_editing.as_deref() == Some(&id) {
-                None
+            if state.sidebar.env_editing.as_deref() == Some(&id) {
+                state.sidebar.env_editing = None;
+                state.sidebar.env_edit_rows.clear();
             } else {
-                Some(id)
-            };
+                let mut rows: Vec<(String, String)> = state
+                    .environments
+                    .iter()
+                    .find(|e| e.id == id)
+                    .map(|e| e.variables.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                    .unwrap_or_default();
+                rows.sort();
+                state.sidebar.env_editing = Some(id);
+                state.sidebar.env_edit_rows = rows;
+            }
         }
         SidebarMsg::EnvironmentNameChanged(id, name) => {
             if let Some(env) = state.environments.iter_mut().find(|e| e.id == id) {
@@ -121,42 +157,44 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
             }
         }
         SidebarMsg::EnvironmentVarAdded(env_id) => {
-            if let Some(env) = state.environments.iter_mut().find(|e| e.id == env_id) {
-                let key = format!("VAR_{}", env.variables.len() + 1);
-                env.variables.insert(key, String::new());
-                if let Some(db) = &state.db { let _ = storage::save_environment(db, env); }
+            if state.sidebar.env_editing.as_deref() == Some(&env_id) {
+                state.sidebar.env_edit_rows.push((String::new(), String::new()));
             }
         }
         SidebarMsg::EnvironmentVarKeyChanged(env_id, idx, new_key) => {
-            if let Some(env) = state.environments.iter_mut().find(|e| e.id == env_id) {
-                let entries: Vec<(String, String)> = env.variables.clone().into_iter().collect();
-                if let Some((old_key, val)) = entries.get(idx) {
-                    if old_key != &new_key {
-                        env.variables.remove(old_key);
-                        env.variables.insert(new_key, val.clone());
-                        if let Some(db) = &state.db { let _ = storage::save_environment(db, env); }
-                    }
-                }
+            if let Some(row) = state.sidebar.env_edit_rows.get_mut(idx) {
+                row.0 = new_key;
             }
+            rebuild_env_vars(state, &env_id);
         }
         SidebarMsg::EnvironmentVarValueChanged(env_id, idx, new_val) => {
-            if let Some(env) = state.environments.iter_mut().find(|e| e.id == env_id) {
-                let keys: Vec<String> = env.variables.keys().cloned().collect();
-                if let Some(k) = keys.get(idx) {
-                    env.variables.insert(k.clone(), new_val);
-                    if let Some(db) = &state.db { let _ = storage::save_environment(db, env); }
-                }
+            if let Some(row) = state.sidebar.env_edit_rows.get_mut(idx) {
+                row.1 = new_val;
             }
+            rebuild_env_vars(state, &env_id);
         }
         SidebarMsg::EnvironmentVarRemoved(env_id, idx) => {
-            if let Some(env) = state.environments.iter_mut().find(|e| e.id == env_id) {
-                let keys: Vec<String> = env.variables.keys().cloned().collect();
-                if let Some(k) = keys.get(idx) {
-                    env.variables.remove(k);
-                    if let Some(db) = &state.db { let _ = storage::save_environment(db, env); }
-                }
+            if idx < state.sidebar.env_edit_rows.len() {
+                state.sidebar.env_edit_rows.remove(idx);
             }
+            rebuild_env_vars(state, &env_id);
         }
     }
     Task::none()
+}
+
+fn rebuild_env_vars(state: &mut AppState, env_id: &str) {
+    let vars: std::collections::HashMap<String, String> = state
+        .sidebar
+        .env_edit_rows
+        .iter()
+        .filter(|(k, _)| !k.trim().is_empty())
+        .map(|(k, v)| (k.trim().to_owned(), v.clone()))
+        .collect();
+    if let Some(env) = state.environments.iter_mut().find(|e| e.id == env_id) {
+        env.variables = vars;
+        if let Some(db) = &state.db {
+            let _ = storage::save_environment(db, env);
+        }
+    }
 }

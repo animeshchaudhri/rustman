@@ -51,6 +51,7 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                         jwt_algo: tab.jwt_algo.clone(),
                         pre_request_script: tab.pre_request_editor.text(),
                         test_script: tab.test_editor.text(),
+                        timeout_ms: tab.timeout_ms,
                     },
                 };
 
@@ -68,8 +69,15 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 persist_session(state);
                 if state.parsed_cache.inner_get_by_hash(body_hash).is_some() {
                     let cached_clone = state.parsed_cache.inner_get_by_hash(body_hash).unwrap().clone();
-                    let display = serde_json::to_string_pretty(&cached_clone)
-                        .unwrap_or_else(|_| body.clone());
+                    let use_tabs = state
+                        .tabs
+                        .tabs
+                        .iter()
+                        .find(|t| t.id == tab_id)
+                        .map(|t| t.body_indent_tabs)
+                        .unwrap_or(false);
+                    let display = crate::services::format::pretty_value(&cached_clone, use_tabs)
+                        .unwrap_or_else(|| body.clone());
                     if let Some(t) = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id) {
                         t.parsed_json = Some(cached_clone);
                         t.set_viewer_content(&display, true);
@@ -81,12 +89,14 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
 
                 let parse_generation;
                 let parse_cancel;
+                let use_tabs;
                 {
                     let t = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id);
                     if let Some(t) = t {
                         let (gen, cancel) = t.jobs.start(JobKind::Parse);
                         parse_generation = gen;
                         parse_cancel = cancel;
+                        use_tabs = t.body_indent_tabs;
                     } else {
                         return Task::none();
                     }
@@ -99,7 +109,7 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                             built = tokio::task::spawn_blocking(move || {
                                 let parsed = serde_json::from_str::<serde_json::Value>(&body).ok();
                                 let display = parsed.as_ref()
-                                    .and_then(|j| serde_json::to_string_pretty(j).ok())
+                                    .and_then(|j| crate::services::format::pretty_value(j, use_tabs))
                                     .unwrap_or(body);
                                 (display, parsed.map(Box::new))
                             }) => match built {
@@ -160,6 +170,11 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
         }
         AppMsg::OpenUrl(url) => {
             let _ = open::that(url);
+        }
+        AppMsg::AutoSaveSession => {
+            if state.tabs.tabs.iter().any(|t| t.modified) {
+                persist_session(state);
+            }
         }
         AppMsg::Noop => {}
     }

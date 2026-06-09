@@ -28,6 +28,10 @@ pub enum SidebarMsg {
     RequestOpened(SavedRequest),
     NewCollection,
     RenameCollection { id: String, name: String },
+    ToggleRenameCollection(String),
+    NewRequestIn(String),
+    ToggleRenameRequest(String),
+    RenameRequest { id: String, collection_id: String, name: String },
     DeleteCollection(String),
     DeleteRequest { id: String, collection_id: String },
     HistoryEntryOpened(HistoryEntry),
@@ -112,7 +116,10 @@ pub enum RequestMsg {
     NewTab,
     CloseTab(usize),
     CloseCurrentTab,
+    ConfirmCloseTab,
+    CancelCloseTab,
     SwitchTab(usize),
+    TimeoutChanged(String),
     // Actions
     Send,
     Abort,
@@ -120,6 +127,7 @@ pub enum RequestMsg {
     Redo,
     SaveRequest,
     ImportCurl(String),
+    ImportHttpie(String),
     ExportCurl,
     CloseCurlModal,
     CopyCurlToClipboard,
@@ -136,6 +144,7 @@ pub enum RequestTab {
     Body,
     Auth,
     Scripts,
+    Settings,
     WebSocket,
 }
 
@@ -184,10 +193,64 @@ pub enum WsMsg {
 
 #[derive(Debug, Clone)]
 pub enum GitMsg {
-    LogLoaded(Vec<crate::services::vcs::CommitInfo>),
-    CommitAll,
-    Committed(String),
+    Refresh,
+    Loaded(Box<GitView>),
+    SelectRepo(String),
+    CloneUrlChanged(String),
+    CloneRepo,
+    OpenFolder,
+    FolderPicked(Option<std::path::PathBuf>),
+    RepoAdded(Box<RepoAddPayload>),
+    RemoveRepo(String),
+    CommitMessageChanged(String),
+    Commit,
+    RemoteUrlChanged(String),
+    SetRemote,
+    TokenChanged(String),
+    Fetch,
+    Pull,
+    Push,
+    NewBranchNameChanged(String),
+    CreateBranch,
+    SwitchBranch(String),
+    RestoreCommit(String),
+    ToggleDiff,
+    DiffLoaded(String),
+    Synced(Box<SyncPayload>),
+    Done(String),
     Error(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct RepoSummary {
+    pub id: String,
+    pub branch: String,
+    pub ahead: usize,
+    pub behind: usize,
+    pub changes: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct GitView {
+    pub summaries: Vec<RepoSummary>,
+    pub status: Option<crate::services::vcs::RepoStatus>,
+    pub branches: Vec<crate::services::vcs::BranchInfo>,
+    pub log: Vec<crate::services::vcs::CommitInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RepoAddPayload {
+    pub name: String,
+    pub path: std::path::PathBuf,
+    pub remote_url: Option<String>,
+    pub collections: Vec<(crate::domain::collection::Collection, Vec<crate::domain::collection::SavedRequest>)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SyncPayload {
+    pub repo_id: String,
+    pub collections: Vec<(crate::domain::collection::Collection, Vec<crate::domain::collection::SavedRequest>)>,
+    pub label: String,
 }
 
 // ── Save dialog ───────────────────────────────────────────────────────────────
@@ -222,7 +285,10 @@ pub enum PaletteMsg {
 pub enum ImportMsg {
     OpenPostmanDialog,
     OpenOpenApiDialog,
+    OpenExportDialog(String),
+    CloseExportDialog,
     ExportCollection(String),
+    ExportCollectionJson(String),
     PostmanLoaded(Vec<(crate::domain::collection::Collection, Vec<crate::domain::collection::SavedRequest>)>),
     OpenApiLoaded(Vec<(crate::domain::collection::Collection, Vec<crate::domain::collection::SavedRequest>)>),
     ExportDone(String),
@@ -240,22 +306,19 @@ pub enum LayoutMsg {
 
 #[derive(Debug, Clone)]
 pub enum AppMsg {
-    /// A request completed. `generation` is the JobKind::Request stamp from the tab's
-    /// JobManager at spawn time; the result is applied only if it is still current.
+  
     HttpResponse { generation: u64, result: HttpResult },
     ScriptConsoleLog(String),
     AvatarLoaded(Vec<u8>),
     OpenUrl(String),
-    /// Large-body viewer content ready after background build. `generation` is the
-    /// JobKind::Parse stamp; a stale build (superseded by a newer response) is dropped.
+
     ViewerReady {
         generation: u64,
         tab_id: String,
         content_text: String,
         parsed_json: Option<Box<serde_json::Value>>,
     },
-    /// Background pretty-print finished. Applied only if the JobKind::Format
-    /// `generation` is still current for the tab.
+
     Formatted {
         generation: u64,
         tab_id: String,
@@ -264,6 +327,7 @@ pub enum AppMsg {
     },
     /// Window is closing — persist session before the process exits.
     WindowCloseRequested(iced::window::Id),
+    AutoSaveSession,
     Noop,
 }
 

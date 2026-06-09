@@ -51,6 +51,7 @@ pub struct RequestTabState {
     pub pre_request_editor: text_editor::Content,
     pub test_editor: text_editor::Content,
     pub timeout_ms: u64,
+    pub timeout_text: String,
     pub active_request_tab: crate::message::RequestTab,
     pub active_response_tab: crate::message::ResponseTab,
     pub response: Option<HttpResponse>,
@@ -143,6 +144,7 @@ impl RequestTabState {
             pre_request_editor: text_editor::Content::new(),
             test_editor: text_editor::Content::new(),
             timeout_ms: 30_000,
+            timeout_text: "30000".to_owned(),
             active_request_tab: crate::message::RequestTab::Params,
             active_response_tab: crate::message::ResponseTab::Body,
             ws: WsState::default(),
@@ -275,6 +277,8 @@ impl RequestTabState {
         tab.jwt_algo = req.jwt_algo.clone();
         tab.pre_request_editor = text_editor::Content::with_text(&req.pre_request_script);
         tab.test_editor = text_editor::Content::with_text(&req.test_script);
+        tab.timeout_ms = req.timeout_ms;
+        tab.timeout_text = req.timeout_ms.to_string();
         tab.saved_as = Some((req.collection_id.clone(), req.id.clone()));
         tab
     }
@@ -378,6 +382,8 @@ pub struct TabSnapshot {
     pub api_key_location: ApiKeyLocation,
     pub cookie_string: String,
     #[serde(default)]
+    pub cookies: Vec<KeyValue>,
+    #[serde(default)]
     pub jwt_secret: String,
     #[serde(default)]
     pub jwt_subject: String,
@@ -415,6 +421,7 @@ impl From<&RequestTabState> for TabSnapshot {
             api_key_value: t.api_key_value.clone(),
             api_key_location: t.api_key_location.clone(),
             cookie_string: t.cookie_string.clone(),
+            cookies: t.cookies.clone(),
             jwt_secret: t.jwt_secret.clone(),
             jwt_subject: t.jwt_subject.clone(),
             jwt_algo: t.jwt_algo.clone(),

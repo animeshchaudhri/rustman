@@ -86,8 +86,6 @@ pub async fn check() -> Result<Option<UpdateInfo>, String> {
     }))
 }
 
-/// Download the matching asset for this platform and replace the running binary
-/// in place. On success the new version takes effect after a restart.
 pub async fn install() -> Result<String, String> {
     let release = fetch_latest().await?;
     let latest = release.tag_name.trim_start_matches('v').to_owned();

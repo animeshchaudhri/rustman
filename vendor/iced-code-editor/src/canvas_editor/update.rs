@@ -870,8 +870,10 @@ impl CodeEditor {
                 Task::done(Message::Paste(clipboard_text))
             })
         } else {
-            // We have the text, paste it
-            self.paste_text(text);
+            // We have the text, paste it (normalising Windows/Mac line endings,
+            // which would otherwise leave stray \r glyphs inside the buffer)
+            let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+            self.paste_text(&normalized);
             self.finish_edit_operation();
             self.scroll_to_cursor()
         }
@@ -1605,6 +1607,14 @@ impl CodeEditor {
     /// # Returns
     /// A `Task<Message>` for any asynchronous operations, such as scrolling to keep the cursor visible after state updates
     pub fn update(&mut self, message: &Message) -> Task<Message> {
+        // Self-heal font metrics that were measured before the configured font
+        // became available (see the matching check in draw), so cursor and
+        // hit-testing math stays in sync with what is rendered.
+        let fresh = self.measure_single_char_width("a");
+        if fresh.is_finite() && fresh > 0.0 && (fresh - self.char_width).abs() > 0.01 {
+            self.recalculate_char_dimensions(false);
+        }
+
         match message {
             // Text input operations
             Message::CharacterInput(ch) => self.handle_character_input_msg(*ch),
