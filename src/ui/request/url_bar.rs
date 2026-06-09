@@ -40,6 +40,8 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         let trimmed = v.trim_start().to_lowercase();
         if trimmed.starts_with("curl ") || trimmed.starts_with("curl\t") {
             Message::Request(RequestMsg::ImportCurl(v.trim_start().to_owned()))
+        } else if crate::services::import::httpie::is_httpie_command(&v) {
+            Message::Request(RequestMsg::ImportHttpie(v.trim_start().to_owned()))
         } else {
             Message::Request(RequestMsg::UrlChanged(v))
         }
@@ -77,7 +79,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     };
 
     container(
-        row![method_picker, url_bar,send_btn, curl_btn]
+        row![method_picker, url_bar, send_btn, curl_btn]
             .spacing(6)
             .align_y(iced::Alignment::Center)
             .padding([6, 10]),

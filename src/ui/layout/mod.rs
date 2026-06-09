@@ -25,6 +25,10 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
     if state.palette_open {
         iced::widget::stack![root, crate::ui::command_palette::view(state)].into()
+    } else if state.close_confirm_tab.is_some() {
+        iced::widget::stack![root, dialogs::close_confirm_dialog(state)].into()
+    } else if state.export_dialog_collection.is_some() {
+        iced::widget::stack![root, dialogs::export_dialog(state)].into()
     } else if state.save_dialog_open {
         iced::widget::stack![root, dialogs::save_dialog(state)].into()
     } else if state.curl_modal_open {
@@ -58,10 +62,11 @@ fn left_panel(state: &AppState) -> Element<'_, Message> {
 }
 
 fn icon_rail(state: &AppState) -> Element<'_, Message> {
-    let top_icons: [(SidebarPanel, fn() -> Text<'static>); 3] = [
+    let top_icons: [(SidebarPanel, fn() -> Text<'static>); 4] = [
         (SidebarPanel::Collections, icons::collections),
         (SidebarPanel::History, icons::history),
         (SidebarPanel::Environments, icons::environments),
+        (SidebarPanel::Git, icons::git_branch),
     ];
 
     let mut top_col = column![].spacing(0);
@@ -120,6 +125,7 @@ fn main_area(state: &AppState) -> Element<'_, Message> {
         RequestTab::Body      => request::body::view(active_tab),
         RequestTab::Auth      => request::auth::view(active_tab),
         RequestTab::Scripts   => request::scripts::view(active_tab),
+        RequestTab::Settings  => request::settings::view(active_tab),
         RequestTab::WebSocket => request::websocket::view(active_tab),
     };
 

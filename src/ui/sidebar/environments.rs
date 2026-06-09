@@ -88,10 +88,12 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         col = col.push(name_row);
 
         if is_editing {
-            col = col.push(var_editor(env_id, &env.variables));
+            col = col.push(var_editor(env_id, &state.sidebar.env_edit_rows));
         } else if is_active && !env.variables.is_empty() {
             let mut preview = column![].spacing(0);
-            for (k, v) in env.variables.iter().take(4) {
+            let mut sorted: Vec<(&String, &String)> = env.variables.iter().collect();
+            sorted.sort();
+            for (k, v) in sorted.into_iter().take(4) {
                 let short_v = if v.len() > 20 { format!("{}…", &v[..18]) } else { v.clone() };
                 preview = preview.push(
                     container(
@@ -128,10 +130,8 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
 fn var_editor<'a>(
     env_id: String,
-    variables: &'a std::collections::HashMap<String, String>,
+    rows: &'a [(String, String)],
 ) -> Element<'a, Message> {
-    let vars: Vec<(&String, &String)> = variables.iter().collect();
-
     let header = container(
         row![
             text("Key").size(9).color(Palette::text_subtle()).width(Length::Fill),
@@ -148,12 +148,12 @@ fn var_editor<'a>(
 
     let mut var_col = column![header].spacing(0);
 
-    for (i, (k, v)) in vars.iter().enumerate() {
+    for (i, (k, v)) in rows.iter().enumerate() {
         let eid_k = env_id.clone();
         let eid_v = env_id.clone();
         let eid_r = env_id.clone();
-        let key_str = (*k).clone();
-        let val_str = (*v).clone();
+        let key_str = k.clone();
+        let val_str = v.clone();
         let is_even = i % 2 == 0;
 
         let row_el = container(

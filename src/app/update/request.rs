@@ -49,8 +49,38 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         RequestMsg::PreRequestScriptEdited(action) => { tab.pre_request_editor.perform(action); tab.modified = true; }
         RequestMsg::TestScriptEdited(action) => { tab.test_editor.perform(action); tab.modified = true; }
         RequestMsg::NewTab => { state.tabs.new_tab(); persist_session(state); return Task::none(); }
-        RequestMsg::CloseTab(i) => { state.tabs.close_tab(i); persist_session(state); return Task::none(); }
-        RequestMsg::CloseCurrentTab => { let i = state.tabs.active; state.tabs.close_tab(i); persist_session(state); return Task::none(); }
+        RequestMsg::CloseTab(i) => {
+            if state.tabs.tabs.get(i).map_or(false, |t| t.modified) {
+                state.close_confirm_tab = Some(i);
+            } else {
+                state.tabs.close_tab(i);
+                persist_session(state);
+            }
+            return Task::none();
+        }
+        RequestMsg::CloseCurrentTab => {
+            let i = state.tabs.active;
+            if state.tabs.tabs.get(i).map_or(false, |t| t.modified) {
+                state.close_confirm_tab = Some(i);
+            } else {
+                state.tabs.close_tab(i);
+                persist_session(state);
+            }
+            return Task::none();
+        }
+        RequestMsg::ConfirmCloseTab => {
+            if let Some(i) = state.close_confirm_tab.take() {
+                state.tabs.close_tab(i);
+                persist_session(state);
+            }
+            return Task::none();
+        }
+        RequestMsg::CancelCloseTab => { state.close_confirm_tab = None; return Task::none(); }
+        RequestMsg::TimeoutChanged(v) => {
+            tab.timeout_ms = v.trim().parse().unwrap_or(0);
+            tab.timeout_text = v;
+            tab.modified = true;
+        }
         RequestMsg::SwitchTab(i) => { state.tabs.switch_to(i); persist_session(state); return Task::none(); }
         RequestMsg::Send => return send_request(state),
         RequestMsg::HeaderAdded => { tab.headers.push(crate::domain::request::KeyValue::new_empty()); tab.modified = true; }
@@ -174,108 +204,10 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             }
         }
         RequestMsg::ImportCurl(cmd) => {
-            let parsed = curl::parse(&cmd);
-            let has_body = parsed.body.is_some();
-            let has_headers = !parsed.header.is_empty();
-
-            if let Some(url) = parsed.url {
-                tab.url = url;
-                tab.params = sync_params_from_url(&tab.url, &[]);
-            }
-            if let Some(method) = parsed.method {
-                if let Ok(m) = method.to_uppercase().parse() {
-                    tab.method = m;
-                }
-            }
-            let auth_detected = if let Some(auth_val) = parsed.header.get("Authorization") {
-                if let Some(token) = auth_val.strip_prefix("Bearer ") {
-                    tab.auth_type = crate::domain::request::AuthType::Bearer;
-                    tab.bearer_token = token.to_owned();
-                    true
-                } else if let Some(encoded) = auth_val.strip_prefix("Basic ") {
-                    tab.auth_type = crate::domain::request::AuthType::Basic;
-                    if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(encoded.trim()) {
-                        if let Ok(s) = std::str::from_utf8(&decoded) {
-                            if let Some((user, pass)) = s.split_once(':') {
-                                tab.basic_user = user.to_owned();
-                                tab.basic_pass = pass.to_owned();
-                            }
-                        }
-                    }
-                    true
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            let headers_without_auth: Vec<_> = parsed.header.into_iter()
-                .filter(|(k, _)| !auth_detected || k != "Authorization")
-                .map(|(k, v)| crate::domain::request::KeyValue {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    key: k,
-                    value: v,
-                    enabled: true,
-                })
-                .collect();
-            if has_headers {
-                tab.headers = headers_without_auth;
-            }
-            if has_body {
-                if let Some(body) = parsed.body {
-                    let trimmed = body.trim();
-                    let is_json = trimmed.starts_with('{') || trimmed.starts_with('[');
-                    tab.body_type = if is_json {
-                        crate::domain::request::BodyType::Json
-                    } else {
-                        crate::domain::request::BodyType::Text
-                    };
-                    tab.body_editor = crate::state::tabs::make_code_editor(
-                        &body,
-                        if is_json { "json" } else { "txt" },
-                    );
-                }
-                tab.active_request_tab = crate::message::RequestTab::Body;
-            } else if auth_detected {
-                tab.active_request_tab = crate::message::RequestTab::Auth;
-            } else if !tab.params.is_empty() {
-                tab.active_request_tab = crate::message::RequestTab::Params;
-            } else if has_headers {
-                tab.active_request_tab = crate::message::RequestTab::Headers;
-            }
-            if !parsed.cookies.is_empty() {
-                tab.cookie_string = parsed.cookies.into_iter()
-                    .map(|(k, v)| format!("{k}={v}"))
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                if !auth_detected {
-                    tab.auth_type = crate::domain::request::AuthType::Cookie;
-                }
-            }
-            if !parsed.form.is_empty() {
-                use crate::domain::request::{FormField, FormFieldType};
-                tab.body_type = crate::domain::request::BodyType::FormData;
-                tab.form_fields = parsed.form.into_iter().map(|f| {
-                    let (field_type, value, file_name) = if f.is_file {
-                        (FormFieldType::File, String::new(), Some(f.value))
-                    } else {
-                        (FormFieldType::Text, f.value, None)
-                    };
-                    FormField {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        key: f.key,
-                        value,
-                        field_type,
-                        enabled: true,
-                        file_name,
-                        file_data: None,
-                        mime_type: None,
-                    }
-                }).collect();
-                tab.active_request_tab = crate::message::RequestTab::Body;
-            }
-            tab.modified = true;
+            apply_parsed_command(tab, curl::parse(&cmd));
+        }
+        RequestMsg::ImportHttpie(cmd) => {
+            apply_parsed_command(tab, crate::services::import::httpie::parse(&cmd));
         }
         RequestMsg::SaveRequest => {
             let tab = state.tabs.active_tab();
@@ -578,4 +510,108 @@ mod undo_tests {
         assert_eq!(tab.url, "first");
         assert_eq!(tab.bearer_token, "tok1");
     }
+}
+
+fn apply_parsed_command(tab: &mut RequestTabState, parsed: crate::services::curl::ParsedCurl) {
+    let has_body = parsed.body.is_some();
+    let has_headers = !parsed.header.is_empty();
+
+    if let Some(url) = parsed.url {
+        tab.url = url;
+        tab.params = sync_params_from_url(&tab.url, &[]);
+    }
+    if let Some(method) = parsed.method {
+        if let Ok(m) = method.to_uppercase().parse() {
+            tab.method = m;
+        }
+    }
+    let auth_detected = if let Some(auth_val) = parsed.header.get("Authorization") {
+        if let Some(token) = auth_val.strip_prefix("Bearer ") {
+            tab.auth_type = crate::domain::request::AuthType::Bearer;
+            tab.bearer_token = token.to_owned();
+            true
+        } else if let Some(encoded) = auth_val.strip_prefix("Basic ") {
+            tab.auth_type = crate::domain::request::AuthType::Basic;
+            if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(encoded.trim()) {
+                if let Ok(s) = std::str::from_utf8(&decoded) {
+                    if let Some((user, pass)) = s.split_once(':') {
+                        tab.basic_user = user.to_owned();
+                        tab.basic_pass = pass.to_owned();
+                    }
+                }
+            }
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    let headers_without_auth: Vec<_> = parsed.header.into_iter()
+        .filter(|(k, _)| !auth_detected || k != "Authorization")
+        .map(|(k, v)| crate::domain::request::KeyValue {
+            id: uuid::Uuid::new_v4().to_string(),
+            key: k,
+            value: v,
+            enabled: true,
+        })
+        .collect();
+    if has_headers {
+        tab.headers = headers_without_auth;
+    }
+    if has_body {
+        if let Some(body) = parsed.body {
+            let trimmed = body.trim();
+            let is_json = trimmed.starts_with('{') || trimmed.starts_with('[');
+            tab.body_type = if is_json {
+                crate::domain::request::BodyType::Json
+            } else {
+                crate::domain::request::BodyType::Text
+            };
+            tab.body_editor = crate::state::tabs::make_code_editor(
+                &body,
+                if is_json { "json" } else { "txt" },
+            );
+        }
+        tab.active_request_tab = crate::message::RequestTab::Body;
+    } else if auth_detected {
+        tab.active_request_tab = crate::message::RequestTab::Auth;
+    } else if !tab.params.is_empty() {
+        tab.active_request_tab = crate::message::RequestTab::Params;
+    } else if has_headers {
+        tab.active_request_tab = crate::message::RequestTab::Headers;
+    }
+    if !parsed.cookies.is_empty() {
+        tab.cookie_string = parsed.cookies.into_iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        if !auth_detected {
+            tab.auth_type = crate::domain::request::AuthType::Cookie;
+        }
+    }
+    if !parsed.form.is_empty() {
+        use crate::domain::request::{FormField, FormFieldType};
+        tab.body_type = crate::domain::request::BodyType::FormData;
+        tab.form_fields = parsed.form.into_iter().map(|f| {
+            let (field_type, value, file_name) = if f.is_file {
+                (FormFieldType::File, String::new(), Some(f.value))
+            } else {
+                (FormFieldType::Text, f.value, None)
+            };
+            FormField {
+                id: uuid::Uuid::new_v4().to_string(),
+                key: f.key,
+                value,
+                field_type,
+                enabled: true,
+                file_name,
+                file_data: None,
+                mime_type: None,
+            }
+        }).collect();
+        tab.active_request_tab = crate::message::RequestTab::Body;
+    }
+    tab.modified = true;
 }

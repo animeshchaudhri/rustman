@@ -10,7 +10,7 @@ pub(super) fn handle(state: &mut AppState, msg: ImportMsg) -> Task<Message> {
             async {
                 let file = rfd::AsyncFileDialog::new()
                     .add_filter("JSON", &["json"])
-                    .set_title("Import Postman Collection")
+                    .set_title("Import Collection (Postman / Rustman)")
                     .pick_file()
                     .await;
                 if let Some(f) = file {
@@ -21,13 +21,58 @@ pub(super) fn handle(state: &mut AppState, msg: ImportMsg) -> Task<Message> {
                 }
             },
             |content| match content {
-                Some(json) => match crate::services::import::postman::import(&json) {
-                    Ok(data) => Message::Import(ImportMsg::PostmanLoaded(data)),
-                    Err(e) => Message::Import(ImportMsg::Error(e)),
-                },
+                Some(json) => {
+                    let result = crate::services::import::postman::import(&json)
+                        .or_else(|_| crate::services::import::native_import(&json));
+                    match result {
+                        Ok(data) => Message::Import(ImportMsg::PostmanLoaded(data)),
+                        Err(e) => Message::Import(ImportMsg::Error(e)),
+                    }
+                }
                 None => Message::App(AppMsg::Noop),
             },
         ),
+
+        ImportMsg::OpenExportDialog(col_id) => {
+            state.export_dialog_collection = Some(col_id);
+            Task::none()
+        }
+
+        ImportMsg::CloseExportDialog => {
+            state.export_dialog_collection = None;
+            Task::none()
+        }
+
+        ImportMsg::ExportCollectionJson(col_id) => {
+            state.export_dialog_collection = None;
+            let Some(col) = state.collections.iter().find(|c| c.id == col_id).cloned() else {
+                return Task::none();
+            };
+            let reqs = state.requests.get(&col_id).cloned().unwrap_or_default();
+            let json = crate::services::import::native_export(&col, &reqs);
+            let file_name = format!("{}.rustman.json", col.name);
+            Task::perform(
+                async move {
+                    let file = rfd::AsyncFileDialog::new()
+                        .set_file_name(&file_name)
+                        .add_filter("JSON", &["json"])
+                        .set_title("Export Rustman Collection")
+                        .save_file()
+                        .await;
+                    if let Some(f) = file {
+                        let path = f.path().to_path_buf();
+                        let _ = tokio::fs::write(&path, json.as_bytes()).await;
+                        Some(path.to_string_lossy().to_string())
+                    } else {
+                        None
+                    }
+                },
+                |path| match path {
+                    Some(p) => Message::Import(ImportMsg::ExportDone(p)),
+                    None => Message::App(AppMsg::Noop),
+                },
+            )
+        }
 
         ImportMsg::OpenOpenApiDialog => Task::perform(
             async {
@@ -53,6 +98,7 @@ pub(super) fn handle(state: &mut AppState, msg: ImportMsg) -> Task<Message> {
         ),
 
         ImportMsg::ExportCollection(col_id) => {
+            state.export_dialog_collection = None;
             let Some(col) = state.collections.iter().find(|c| c.id == col_id).cloned() else {
                 return Task::none();
             };

@@ -25,7 +25,10 @@ pub(crate) fn subscription(state: &AppState) -> Subscription<Message> {
         .map(|t| Subscription::run_with(WsConn { tab_id: t.id.clone(), url: t.ws.url.clone() }, ws_stream))
         .collect();
 
-    let mut all = vec![kbd];
+    let autosave = iced::time::every(std::time::Duration::from_secs(3))
+        .map(|_| Message::App(crate::message::AppMsg::AutoSaveSession));
+
+    let mut all = vec![kbd, autosave];
     all.extend(ws_subs);
     Subscription::batch(all)
 }

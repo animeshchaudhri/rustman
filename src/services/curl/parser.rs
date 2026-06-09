@@ -62,7 +62,7 @@ fn expand_long_flag_assignments(tokens: Vec<String>) -> Vec<String> {
     out
 }
 
-fn shell_tokenize(s: &str) -> Vec<String> {
+pub(super) fn shell_tokenize(s: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut chars = s.chars().peekable();
     loop {

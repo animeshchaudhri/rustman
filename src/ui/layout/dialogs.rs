@@ -75,6 +75,104 @@ pub(super) fn save_dialog(state: &AppState) -> Element<'_, Message> {
     modal_overlay(container(body_col).style(modal_card_style).padding([20, 24]).width(440))
 }
 
+pub(super) fn export_dialog(state: &AppState) -> Element<'_, Message> {
+    use crate::message::ImportMsg;
+
+    let col_id = state.export_dialog_collection.clone().unwrap_or_default();
+    let col_name = state
+        .collections
+        .iter()
+        .find(|c| c.id == col_id)
+        .map(|c| c.name.clone())
+        .unwrap_or_default();
+
+    let postman_id = col_id.clone();
+    let native_id = col_id;
+
+    let body_col = column![
+        text(format!("Export “{col_name}”")).size(14).color(Palette::text()),
+        Space::new().height(4),
+        text("Choose a format:").size(11).color(Palette::text_muted()),
+        Space::new().height(10),
+        button(
+            column![
+                text("Postman v2.1 collection").size(12).color(Color::WHITE),
+                text("For importing into Postman and compatible tools")
+                    .size(10)
+                    .color(Color { r: 1.0, g: 1.0, b: 1.0, a: 0.7 }),
+            ]
+            .spacing(2),
+        )
+        .on_press(Message::Import(ImportMsg::ExportCollection(postman_id)))
+        .style(accent_btn_style)
+        .padding([10, 14])
+        .width(Length::Fill),
+        Space::new().height(6),
+        button(
+            column![
+                text("Rustman JSON").size(12).color(Palette::text()),
+                text("Lossless native format — re-importable into Rustman")
+                    .size(10)
+                    .color(Palette::text_muted()),
+            ]
+            .spacing(2),
+        )
+        .on_press(Message::Import(ImportMsg::ExportCollectionJson(native_id)))
+        .style(|_t, s| iced::widget::button::Style {
+            background: Some(Background::Color(
+                if matches!(s, iced::widget::button::Status::Hovered) {
+                    Palette::surface_high()
+                } else {
+                    Palette::surface_raised()
+                },
+            )),
+            text_color: Palette::text(),
+            border: Border { color: Palette::border(), width: 1.0, radius: 6.0.into() },
+            ..Default::default()
+        })
+        .padding([10, 14])
+        .width(Length::Fill),
+        Space::new().height(12),
+        button(text("Cancel").size(12).color(Palette::text_muted()))
+            .on_press(Message::Import(ImportMsg::CloseExportDialog))
+            .style(iced::widget::button::text)
+            .padding([6, 14]),
+    ]
+    .spacing(0)
+    .width(400);
+
+    modal_overlay(container(body_col).style(modal_card_style).padding([20, 24]).width(400))
+}
+
+pub(super) fn close_confirm_dialog(_state: &AppState) -> Element<'_, Message> {
+    let btns = row![
+        button(text("Cancel").size(12).color(Palette::text_muted()))
+            .on_press(Message::Request(RequestMsg::CancelCloseTab))
+            .style(iced::widget::button::text)
+            .padding([6, 14]),
+        Space::new().width(Length::Fill),
+        button(text("Discard").size(12).color(Color::WHITE))
+            .on_press(Message::Request(RequestMsg::ConfirmCloseTab))
+            .style(danger_btn_style)
+            .padding([6, 18]),
+    ]
+    .align_y(iced::Alignment::Center);
+
+    let body_col = column![
+        text("Discard unsaved changes?").size(14).color(Palette::text()),
+        Space::new().height(8),
+        text("This tab has unsaved edits that will be lost if you close it.")
+            .size(12)
+            .color(Palette::text_muted()),
+        Space::new().height(16),
+        btns,
+    ]
+    .spacing(4)
+    .width(380);
+
+    modal_overlay(container(body_col).style(modal_card_style).padding([20, 24]).width(380))
+}
+
 pub(super) fn curl_modal(state: &AppState) -> Element<'_, Message> {
     let title = row![
         text("cURL Command").size(14).color(Palette::text()),
@@ -216,6 +314,21 @@ fn modal_card_style(_theme: &iced::Theme) -> iced::widget::container::Style {
             offset: iced::Vector::new(0.0, 8.0),
             blur_radius: 32.0,
         },
+        ..Default::default()
+    }
+}
+
+fn danger_btn_style(_t: &iced::Theme, s: iced::widget::button::Status) -> iced::widget::button::Style {
+    let base = Color { r: 0.78, g: 0.22, b: 0.22, a: 1.0 };
+    let bg = if matches!(s, iced::widget::button::Status::Hovered) {
+        Color { r: 0.88, g: 0.27, b: 0.27, a: 1.0 }
+    } else {
+        base
+    };
+    iced::widget::button::Style {
+        background: Some(Background::Color(bg)),
+        text_color: Color::WHITE,
+        border: Border { radius: 6.0.into(), ..Default::default() },
         ..Default::default()
     }
 }

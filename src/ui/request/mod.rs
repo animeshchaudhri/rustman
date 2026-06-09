@@ -3,6 +3,7 @@ pub mod body;
 pub mod headers;
 pub mod params;
 pub mod scripts;
+pub mod settings;
 pub mod tabs;
 pub mod url_bar;
 pub mod websocket;

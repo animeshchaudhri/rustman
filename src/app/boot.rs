@@ -29,7 +29,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         .and_then(|c| storage::get_history(c).ok())
         .unwrap_or_default();
 
-    let environments = db
+    let mut environments = db
         .as_ref()
         .and_then(|c| storage::get_environments(c).ok())
         .unwrap_or_default();
@@ -49,6 +49,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         .flatten();
 
     let mut tabs = TabManager::default();
+    let mut sidebar = SidebarState::default();
     if let Some(sess) = session {
         use crate::state::tabs::{body_syntax, make_code_editor, RequestTabState};
         use iced::widget::text_editor;
@@ -76,12 +77,14 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
                 t.api_key_value = snap.api_key_value;
                 t.api_key_location = snap.api_key_location;
                 t.cookie_string = snap.cookie_string;
+                t.cookies = snap.cookies;
                 t.jwt_secret = snap.jwt_secret;
                 t.jwt_subject = snap.jwt_subject;
                 t.jwt_algo = snap.jwt_algo;
                 t.pre_request_editor = text_editor::Content::with_text(&snap.pre_request_script);
                 t.test_editor = text_editor::Content::with_text(&snap.test_script);
                 t.timeout_ms = snap.timeout_ms;
+                t.timeout_text = snap.timeout_ms.to_string();
                 t.saved_as = snap.saved_as;
                 t.active_request_tab = snap.active_request_tab;
                 t.active_response_tab = snap.active_response_tab;
@@ -92,11 +95,19 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
             tabs.tabs = restored;
             tabs.active = sess.active_tab.min(tabs.tabs.len().saturating_sub(1));
         }
+        if let Some(env_id) = sess.active_env_id {
+            for env in environments.iter_mut() {
+                env.is_active = env.id == env_id;
+            }
+        }
+        sidebar.panel = parse_sidebar_panel(&sess.sidebar_panel);
     }
+
+    let git_repos = crate::services::repos::load(&data_dir);
 
     let state = AppState {
         tabs,
-        sidebar: SidebarState::default(),
+        sidebar,
         collections,
         requests,
         history,
@@ -105,17 +116,31 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         db,
         data_dir,
         status_message: None,
+        close_confirm_tab: None,
         palette_open: false,
         palette_query: String::new(),
         palette_selected: 0,
         profile_avatar: None,
         parsed_cache: crate::services::cache::ParsedBodyCache::default(),
+        export_dialog_collection: None,
         save_dialog_open: false,
         save_dialog_name: String::new(),
         save_dialog_collection_id: None,
         save_dialog_new_col: false,
         save_dialog_new_col_name: String::new(),
         git_log: Vec::new(),
+        git_status: None,
+        git_branches: Vec::new(),
+        git_commit_message: String::new(),
+        git_remote_input: String::new(),
+        git_token: String::new(),
+        git_new_branch: String::new(),
+        git_diff: None,
+        git_busy: false,
+        git_repos,
+        git_active_repo: crate::services::repos::LOCAL_ID.to_owned(),
+        git_repo_summaries: Vec::new(),
+        git_clone_url: String::new(),
         curl_modal_open: false,
         curl_modal_command: String::new(),
         github_username: String::from("animeshchaudhri"),
@@ -151,4 +176,15 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
     );
 
     (state, Task::batch([avatar_task, update_task]))
+}
+
+fn parse_sidebar_panel(s: &str) -> crate::message::SidebarPanel {
+    use crate::message::SidebarPanel;
+    match s {
+        "History" => SidebarPanel::History,
+        "Environments" => SidebarPanel::Environments,
+        "Git" => SidebarPanel::Git,
+        "Settings" => SidebarPanel::Settings,
+        _ => SidebarPanel::Collections,
+    }
 }

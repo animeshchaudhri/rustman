@@ -79,6 +79,7 @@ pub(crate) fn send_request(state: &mut AppState) -> Task<Message> {
         jwt_algo: tab.jwt_algo.clone(),
         pre_request_script: tab.pre_request_editor.text(),
         test_script: tab.test_editor.text(),
+        timeout_ms: tab.timeout_ms,
     };
 
     let tab_id = tab.id.clone();
@@ -130,6 +131,7 @@ pub(crate) fn save_request(state: &mut AppState) -> Task<Message> {
         jwt_algo: tab.jwt_algo.clone(),
         pre_request_script: tab.pre_request_editor.text(),
         test_script: tab.test_editor.text(),
+        timeout_ms: tab.timeout_ms,
     };
 
     if req.collection_id.is_empty() {
@@ -163,13 +165,8 @@ pub(crate) fn save_request(state: &mut AppState) -> Task<Message> {
     } else {
         let col_id = req.collection_id.clone();
         let req_id = req.id.clone();
-        let is_new = tab.saved_as.is_none();
         if let Some(db) = &state.db {
-            if is_new {
-                let _ = storage::create_request(db, &req);
-            } else {
-                let _ = storage::update_request(db, &req);
-            }
+            let _ = storage::create_request(db, &req);
         }
         let tab = state.tabs.active_tab_mut();
         tab.saved_as = Some((col_id.clone(), req_id.clone()));
@@ -184,6 +181,71 @@ pub(crate) fn save_request(state: &mut AppState) -> Task<Message> {
     state.tabs.active_tab_mut().modified = false;
     state.status_message = Some("Saved!".to_owned());
     Task::none()
+}
+
+pub(crate) fn saved_request_from_tab(
+    tab: &RequestTabState,
+    collection_id: String,
+    id: String,
+) -> SavedRequest {
+    SavedRequest {
+        id,
+        collection_id,
+        name: tab.title.clone(),
+        method: tab.method.clone(),
+        url: tab.url.clone(),
+        headers: tab.headers.clone(),
+        params: tab.params.clone(),
+        body: tab.body_editor.content(),
+        body_type: tab.body_type.clone(),
+        auth_type: tab.auth_type.clone(),
+        bearer_token: tab.bearer_token.clone(),
+        basic_user: tab.basic_user.clone(),
+        basic_pass: tab.basic_pass.clone(),
+        api_key_name: tab.api_key_name.clone(),
+        api_key_value: tab.api_key_value.clone(),
+        api_key_location: tab.api_key_location.clone(),
+        form_data_fields: tab.form_fields.clone(),
+        cookie_string: tab.cookie_string.clone(),
+        cookies: tab.cookies.clone(),
+        jwt_secret: tab.jwt_secret.clone(),
+        jwt_subject: tab.jwt_subject.clone(),
+        jwt_algo: tab.jwt_algo.clone(),
+        pre_request_script: tab.pre_request_editor.text(),
+        test_script: tab.test_editor.text(),
+        timeout_ms: tab.timeout_ms,
+    }
+}
+
+pub(crate) fn flush_modified_tabs(state: &mut AppState) {
+    let pending: Vec<SavedRequest> = state
+        .tabs
+        .tabs
+        .iter()
+        .filter(|t| t.modified && t.saved_as.is_some())
+        .map(|t| {
+            let (collection_id, req_id) = t.saved_as.clone().unwrap();
+            saved_request_from_tab(t, collection_id, req_id)
+        })
+        .collect();
+
+    for req in pending {
+        if let Some(db) = &state.db {
+            let _ = storage::create_request(db, &req);
+        }
+        let bucket = state.requests.entry(req.collection_id.clone()).or_default();
+        if let Some(existing) = bucket.iter_mut().find(|r| r.id == req.id) {
+            *existing = req;
+        } else {
+            bucket.push(req);
+        }
+    }
+
+    for tab in state.tabs.tabs.iter_mut() {
+        if tab.saved_as.is_some() {
+            tab.modified = false;
+        }
+    }
 }
 
 fn is_local_url(url: &str) -> bool {
