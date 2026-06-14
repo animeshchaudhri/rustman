@@ -33,15 +33,11 @@ pub struct UpdateInfo {
     pub version: String,
     /// The running version.
     pub current: String,
-    /// Release notes body (may be empty).
-    pub notes: String,
 }
 
 #[derive(serde::Deserialize)]
 struct GhRelease {
     tag_name: String,
-    #[serde(default)]
-    body: Option<String>,
     #[serde(default)]
     assets: Vec<GhAsset>,
 }
@@ -82,7 +78,6 @@ pub async fn check() -> Result<Option<UpdateInfo>, String> {
     Ok(version_gt(&latest, current).then(|| UpdateInfo {
         version: latest,
         current: current.to_owned(),
-        notes: release.body.unwrap_or_default(),
     }))
 }
 

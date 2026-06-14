@@ -231,12 +231,6 @@ pub fn load_session(conn: &Connection) -> Result<Option<AppSession>, String> {
     }
 }
 
-pub fn clear_session(conn: &Connection) -> Result<(), String> {
-    conn.execute("DELETE FROM session WHERE key='current'", [])
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 // ── Requests ──────────────────────────────────────────────────────────────────
 
 pub fn get_requests(conn: &Connection, collection_id: &str) -> Result<Vec<SavedRequest>, String> {
@@ -258,16 +252,6 @@ pub fn create_request(conn: &Connection, req: &SavedRequest) -> Result<(), Strin
     conn.execute(
         "INSERT OR REPLACE INTO requests (id, collection_id, data) VALUES (?1, ?2, ?3)",
         params![req.id, req.collection_id, data],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub fn update_request(conn: &Connection, req: &SavedRequest) -> Result<(), String> {
-    let data = serde_json::to_string(req).map_err(|e| e.to_string())?;
-    conn.execute(
-        "UPDATE requests SET data=?1 WHERE id=?2",
-        params![data, req.id],
     )
     .map_err(|e| e.to_string())?;
     Ok(())

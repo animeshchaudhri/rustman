@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use crate::domain::{
     collection::SavedRequest,
     request::{ApiKeyLocation, AuthType, BodyType, FormField, HttpMethod, KeyValue},
-    response::{ConsoleEntry, HttpResponse, TestResult},
+    response::HttpResponse,
 };
 use crate::jobs::JobManager;
 
@@ -57,8 +57,6 @@ pub struct RequestTabState {
     pub response: Option<HttpResponse>,
     pub is_loading: bool,
     pub modified: bool,
-    pub console: Vec<ConsoleEntry>,
-    pub test_results: Vec<TestResult>,
     pub body_indent_tabs: bool,
     pub response_editor: CodeEditor,
     pub response_viewer_lines: usize,
@@ -151,8 +149,6 @@ impl RequestTabState {
             response: None,
             is_loading: false,
             modified: false,
-            console: Vec::new(),
-            test_results: Vec::new(),
             body_indent_tabs: false,
             response_editor: make_code_editor("", "txt"),
             response_viewer_lines: 0,

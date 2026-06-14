@@ -7,7 +7,6 @@ pub enum Message {
     Sidebar(SidebarMsg),
     Request(RequestMsg),
     Response(ResponseMsg),
-    Storage(StorageMsg),
     WebSocket(WsMsg),
     Palette(PaletteMsg),
     SaveDialog(SaveDialogMsg),
@@ -107,7 +106,6 @@ pub enum RequestMsg {
     PreRequestScriptEdited(iced::widget::text_editor::Action),
     TestScriptEdited(iced::widget::text_editor::Action),
     // WebSocket
-    WsUrlChanged(String),
     WsConnect,
     WsDisconnect,
     WsMessageChanged(String),
@@ -154,7 +152,6 @@ pub enum RequestTab {
 pub enum ResponseMsg {
     TabSelected(ResponseTab),
     CopyBody,
-    CopyValue(String),
     ViewerEdited(iced_code_editor::Message),
 }
 
@@ -164,26 +161,13 @@ pub enum ResponseTab {
     Body,
     Headers,
     Cookies,
-    Tests,
-    Console,
-}
-
-// ── Storage ───────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone)]
-pub enum StorageMsg {
-    Loaded(Box<crate::state::session::AppSession>),
-    Saved,
-    Error(String),
 }
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub enum WsMsg {
-    Connected,
     TextFrame(String),
-    BinaryFrame(Vec<u8>),
     Disconnected,
     Error(String),
     Handshake { tab_id: String, sender: mpsc::Sender<String> },
@@ -206,7 +190,6 @@ pub enum GitMsg {
     Commit,
     RemoteUrlChanged(String),
     SetRemote,
-    TokenChanged(String),
     Fetch,
     Pull,
     Push,
@@ -259,7 +242,6 @@ pub struct SyncPayload {
 
 #[derive(Debug, Clone)]
 pub enum SaveDialogMsg {
-    Open,
     Close,
     NameChanged(String),
     CollectionSelected(String),
@@ -286,13 +268,11 @@ pub enum PaletteMsg {
 #[derive(Debug, Clone)]
 pub enum ImportMsg {
     OpenPostmanDialog,
-    OpenOpenApiDialog,
     OpenExportDialog(String),
     CloseExportDialog,
     ExportCollection(String),
     ExportCollectionJson(String),
     PostmanLoaded(Vec<(crate::domain::collection::Collection, Vec<crate::domain::collection::SavedRequest>)>),
-    OpenApiLoaded(Vec<(crate::domain::collection::Collection, Vec<crate::domain::collection::SavedRequest>)>),
     ExportDone(String),
     Error(String),
 }
@@ -310,7 +290,6 @@ pub enum LayoutMsg {
 pub enum AppMsg {
   
     HttpResponse { generation: u64, result: HttpResult },
-    ScriptConsoleLog(String),
     AvatarLoaded(Vec<u8>),
     OpenUrl(String),
 
@@ -338,16 +317,12 @@ pub enum AppMsg {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FormatTarget {
     RequestBody,
-    ResponseBody,
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub enum SettingsMsg {
-    GithubChanged(String),
-    EmailChanged(String),
-    WebsiteChanged(String),
     AccentChanged(usize),
 }
 

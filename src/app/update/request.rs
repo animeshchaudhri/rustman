@@ -182,7 +182,6 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
                 tab.modified = true;
             }
         }
-        RequestMsg::WsUrlChanged(v) => tab.ws.url = v,
         RequestMsg::WsMessageChanged(v) => tab.ws.draft = v,
         RequestMsg::WsConnect => {
             tab.ws.url = tab.url.clone();

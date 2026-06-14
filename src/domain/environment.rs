@@ -10,17 +10,6 @@ pub struct AppEnvironment {
     pub is_active: bool,
 }
 
-impl AppEnvironment {
-    pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            id: uuid::Uuid::new_v4().to_string(),
-            name: name.into(),
-            variables: HashMap::new(),
-            is_active: false,
-        }
-    }
-}
-
 pub fn substitute(text: &str, env: Option<&AppEnvironment>) -> String {
     let Some(env) = env else { return text.to_owned() };
     let mut out = String::with_capacity(text.len());
@@ -52,7 +41,12 @@ mod tests {
     use super::*;
 
     fn env(vars: &[(&str, &str)]) -> AppEnvironment {
-        let mut e = AppEnvironment::new("test");
+        let mut e = AppEnvironment {
+            id: "test".to_owned(),
+            name: "test".to_owned(),
+            variables: HashMap::new(),
+            is_active: false,
+        };
         for (k, v) in vars {
             e.variables.insert((*k).to_owned(), (*v).to_owned());
         }

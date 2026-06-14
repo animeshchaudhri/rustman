@@ -115,7 +115,6 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
         }
         GitMsg::CommitMessageChanged(value) => state.git_commit_message = value,
         GitMsg::RemoteUrlChanged(value) => state.git_remote_input = value,
-        GitMsg::TokenChanged(value) => state.git_token = value,
         GitMsg::NewBranchNameChanged(value) => state.git_new_branch = value,
         GitMsg::Commit => {
             let message = state.git_commit_message.trim().to_owned();
@@ -419,15 +418,6 @@ where
         },
     )
 }
-
-fn current_branch(state: &AppState) -> String {
-    state
-        .git_status
-        .as_ref()
-        .map(|s| s.branch.clone())
-        .unwrap_or_else(|| "main".to_owned())
-}
-
 
 fn owned_collection_ids(state: &AppState, repo_id: &str) -> Vec<String> {
     let all: Vec<String> = state.collections.iter().map(|c| c.id.clone()).collect();

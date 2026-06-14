@@ -8,14 +8,6 @@ use crate::services::storage;
 
 pub(super) fn handle(state: &mut AppState, msg: SaveDialogMsg) -> Task<Message> {
     match msg {
-        SaveDialogMsg::Open => {
-            let tab = state.tabs.active_tab();
-            state.save_dialog_name = if tab.url.is_empty() { tab.title.clone() } else { tab.url.clone() };
-            state.save_dialog_collection_id = state.collections.first().map(|c| c.id.clone());
-            state.save_dialog_new_col = false;
-            state.save_dialog_new_col_name = String::new();
-            state.save_dialog_open = true;
-        }
         SaveDialogMsg::Close => {
             state.save_dialog_open = false;
             state.save_dialog_new_col = false;

@@ -53,7 +53,6 @@ pub fn thin_scrollbar(
 pub struct Palette;
 
 impl Palette {
-    pub fn set_dark(dark: bool) { DARK_MODE.store(dark, Ordering::Relaxed); }
     pub fn set_accent_idx(idx: usize) { ACCENT_IDX.store(idx, Ordering::Relaxed); }
     pub fn is_dark() -> bool { DARK_MODE.load(Ordering::Relaxed) }
 
@@ -146,7 +145,6 @@ impl Palette {
     pub const PATCH:   Color = Color::from_rgb(0.678, 0.400, 0.945);
     pub const DELETE:  Color = Color::from_rgb(0.961, 0.267, 0.341);
     pub const HEAD:    Color = Color::from_rgb(0.631, 0.631, 0.667);
-    pub const OPTIONS: Color = Color::from_rgb(0.631, 0.631, 0.667);
 
     /// Code-editor style from Palette — makes editor bg match all other panels.
     pub fn code_editor_style() -> iced_code_editor::Style {

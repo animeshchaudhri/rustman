@@ -13,7 +13,6 @@ mod response;
 mod save_dialog;
 mod settings;
 mod sidebar;
-mod storage;
 mod updater;
 mod ws;
 
@@ -27,7 +26,6 @@ fn dispatch(state: &mut AppState, message: Message) -> Task<Message> {
         Message::Sidebar(msg) => sidebar::handle(state, msg),
         Message::Request(msg) => request::handle(state, msg),
         Message::Response(msg) => response::handle(state, msg),
-        Message::Storage(msg) => storage::handle(state, msg),
         Message::WebSocket(msg) => ws::handle(state, msg),
         Message::Palette(msg) => palette::handle(state, msg),
         Message::SaveDialog(msg) => save_dialog::handle(state, msg),

@@ -6,9 +6,8 @@ use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
 pub enum WsEvent {
     Connected,
     Text(String),
-    Binary(Vec<u8>),
+    Binary,
     Disconnected,
-    Error(String),
 }
 
 pub struct WsHandle {
@@ -31,7 +30,7 @@ pub async fn connect(url: String) -> Result<(WsHandle, mpsc::Receiver<WsEvent>),
     let event_tx_clone = event_tx.clone();
     tokio::spawn(async move {
         while let Some(msg) = send_rx.recv().await {
-            if write.send(WsMessage::Text(msg)).await.is_err() {
+            if write.send(WsMessage::Text(msg.into())).await.is_err() {
                 let _ = event_tx_clone.send(WsEvent::Disconnected).await;
                 break;
             }
@@ -45,8 +44,8 @@ pub async fn connect(url: String) -> Result<(WsHandle, mpsc::Receiver<WsEvent>),
                 Ok(WsMessage::Text(t)) => {
                     let _ = event_tx.send(WsEvent::Text(t.to_string())).await;
                 }
-                Ok(WsMessage::Binary(b)) => {
-                    let _ = event_tx.send(WsEvent::Binary(b.to_vec())).await;
+                Ok(WsMessage::Binary(_)) => {
+                    let _ = event_tx.send(WsEvent::Binary).await;
                 }
                 Ok(WsMessage::Close(_)) | Err(_) => {
                     let _ = event_tx.send(WsEvent::Disconnected).await;

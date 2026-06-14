@@ -51,7 +51,6 @@ pub struct AppState {
     pub git_branches: Vec<crate::services::vcs::BranchInfo>,
     pub git_commit_message: String,
     pub git_remote_input: String,
-    pub git_token: String,
     pub git_new_branch: String,
     pub git_diff: Option<String>,
     pub git_busy: bool,
@@ -65,7 +64,6 @@ pub struct AppState {
     pub github_email: String,
     pub github_website: String,
     pub accent_idx: usize,
-    pub theme_is_dark: bool,
     /// Split ratio: request panel FillPortion (1-9). Response = 10 - panel_split.
     pub panel_split: u16,
     /// UI zoom level (0.7 – 2.0). Applied via iced scale_factor.
