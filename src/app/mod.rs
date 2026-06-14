@@ -95,6 +95,7 @@ impl AppState {
 pub fn run() -> iced::Result {
     let window = iced::window::Settings {
         size: Size::new(1280.0, 800.0),
+        icon: app_icon(),
         ..iced::window::Settings::default()
     };
     iced::application(boot::init, update::update, view)
@@ -115,4 +116,14 @@ fn app_theme(_state: &AppState) -> iced::Theme {
 
 fn view(state: &AppState) -> Element<'_, Message> {
     crate::ui::layout::view(state)
+}
+
+fn app_icon() -> Option<iced::window::Icon> {
+    let bytes = include_bytes!("../../public/icon.png");
+    let image = image::load_from_memory(bytes).ok()?;
+    let rgba = image.to_rgba8();
+    let width = rgba.width();
+    let height = rgba.height();
+
+    iced::window::icon::from_rgba(rgba.into_raw(), width, height).ok()
 }
