@@ -5,7 +5,7 @@ use iced::{
 
 use crate::{
     app::AppState,
-    message::{Message, RequestMsg, SaveDialogMsg},
+    message::{GitMsg, Message, RequestMsg, SaveDialogMsg},
     ui::{icons, theme::{Palette, MONO}},
 };
 
@@ -173,6 +173,44 @@ pub(super) fn close_confirm_dialog(_state: &AppState) -> Element<'_, Message> {
     modal_overlay(container(body_col).style(modal_card_style).padding([20, 24]).width(380))
 }
 
+pub(super) fn restore_confirm_dialog(state: &AppState) -> Element<'_, Message> {
+    let id = state.git_restore_confirm.clone().unwrap_or_default();
+    let short: String = id.chars().take(7).collect();
+
+    let btns = row![
+        button(text("Cancel").size(12).color(Palette::text_muted()))
+            .on_press(Message::Git(GitMsg::CancelRestore))
+            .style(iced::widget::button::text)
+            .padding([6, 14]),
+        Space::new().width(Length::Fill),
+        button(text("Restore").size(12).color(Color::WHITE))
+            .on_press(Message::Git(GitMsg::RestoreCommit(id)))
+            .style(danger_btn_style)
+            .padding([6, 18]),
+    ]
+    .align_y(iced::Alignment::Center);
+
+    let body_col = column![
+        row![
+            text("Restore commit ").size(14).color(Palette::text()),
+            text(short).size(14).color(Palette::accent()).font(MONO),
+            text("?").size(14).color(Palette::text()),
+        ],
+        Space::new().height(8),
+        text("Your collections will be reset to this commit. Uncommitted local \
+              changes — including edits open in tabs — will be overwritten, and \
+              collections added after this commit will be removed.")
+            .size(12)
+            .color(Palette::text_muted()),
+        Space::new().height(16),
+        btns,
+    ]
+    .spacing(4)
+    .width(420);
+
+    modal_overlay(container(body_col).style(modal_card_style).padding([20, 24]).width(420))
+}
+
 pub(super) fn curl_modal(state: &AppState) -> Element<'_, Message> {
     let title = row![
         text("cURL Command").size(14).color(Palette::text()),
@@ -319,9 +357,9 @@ fn modal_card_style(_theme: &iced::Theme) -> iced::widget::container::Style {
 }
 
 fn danger_btn_style(_t: &iced::Theme, s: iced::widget::button::Status) -> iced::widget::button::Style {
-    let base = Color { r: 0.78, g: 0.22, b: 0.22, a: 1.0 };
+    let base = Palette::ERROR;
     let bg = if matches!(s, iced::widget::button::Status::Hovered) {
-        Color { r: 0.88, g: 0.27, b: 0.27, a: 1.0 }
+        Color { r: (base.r + 0.06).min(1.0), g: (base.g + 0.06).min(1.0), b: (base.b + 0.06).min(1.0), a: 1.0 }
     } else {
         base
     };

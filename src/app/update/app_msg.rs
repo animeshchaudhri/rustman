@@ -176,6 +176,9 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 persist_session(state);
             }
         }
+        AppMsg::SpinnerTick => {
+            state.spinner_frame = state.spinner_frame.wrapping_add(1);
+        }
         AppMsg::Noop => {}
     }
     Task::none()

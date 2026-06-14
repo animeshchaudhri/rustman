@@ -117,6 +117,8 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         data_dir,
         status_message: None,
         close_confirm_tab: None,
+        git_restore_confirm: None,
+        spinner_frame: 0,
         palette_open: false,
         palette_query: String::new(),
         palette_selected: 0,

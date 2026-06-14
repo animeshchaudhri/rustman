@@ -43,7 +43,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
     let inner = column![
         search_input,
-        container(iced::widget::rule::horizontal(1.0)).padding([0, 0]),
+        container(iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider)).padding([0, 0]),
         scrollable(list).height(Length::Shrink),
     ]
     .spacing(0)

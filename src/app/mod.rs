@@ -32,6 +32,8 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub status_message: Option<String>,
     pub close_confirm_tab: Option<usize>,
+    pub git_restore_confirm: Option<String>,
+    pub spinner_frame: u32,
     pub palette_open: bool,
     pub palette_query: String,
     pub palette_selected: usize,

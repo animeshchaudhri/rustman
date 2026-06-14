@@ -1,6 +1,6 @@
 use iced::{
     widget::{column, container, row, scrollable, text, Space},
-    Background, Color, Element, Length,
+    Background, Element, Length,
 };
 
 use crate::{
@@ -40,9 +40,7 @@ pub(super) fn status_bar(state: &AppState) -> Element<'_, Message> {
         .padding([0, 8]),
     )
     .style(|_| iced::widget::container::Style {
-        background: Some(Background::Color(Color {
-            r: 0.040, g: 0.040, b: 0.048, a: 1.0,
-        })),
+        background: Some(Background::Color(Palette::chrome())),
         ..Default::default()
     })
     .height(22)

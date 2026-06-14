@@ -29,6 +29,12 @@ pub(crate) fn subscription(state: &AppState) -> Subscription<Message> {
         .map(|_| Message::App(crate::message::AppMsg::AutoSaveSession));
 
     let mut all = vec![kbd, autosave];
+    if state.tabs.tabs.iter().any(|t| t.is_loading) {
+        all.push(
+            iced::time::every(std::time::Duration::from_millis(33))
+                .map(|_| Message::App(crate::message::AppMsg::SpinnerTick)),
+        );
+    }
     all.extend(ws_subs);
     Subscription::batch(all)
 }

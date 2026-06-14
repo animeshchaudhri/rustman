@@ -252,6 +252,12 @@ impl RequestTabState {
         self.response_editor.set_theme(style);
     }
 
+
+    pub fn is_websocket(&self) -> bool {
+        let u = self.url.trim_start().to_ascii_lowercase();
+        u.starts_with("ws://") || u.starts_with("wss://")
+    }
+
     pub fn from_saved(req: &SavedRequest) -> Self {
         let mut tab = Self::new();
         tab.title = req.name.clone();

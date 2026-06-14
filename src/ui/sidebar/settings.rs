@@ -51,7 +51,7 @@ fn build_header() -> Element<'static, Message> {
                     Space::new().width(5),
                     container(text(format!("v{}", crate::services::update::current_version())).size(9).color(Palette::text_muted()).font(crate::ui::theme::MONO))
                         .style(|_| iced::widget::container::Style {
-                            background: Some(Background::Color(Color { r: 0.16, g: 0.16, b: 0.20, a: 1.0 })),
+                            background: Some(Background::Color(Palette::surface_raised())),
                             border: Border { color: Palette::border(), width: 1.0, radius: 4.0.into() },
                             ..Default::default()
                         })
@@ -118,7 +118,7 @@ fn build_profile(
     let email_url = format!("mailto:{}", github_email);
 
     column![
-        section_label("PROFILE"),
+        section_label("MADE BY"),
         row![
             button(avatar)
                 .on_press(Message::App(AppMsg::OpenUrl(github_url.clone())))
@@ -128,7 +128,7 @@ fn build_profile(
         ]
         .spacing(10)
         .align_y(iced::Alignment::Center),
-        text("Made by").size(10).color(Palette::text_subtle()),
+        text("Socials").size(10).color(Palette::text_subtle()),
         full_link_row("GitHub", format!("github.com/{}", github_username), github_url, accent),
         full_link_row("Site", github_website.clone(), website_url, accent),
         full_link_row("Email", github_email.clone(), email_url, accent),
@@ -254,7 +254,7 @@ fn build_data_section(collections: Vec<(String, String)>) -> Element<'static, Me
                     .align_y(iced::Alignment::Center),
                 )
                 .style(|_| iced::widget::container::Style {
-                    background: Some(Background::Color(Color { r: 0.12, g: 0.12, b: 0.15, a: 1.0 })),
+                    background: Some(Background::Color(Palette::surface_high())),
                     border: Border { color: Palette::border_subtle(), width: 1.0, radius: 5.0.into() },
                     ..Default::default()
                 })
@@ -295,8 +295,8 @@ fn build_shortcuts() -> Element<'static, Message> {
                             text(key.clone()).size(10).color(Palette::text()).font(crate::ui::theme::MONO),
                         )
                         .style(|_| iced::widget::container::Style {
-                            background: Some(Background::Color(Color { r: 0.17, g: 0.17, b: 0.20, a: 1.0 })),
-                            border: Border { color: Palette::border(), width: 1.0, radius: 3.0.into() },
+                            background: Some(Background::Color(Palette::surface_raised())),
+                            border: Border { color: Palette::border(), width: 1.0, radius: 4.0.into() },
                             ..Default::default()
                         })
                         .padding([2, 5]),

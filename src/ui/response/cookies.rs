@@ -1,6 +1,6 @@
 use iced::{
     widget::{column, container, row, scrollable, text},
-    Background, Border, Color, Element, Length,
+    Background, Border, Element, Length,
 };
 
 use crate::{message::Message, state::tabs::RequestTabState, ui::theme::Palette};
@@ -72,7 +72,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
 
             for (i, (name, value)) in cookies.iter().enumerate() {
                 let bg = if i % 2 == 0 {
-                    Some(Background::Color(Color { r: 0.075, g: 0.075, b: 0.085, a: 1.0 }))
+                    Some(Background::Color(Palette::row_odd()))
                 } else {
                     None
                 };

@@ -24,7 +24,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     )
     .width(Length::Fill);
 
-    let mut col = column![action_bar, iced::widget::rule::horizontal(1.0)].spacing(0);
+    let mut col = column![action_bar, iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider)].spacing(0);
 
     if state.environments.is_empty() {
         col = col.push(
@@ -119,7 +119,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             col = col.push(preview);
         }
 
-        col = col.push(iced::widget::rule::horizontal(1.0));
+        col = col.push(iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider));
     }
 
     scrollable(col)
@@ -141,7 +141,7 @@ fn var_editor<'a>(
         .padding(iced::Padding { top: 3.0, right: 8.0, bottom: 3.0, left: 16.0 }),
     )
     .style(|_| iced::widget::container::Style {
-        background: Some(Background::Color(Color { r: 0.10, g: 0.10, b: 0.11, a: 1.0 })),
+        background: Some(Background::Color(Palette::surface_high())),
         ..Default::default()
     })
     .width(Length::Fill);
@@ -165,7 +165,7 @@ fn var_editor<'a>(
                     .size(11)
                     .padding([3, 4])
                     .width(Length::Fill)
-                    .style(var_input_style),
+                    .style(crate::ui::styles::cell_input),
                 text_input("value", &val_str)
                     .on_input(move |s| {
                         Message::Sidebar(SidebarMsg::EnvironmentVarValueChanged(eid_v.clone(), i, s))
@@ -173,7 +173,7 @@ fn var_editor<'a>(
                     .size(11)
                     .padding([3, 4])
                     .width(Length::Fill)
-                    .style(var_input_style),
+                    .style(crate::ui::styles::cell_input),
                 button(icons::close().size(9).color(Palette::text_subtle()))
                     .on_press(Message::Sidebar(SidebarMsg::EnvironmentVarRemoved(eid_r, i)))
                     .style(iced::widget::button::text)
@@ -185,7 +185,7 @@ fn var_editor<'a>(
         )
         .style(move |_| iced::widget::container::Style {
             background: if is_even {
-                Some(Background::Color(Color { r: 0.09, g: 0.09, b: 0.10, a: 1.0 }))
+                Some(Background::Color(Palette::row_odd()))
             } else {
                 None
             },
@@ -218,7 +218,7 @@ fn var_editor<'a>(
             border: Border {
                 color: Palette::border_subtle(),
                 width: 1.0,
-                radius: 0.0.into(),
+                radius: 6.0.into(),
             },
             ..Default::default()
         })
@@ -242,28 +242,6 @@ fn name_input_style(
         },
         icon: Palette::text_muted(),
         placeholder: Palette::text_subtle(),
-        value: Palette::text(),
-        selection: Color { r: Palette::accent().r, g: Palette::accent().g, b: Palette::accent().b, a: 0.3 },
-    }
-}
-
-fn var_input_style(
-    _theme: &iced::Theme,
-    status: iced::widget::text_input::Status,
-) -> iced::widget::text_input::Style {
-    iced::widget::text_input::Style {
-        background: Background::Color(Color::TRANSPARENT),
-        border: Border {
-            color: match status {
-                iced::widget::text_input::Status::Focused { .. } => Palette::accent(),
-                iced::widget::text_input::Status::Hovered => Palette::border_subtle(),
-                _ => Color::TRANSPARENT,
-            },
-            width: 1.0,
-            radius: 2.0.into(),
-        },
-        icon: Palette::text_muted(),
-        placeholder: Color { r: 0.30, g: 0.30, b: 0.33, a: 1.0 },
         value: Palette::text(),
         selection: Color { r: Palette::accent().r, g: Palette::accent().g, b: Palette::accent().b, a: 0.3 },
     }

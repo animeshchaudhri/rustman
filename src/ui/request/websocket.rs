@@ -12,30 +12,6 @@ use crate::{
 pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     let ws = &tab.ws;
 
-    let connect_btn = if ws.connected {
-        button(text("Disconnect").size(12).color(Color::WHITE))
-            .on_press(Message::Request(RequestMsg::WsDisconnect))
-            .style(|t, s| disconnect_style(t, s))
-            .padding([5, 14])
-    } else {
-        button(text("Connect").size(12).color(Color::WHITE))
-            .on_press(Message::Request(RequestMsg::WsConnect))
-            .style(|t, s| connect_style(t, s))
-            .padding([5, 14])
-    };
-
-    let url_row = row![
-        text_input("wss://echo.websocket.org", &ws.url)
-            .on_input(|s| Message::Request(RequestMsg::WsUrlChanged(s)))
-            .size(13)
-            .padding([6, 10])
-            .width(Length::Fill),
-        connect_btn,
-    ]
-    .spacing(8)
-    .align_y(iced::Alignment::Center)
-    .padding([8, 10]);
-
     let status_color = if ws.connected { Palette::SUCCESS } else { Palette::text_muted() };
     let status_bar = container(
         row![
@@ -78,7 +54,6 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     .padding([6, 8]);
 
     column![
-        url_row,
         status_bar,
         scrollable(feed).height(Length::Fill),
         send_row,
@@ -90,8 +65,8 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
 fn connect_style(_t: &iced::Theme, s: iced::widget::button::Status) -> iced::widget::button::Style {
     iced::widget::button::Style {
         background: Some(Background::Color(match s {
-            iced::widget::button::Status::Hovered => Color { r: 0.15, g: 0.68, b: 0.44, a: 1.0 },
-            _ => Color { r: 0.12, g: 0.60, b: 0.40, a: 1.0 },
+            iced::widget::button::Status::Hovered => Palette::SUCCESS,
+            _ => dim(Palette::SUCCESS),
         })),
         text_color: Color::WHITE,
         border: Border { radius: 6.0.into(), ..Default::default() },
@@ -99,14 +74,6 @@ fn connect_style(_t: &iced::Theme, s: iced::widget::button::Status) -> iced::wid
     }
 }
 
-fn disconnect_style(_t: &iced::Theme, s: iced::widget::button::Status) -> iced::widget::button::Style {
-    iced::widget::button::Style {
-        background: Some(Background::Color(match s {
-            iced::widget::button::Status::Hovered => Color { r: 0.80, g: 0.25, b: 0.25, a: 1.0 },
-            _ => Color { r: 0.70, g: 0.18, b: 0.18, a: 1.0 },
-        })),
-        text_color: Color::WHITE,
-        border: Border { radius: 6.0.into(), ..Default::default() },
-        ..Default::default()
-    }
+fn dim(c: Color) -> Color {
+    Color { r: c.r * 0.82, g: c.g * 0.82, b: c.b * 0.82, a: 1.0 }
 }

@@ -176,6 +176,7 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         }
         RequestMsg::FormFieldFilePicked(i, fname, data) => {
             if i < tab.form_fields.len() {
+                tab.form_fields[i].mime_type = guess_mime(&fname);
                 tab.form_fields[i].file_name = Some(fname);
                 tab.form_fields[i].file_data = Some(data);
                 tab.modified = true;
@@ -184,6 +185,7 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         RequestMsg::WsUrlChanged(v) => tab.ws.url = v,
         RequestMsg::WsMessageChanged(v) => tab.ws.draft = v,
         RequestMsg::WsConnect => {
+            tab.ws.url = tab.url.clone();
             tab.ws.connecting = true;
             tab.ws.connected = false;
             tab.ws.messages.clear();
@@ -469,6 +471,14 @@ mod undo_tests {
     use super::*;
 
     #[test]
+    fn mime_guessed_from_extension() {
+        assert_eq!(guess_mime("photo.PNG").as_deref(), Some("image/png"));
+        assert_eq!(guess_mime("archive.tar.gz").as_deref(), Some("application/gzip"));
+        assert_eq!(guess_mime("noext").as_deref(), None); // falls back to octet-stream
+        assert_eq!(guess_mime("weird.xyz").as_deref(), None);
+    }
+
+    #[test]
     fn coalesces_a_run_in_one_field() {
         let mut tab = RequestTabState::new();
         record_undo(&mut tab, &RequestMsg::HeaderValueChanged(0, "a".into()));
@@ -614,4 +624,29 @@ fn apply_parsed_command(tab: &mut RequestTabState, parsed: crate::services::curl
         tab.active_request_tab = crate::message::RequestTab::Body;
     }
     tab.modified = true;
+}
+
+/// Best-effort Content-Type from a file extension for multipart uploads.
+/// ponytail: small static table, swap for the `mime_guess` crate if the list grows.
+fn guess_mime(name: &str) -> Option<String> {
+    let ext = name.rsplit_once('.')?.1.to_ascii_lowercase();
+    let m = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "pdf" => "application/pdf",
+        "json" => "application/json",
+        "xml" => "application/xml",
+        "csv" => "text/csv",
+        "txt" | "log" => "text/plain",
+        "html" | "htm" => "text/html",
+        "zip" => "application/zip",
+        "gz" => "application/gzip",
+        "mp4" => "video/mp4",
+        "mp3" => "audio/mpeg",
+        _ => return None,
+    };
+    Some(m.to_owned())
 }

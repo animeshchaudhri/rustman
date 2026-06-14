@@ -7,10 +7,9 @@ use crate::{domain::response::HttpResponse, message::Message, ui::theme::Palette
 
 pub fn view(resp: &HttpResponse) -> Element<'static, Message> {
     if resp.status == 0 {
-        // Transport failure (no HTTP status). Keep the bar to just the indicator;
-        // the full cause is shown in the response body.
+        
         return row![
-            status_pill("ERR".to_owned(), Palette::ERROR, Color { r: 0.15, g: 0.05, b: 0.05, a: 1.0 }),
+            status_pill("ERR".to_owned(), Palette::ERROR, Palette::error_soft()),
             Space::new().width(Length::Fill),
         ]
         .spacing(8)
@@ -51,13 +50,10 @@ fn format_duration(ms: u64) -> String {
 
 fn status_colors(code: u16) -> (Color, Color) {
     match code {
-        200..=299 => (Palette::SUCCESS, Color { r: 0.05, g: 0.25, b: 0.14, a: 1.0 }),
-        300..=399 => (Palette::WARNING, Color { r: 0.25, g: 0.20, b: 0.04, a: 1.0 }),
-        400..=499 => (
-            Color { r: 0.988, g: 0.580, b: 0.110, a: 1.0 },
-            Color { r: 0.25, g: 0.14, b: 0.02, a: 1.0 },
-        ),
-        500..=599 => (Palette::ERROR, Color { r: 0.25, g: 0.05, b: 0.07, a: 1.0 }),
+        200..=299 => (Palette::SUCCESS, Palette::success_soft()),
+        300..=399 => (Palette::WARNING, Palette::warning_soft()),
+        400..=499 => (Palette::POST, Palette::warning_soft()),
+        500..=599 => (Palette::ERROR, Palette::error_soft()),
         _ => (Palette::text_muted(), Palette::surface_high()),
     }
 }
@@ -71,10 +67,10 @@ fn status_pill(label: String, fg: Color, bg: Color) -> Element<'static, Message>
     )
     .style(move |_| iced::widget::container::Style {
         background: Some(Background::Color(bg)),
-        border: Border { color: fg, width: 1.0, radius: 4.0.into() },
+        border: Border { color: fg, width: 1.0, radius: 100.0.into() },
         ..Default::default()
     })
-    .padding([3, 8])
+    .padding([3, 10])
     .into()
 }
 
@@ -85,10 +81,10 @@ fn meta_chip(label: String) -> Element<'static, Message> {
             border: Border {
                 color: Palette::border_subtle(),
                 width: 1.0,
-                radius: 4.0.into(),
+                radius: 100.0.into(),
             },
             ..Default::default()
         })
-        .padding([3, 8])
+        .padding([3, 10])
         .into()
 }
