@@ -1,6 +1,5 @@
 # Git GUI Plan — File-Based / Git-Controlled Collections
 
-Status: Design proposal · Target: Bruno-parity · Owner: TBD
 
 This is the design plan for turning Rustman's collections into a first-class,
 file-based, git-controlled store with a Git GUI usable by non-developers. It is
