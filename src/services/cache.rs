@@ -26,11 +26,6 @@ impl ParsedBodyCache {
         h.finish()
     }
 
-    pub fn get(&mut self, body: &str) -> Option<&serde_json::Value> {
-        let key = Self::body_hash(body);
-        self.inner.get(&key)
-    }
-
     /// Look up by pre-computed hash — avoids re-hashing when the caller already
     /// computed the key before taking a mutable borrow of surrounding state.
     pub fn inner_get_by_hash(&mut self, hash: u64) -> Option<&serde_json::Value> {

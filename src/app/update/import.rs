@@ -74,29 +74,6 @@ pub(super) fn handle(state: &mut AppState, msg: ImportMsg) -> Task<Message> {
             )
         }
 
-        ImportMsg::OpenOpenApiDialog => Task::perform(
-            async {
-                let file = rfd::AsyncFileDialog::new()
-                    .add_filter("JSON/YAML", &["json", "yaml", "yml"])
-                    .set_title("Import OpenAPI Specification")
-                    .pick_file()
-                    .await;
-                if let Some(f) = file {
-                    let bytes = f.read().await;
-                    Some(String::from_utf8_lossy(&bytes).to_string())
-                } else {
-                    None
-                }
-            },
-            |content| match content {
-                Some(json) => match crate::services::import::openapi::import(&json) {
-                    Ok(data) => Message::Import(ImportMsg::OpenApiLoaded(data)),
-                    Err(e) => Message::Import(ImportMsg::Error(e)),
-                },
-                None => Message::App(AppMsg::Noop),
-            },
-        ),
-
         ImportMsg::ExportCollection(col_id) => {
             state.export_dialog_collection = None;
             let Some(col) = state.collections.iter().find(|c| c.id == col_id).cloned() else {
@@ -128,7 +105,7 @@ pub(super) fn handle(state: &mut AppState, msg: ImportMsg) -> Task<Message> {
             )
         }
 
-        ImportMsg::PostmanLoaded(data) | ImportMsg::OpenApiLoaded(data) => {
+        ImportMsg::PostmanLoaded(data) => {
             let count: usize = data.iter().map(|(_, reqs)| reqs.len()).sum();
             for (col, reqs) in data {
                 if let Some(db) = &state.db {

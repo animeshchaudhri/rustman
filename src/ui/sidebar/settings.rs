@@ -1,5 +1,5 @@
 use iced::{
-    widget::{button, column, container, image, row, scrollable, svg, text, Space, Text},
+    widget::{button, column, container, image, row, scrollable, svg, text, Space},
     Background, Border, Color, Element, Length,
 };
 
@@ -7,8 +7,8 @@ const LOGO_SVG: &[u8] = include_bytes!("../../../public/rustman-logo.svg");
 
 use crate::{
     app::UpdateState,
-    message::{AppMsg, ImportMsg, Message, SettingsMsg, UpdateMsg},
-    ui::{icons, theme::{Palette, ACCENT_PALETTE}},
+    message::{AppMsg, Message, SettingsMsg, UpdateMsg},
+    ui::theme::{Palette, ACCENT_PALETTE},
 };
 
 
@@ -210,64 +210,6 @@ fn build_updates(update: &UpdateState) -> Element<'static, Message> {
     .into()
 }
 
-fn build_data_section(collections: Vec<(String, String)>) -> Element<'static, Message> {
-    let import_row = row![
-        action_button(icons::import(), "Postman", Message::Import(ImportMsg::OpenPostmanDialog)),
-        action_button(icons::import(), "OpenAPI", Message::Import(ImportMsg::OpenOpenApiDialog)),
-    ]
-    .spacing(6);
-
-    let mut col = column![section_label("DATA MANAGEMENT"), import_row].spacing(8);
-
-    if !collections.is_empty() {
-        let mut list = column![
-            container(text("Collections").size(10).color(Palette::text_subtle()))
-                .padding(iced::Padding { top: 4.0, right: 0.0, bottom: 2.0, left: 0.0 }),
-        ]
-        .spacing(2);
-
-        for (id, name) in collections {
-            list = list.push(
-                container(
-                    row![
-                        text(name).size(11).color(Palette::text()).width(Length::Fill),
-                        button(
-                            row![
-                                icons::export().size(11).color(Palette::accent()),
-                                text("Export").size(10).color(Palette::accent()),
-                            ]
-                            .spacing(4)
-                            .align_y(iced::Alignment::Center),
-                        )
-                            .on_press(Message::Import(ImportMsg::ExportCollection(id)))
-                            .style(|_t, status| {
-                                let hov = matches!(status, iced::widget::button::Status::Hovered);
-                                iced::widget::button::Style {
-                                    background: Some(Background::Color(if hov { Palette::accent_dim() } else { Color::TRANSPARENT })),
-                                    border: Border { color: Palette::accent(), width: 1.0, radius: 4.0.into() },
-                                    text_color: Palette::accent(),
-                                    ..Default::default()
-                                }
-                            })
-                            .padding([2, 6]),
-                    ]
-                    .align_y(iced::Alignment::Center),
-                )
-                .style(|_| iced::widget::container::Style {
-                    background: Some(Background::Color(Palette::surface_high())),
-                    border: Border { color: Palette::border_subtle(), width: 1.0, radius: 5.0.into() },
-                    ..Default::default()
-                })
-                .padding([5, 8])
-                .width(Length::Fill),
-            );
-        }
-        col = col.push(list);
-    }
-
-    col.into()
-}
-
 fn build_shortcuts() -> Element<'static, Message> {
     let cmd = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl+" };
     let alt = if cfg!(target_os = "macos") { "⌥" } else { "Alt+" };
@@ -383,30 +325,3 @@ fn full_link_row(label: &'static str, display: String, url: String, accent: Colo
     .into()
 }
 
-fn action_button(icon: Text<'static>, label: &'static str, msg: Message) -> Element<'static, Message> {
-    let bg_normal = Palette::surface_high();
-    let bg_hover = Palette::surface_raised();
-    let bd = Palette::border();
-    let fg = Palette::text();
-    button(
-        container(
-            row![icon.size(12).color(fg), text(label).size(11).color(fg)]
-                .spacing(6)
-                .align_y(iced::Alignment::Center),
-        )
-        .center_x(Length::Fill),
-    )
-    .on_press(msg)
-    .style(move |_t, status| {
-        let hov = matches!(status, iced::widget::button::Status::Hovered);
-        iced::widget::button::Style {
-            background: Some(Background::Color(if hov { bg_hover } else { bg_normal })),
-            border: Border { color: bd, width: 1.0, radius: 6.0.into() },
-            text_color: fg,
-            ..Default::default()
-        }
-    })
-    .padding([7, 10])
-    .width(Length::Fill)
-    .into()
-}

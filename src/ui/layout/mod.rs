@@ -150,8 +150,6 @@ fn main_area(state: &AppState) -> Element<'_, Message> {
         ResponseTab::Body    => response::body::view(active_tab, state.spinner_frame),
         ResponseTab::Headers => response::headers::view(active_tab),
         ResponseTab::Cookies => response::cookies::view(active_tab),
-        ResponseTab::Tests   => status_bar::response_tests(active_tab),
-        ResponseTab::Console => response::console::view(active_tab),
     };
 
     let response_panel = container(

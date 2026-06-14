@@ -83,13 +83,6 @@ pub fn divider(_theme: &iced::Theme) -> iced::widget::rule::Style {
 
 // ── Container helpers ─────────────────────────────────────────────────────────
 
-/// A plain surface-colored container background — use for all content panels.
-pub fn surface_container(_theme: &iced::Theme) -> iced::widget::container::Style {
-    iced::widget::container::Style {
-        background: Some(Background::Color(Palette::surface())),
-        ..Default::default()
-    }
-}
 
 /// A slightly-raised container for section headers inside panels.
 pub fn section_header(_theme: &iced::Theme) -> iced::widget::container::Style {

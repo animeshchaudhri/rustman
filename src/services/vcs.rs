@@ -9,17 +9,6 @@ use serde_json;
 
 use crate::domain::collection::{Collection, SavedRequest};
 
-const COLLECTIONS_DIR: &str = "collections";
-
-pub fn open_repo(data_dir: &PathBuf) -> Result<Repository, String> {
-    let repo_path = data_dir.join(COLLECTIONS_DIR);
-    std::fs::create_dir_all(&repo_path).map_err(|e| e.to_string())?;
-    match Repository::open(&repo_path) {
-        Ok(r) => Ok(r),
-        Err(_) => Repository::init(&repo_path).map_err(|e| e.to_string()),
-    }
-}
-
 fn open_at(path: &PathBuf) -> Result<Repository, String> {
     std::fs::create_dir_all(path).map_err(|e| e.to_string())?;
     match Repository::open(path) {
@@ -28,59 +17,10 @@ fn open_at(path: &PathBuf) -> Result<Repository, String> {
     }
 }
 
-fn sig() -> Result<Signature<'static>, String> {
-    Signature::now("Rustman", "rustman@local").map_err(|e| e.to_string())
-}
-
-fn collection_path(repo: &Repository, collection_id: &str) -> PathBuf {
-    repo.workdir().unwrap().join(format!("{collection_id}.json"))
-}
-
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CollectionFile {
     collection: Collection,
     requests: Vec<SavedRequest>,
-}
-
-pub fn save_collection(
-    repo: &Repository,
-    collection: &Collection,
-    requests: &[SavedRequest],
-) -> Result<(), String> {
-    let file = CollectionFile { collection: collection.clone(), requests: requests.to_vec() };
-    let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-    let path = collection_path(repo, &collection.id);
-    std::fs::write(&path, json).map_err(|e| e.to_string())?;
-
-    let workdir = repo.workdir().unwrap();
-    let rel = path.strip_prefix(workdir).unwrap();
-
-    let mut index = repo.index().map_err(|e| e.to_string())?;
-    index.add_path(rel).map_err(|e| e.to_string())?;
-    index.write().map_err(|e| e.to_string())?;
-
-    let tree_id = index.write_tree().map_err(|e| e.to_string())?;
-    let tree = repo.find_tree(tree_id).map_err(|e| e.to_string())?;
-    let sig = sig()?;
-
-    let parent: Vec<_> = repo
-        .head()
-        .ok()
-        .and_then(|h| h.peel_to_commit().ok())
-        .into_iter()
-        .collect();
-
-    repo.commit(
-        Some("HEAD"),
-        &sig,
-        &sig,
-        &format!("Update collection: {}", collection.name),
-        &tree,
-        parent.iter().collect::<Vec<_>>().as_slice(),
-    )
-    .map_err(|e| e.to_string())?;
-
-    Ok(())
 }
 
 pub fn load_collections(repo: &Repository) -> Result<Vec<(Collection, Vec<SavedRequest>)>, String> {
@@ -101,73 +41,11 @@ pub fn load_collections(repo: &Repository) -> Result<Vec<(Collection, Vec<SavedR
     Ok(results)
 }
 
-pub fn delete_collection(repo: &Repository, collection_id: &str) -> Result<(), String> {
-    let path = collection_path(repo, collection_id);
-    if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
-    }
-
-    let workdir = repo.workdir().unwrap();
-    let rel_path = path.strip_prefix(workdir).unwrap().to_path_buf();
-
-    let mut index = repo.index().map_err(|e| e.to_string())?;
-    let _ = index.remove_path(&rel_path);
-    index.write().map_err(|e| e.to_string())?;
-
-    let tree_id = index.write_tree().map_err(|e| e.to_string())?;
-    let tree = repo.find_tree(tree_id).map_err(|e| e.to_string())?;
-    let sig = sig()?;
-
-    let parent: Vec<_> = repo
-        .head()
-        .ok()
-        .and_then(|h| h.peel_to_commit().ok())
-        .into_iter()
-        .collect();
-
-    repo.commit(
-        Some("HEAD"),
-        &sig,
-        &sig,
-        &format!("Delete collection: {collection_id}"),
-        &tree,
-        parent.iter().collect::<Vec<_>>().as_slice(),
-    )
-    .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
 #[derive(Debug, Clone)]
 pub struct CommitInfo {
     pub id: String,
     pub message: String,
     pub timestamp: i64,
-}
-
-pub fn collection_log(repo: &Repository, collection_id: &str) -> Vec<CommitInfo> {
-    let filename = format!("{collection_id}.json");
-    let mut revwalk = match repo.revwalk() {
-        Ok(r) => r,
-        Err(_) => return vec![],
-    };
-    let _ = revwalk.push_head();
-    let _ = revwalk.set_sorting(git2::Sort::TIME);
-
-    revwalk
-        .filter_map(|oid| {
-            let oid = oid.ok()?;
-            let commit = repo.find_commit(oid).ok()?;
-            let tree = commit.tree().ok()?;
-            tree.get_name(&filename)?; // only include commits touching this file
-            Some(CommitInfo {
-                id: oid.to_string(),
-                message: commit.message().unwrap_or("").to_owned(),
-                timestamp: commit.time().seconds(),
-            })
-        })
-        .take(50)
-        .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -230,7 +108,7 @@ pub fn status(data_dir: &PathBuf) -> Result<RepoStatus, String> {
         } else {
             "changed"
         };
-        if let Some(path) = entry.path() {
+        if let Ok(path) = entry.path() {
             changes.push(FileChange { path: path.to_owned(), state: state.to_owned() });
         }
     }
@@ -238,12 +116,12 @@ pub fn status(data_dir: &PathBuf) -> Result<RepoStatus, String> {
     let branch = repo
         .head()
         .ok()
-        .and_then(|h| h.shorthand().map(|s| s.to_owned()))
+        .and_then(|h| h.shorthand().ok().map(|s| s.to_owned()))
         .unwrap_or_else(|| "main".to_owned());
     let remote_url = repo
         .find_remote("origin")
         .ok()
-        .and_then(|r| r.url().map(|s| s.to_owned()));
+        .and_then(|r| r.url().ok().map(|s| s.to_owned()));
     let (ahead, behind) = ahead_behind(&repo, &branch).unwrap_or((0, 0));
 
     Ok(RepoStatus { branch, changes, remote_url, ahead, behind })
@@ -253,16 +131,6 @@ fn ahead_behind(repo: &Repository, branch: &str) -> Option<(usize, usize)> {
     let local = repo.refname_to_id(&format!("refs/heads/{branch}")).ok()?;
     let upstream = repo.refname_to_id(&format!("refs/remotes/origin/{branch}")).ok()?;
     repo.graph_ahead_behind(local, upstream).ok()
-}
-
-pub fn stage_all(data_dir: &PathBuf) -> Result<(), String> {
-    let repo = open_at(data_dir)?;
-    let mut index = repo.index().map_err(|e| e.to_string())?;
-    index
-        .add_all(["*"], IndexAddOption::DEFAULT, None)
-        .map_err(|e| e.to_string())?;
-    index.write().map_err(|e| e.to_string())?;
-    Ok(())
 }
 
 pub fn commit(data_dir: &PathBuf, identity: &GitIdentity, message: &str) -> Result<String, String> {
@@ -395,14 +263,7 @@ pub fn read_commit_collections(
 
 pub fn remote_url(data_dir: &PathBuf) -> Option<String> {
     let repo = open_at(data_dir).ok()?;
-    repo.find_remote("origin").ok().and_then(|r| r.url().map(|s| s.to_owned()))
-}
-
-pub fn head_branch(data_dir: &PathBuf) -> String {
-    open_at(data_dir)
-        .ok()
-        .and_then(|repo| repo.head().ok().and_then(|h| h.shorthand().map(|s| s.to_owned())))
-        .unwrap_or_else(|| "master".to_owned())
+    repo.find_remote("origin").ok().and_then(|r| r.url().ok().map(|s| s.to_owned()))
 }
 
 pub fn set_remote(data_dir: &PathBuf, url: &str) -> Result<(), String> {

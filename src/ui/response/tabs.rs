@@ -11,8 +11,6 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         (ResponseTab::Body, "Body"),
         (ResponseTab::Headers, "Headers"),
         (ResponseTab::Cookies, "Cookies"),
-        (ResponseTab::Tests, "Tests"),
-        (ResponseTab::Console, "Console"),
     ];
 
     let btns: Vec<Element<Message>> = tabs

@@ -17,10 +17,6 @@ pub(super) fn handle(state: &mut AppState, msg: ResponseMsg) -> Task<Message> {
             state.status_message = Some("Copied!".to_owned());
             return clipboard::write::<Message>(body);
         }
-        ResponseMsg::CopyValue(v) => {
-            state.status_message = Some("Value copied!".to_owned());
-            return clipboard::write::<Message>(v);
-        }
         ResponseMsg::ViewerEdited(msg) => {
             let tab = state.tabs.active_tab_mut();
             return tab.response_editor.update(&msg)

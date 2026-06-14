@@ -4,8 +4,6 @@ pub mod format;
 pub mod http;
 pub mod import;
 pub mod repos;
-pub mod response_store;
-pub mod script;
 pub mod storage;
 pub mod update;
 pub mod vcs;

@@ -22,21 +22,14 @@ pub fn settings() -> Text<'static> { glyph('\u{e154}') } // settings
 
 // ── Actions ─────────────────────────────────────────────────────────────────────
 pub fn close() -> Text<'static> { glyph('\u{e1b2}') } // x
-pub fn check() -> Text<'static> { glyph('\u{e06c}') } // check
 pub fn edit() -> Text<'static> { glyph('\u{e1f9}') } // pencil
 pub fn copy() -> Text<'static> { glyph('\u{e09e}') } // copy
 pub fn import() -> Text<'static> { glyph('\u{e0b2}') } // download
 pub fn export() -> Text<'static> { glyph('\u{e19e}') } // upload
-pub fn send() -> Text<'static> { glyph('\u{e152}') } // send
 pub fn search() -> Text<'static> { glyph('\u{e151}') } // search
 pub fn plus() -> Text<'static> { glyph('\u{e13d}') } // plus
 // pub fn curl() -> Text<'static> { glyph('\u{e1e5}') } // terminal
 pub fn curl() -> Text<'static> { glyph('\u{e245}') }
-
-pub fn save() -> Text<'static> { glyph('\u{e1e7}') } // save
-// ── Theme ───────────────────────────────────────────────────────────────────────
-pub fn moon() -> Text<'static> { glyph('\u{e11e}') } // moon
-pub fn sun() -> Text<'static> { glyph('\u{e178}') } // sun
 
 // ── Tree / disclosure ─────────────────────────────────────────────────────────────
 pub fn chevron_down() -> Text<'static> { glyph('\u{e06d}') }

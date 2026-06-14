@@ -1,5 +1,4 @@
 pub mod httpie;
-pub mod openapi;
 pub mod postman;
 
 use serde::{Deserialize, Serialize};

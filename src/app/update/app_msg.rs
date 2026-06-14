@@ -93,8 +93,8 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 {
                     let t = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id);
                     if let Some(t) = t {
-                        let (gen, cancel) = t.jobs.start(JobKind::Parse);
-                        parse_generation = gen;
+                        let (generation, cancel) = t.jobs.start(JobKind::Parse);
+                        parse_generation = generation;
                         parse_cancel = cancel;
                         use_tabs = t.body_indent_tabs;
                     } else {
@@ -130,7 +130,6 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
         AppMsg::AvatarLoaded(bytes) => {
             state.profile_avatar = Some(iced::widget::image::Handle::from_bytes(bytes));
         }
-        AppMsg::ScriptConsoleLog(_) => {}
         AppMsg::ViewerReady { generation, tab_id, content_text, parsed_json } => {
             if let Some(tab) = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id) {
                 if tab.jobs.is_current(JobKind::Parse, generation) {
@@ -152,13 +151,6 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                             tab.modified = true;
                             return tab.replace_body_text(text)
                                 .map(|m| Message::Request(crate::message::RequestMsg::BodyEdited(m)));
-                        }
-                        FormatTarget::ResponseBody => {
-                            if let Some(r) = tab.response.as_mut() {
-                                r.body = text.clone();
-                            }
-                            let is_json = tab.parsed_json.is_some();
-                            tab.set_viewer_content(&text, is_json);
                         }
                     }
                 }

@@ -47,7 +47,7 @@ struct WsConn {
     url: String,
 }
 
-fn ws_stream(conn: &WsConn) -> impl iced::futures::Stream<Item = Message> {
+fn ws_stream(conn: &WsConn) -> impl iced::futures::Stream<Item = Message> + use<> {
     let url = conn.url.clone();
     let tab_id = conn.tab_id.clone();
     iced::stream::channel(256, move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
@@ -70,10 +70,6 @@ fn ws_stream(conn: &WsConn) -> impl iced::futures::Stream<Item = Message> {
                             match event {
                                 Some(WsEvent::Text(t)) => {
                                     let _ = output.send(Message::WebSocket(WsMsg::TextFrame(t))).await;
-                                }
-                                Some(WsEvent::Error(e)) => {
-                                    let _ = output.send(Message::WebSocket(WsMsg::Error(e))).await;
-                                    break;
                                 }
                                 Some(WsEvent::Disconnected) | None => {
                                     let _ = output.send(Message::WebSocket(WsMsg::Disconnected)).await;

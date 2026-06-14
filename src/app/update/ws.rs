@@ -32,7 +32,6 @@ pub(super) fn handle(state: &mut AppState, msg: WsMsg) -> Task<Message> {
                 is_outgoing: false,
             });
         }
-        _ => {}
     }
     Task::none()
 }

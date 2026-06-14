@@ -1,5 +1,5 @@
 use iced::{
-    widget::{column, container, row, scrollable, text, Space},
+    widget::{container, row, text, Space},
     Background, Element, Length,
 };
 
@@ -46,19 +46,4 @@ pub(super) fn status_bar(state: &AppState) -> Element<'_, Message> {
     .height(22)
     .width(Length::Fill)
     .into()
-}
-
-pub(super) fn response_tests(tab: &crate::state::tabs::RequestTabState) -> Element<'_, Message> {
-    let mut col = column![].spacing(4).padding(8);
-    if tab.test_results.is_empty() {
-        col = col.push(text("No test results.").size(13).color(Palette::text_muted()));
-    }
-    for r in &tab.test_results {
-        let icon = if r.passed { icons::check() } else { icons::close() };
-        let color = if r.passed { Palette::SUCCESS } else { Palette::ERROR };
-        col = col.push(
-            row![icon.size(12).color(color), text(&r.name).size(12)].spacing(6),
-        );
-    }
-    scrollable(col).height(Length::Fill).into()
 }

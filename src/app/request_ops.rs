@@ -36,8 +36,6 @@ pub(crate) fn send_request(state: &mut AppState) -> Task<Message> {
     let tab = state.tabs.active_tab_mut();
     tab.is_loading = true;
     tab.response = None;
-    tab.console.clear();
-    tab.test_results.clear();
     let (generation, cancel) = tab.jobs.start(JobKind::Request);
 
     // Local addresses (loopback/RFC-1918) get http://; everything else https://.
