@@ -213,6 +213,8 @@ pub enum GitMsg {
     NewBranchNameChanged(String),
     CreateBranch,
     SwitchBranch(String),
+    AskRestore(String),
+    CancelRestore,
     RestoreCommit(String),
     ToggleDiff,
     DiffLoaded(String),
@@ -328,6 +330,7 @@ pub enum AppMsg {
     /// Window is closing — persist session before the process exits.
     WindowCloseRequested(iced::window::Id),
     AutoSaveSession,
+    SpinnerTick,
     Noop,
 }
 

@@ -23,7 +23,7 @@ pub fn cell_input(
                 _ => Color::TRANSPARENT,
             },
             width: 1.0,
-            radius: 2.0.into(),
+            radius: 4.0.into(),
         },
         icon: Palette::text_muted(),
         placeholder: Palette::text_subtle(),
@@ -69,6 +69,15 @@ pub fn scripts_editor(
         placeholder: Palette::text_subtle(),
         value: Palette::text(),
         selection: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.25 },
+    }
+}
+
+pub fn divider(_theme: &iced::Theme) -> iced::widget::rule::Style {
+    iced::widget::rule::Style {
+        color: Palette::border_subtle(),
+        radius: 0.0.into(),
+        fill_mode: iced::widget::rule::FillMode::Full,
+        snap: true,
     }
 }
 

@@ -195,7 +195,14 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
                 Ok((collections, format!("Switched to {name}")))
             });
         }
+        GitMsg::AskRestore(id) => {
+            state.git_restore_confirm = Some(id);
+        }
+        GitMsg::CancelRestore => {
+            state.git_restore_confirm = None;
+        }
         GitMsg::RestoreCommit(id) => {
+            state.git_restore_confirm = None;
             let repo_path = active_path(state);
             let repo_id = state.git_active_repo.clone();
             let short: String = id.chars().take(7).collect();
@@ -234,13 +241,18 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
         GitMsg::Synced(payload) => {
             let SyncPayload { repo_id, collections, label } = *payload;
             let ids: Vec<String> = collections.iter().map(|(c, _)| c.id.clone()).collect();
-            apply_sync(state, collections);
-            if let Some(repo) = state.git_repos.iter_mut().find(|r| r.id == repo_id) {
-                for id in ids {
-                    if !repo.collection_ids.contains(&id) {
-                        repo.collection_ids.push(id);
-                    }
+
+            let incoming: HashSet<&String> = ids.iter().collect();
+            for owned in owned_collection_ids(state, &repo_id) {
+                if !incoming.contains(&owned) {
+                    remove_collection(state, &owned);
                 }
+            }
+
+            apply_sync(state, collections);
+            resync_open_tabs(state);
+            if let Some(repo) = state.git_repos.iter_mut().find(|r| r.id == repo_id) {
+                repo.collection_ids = ids;
             }
             repos::save(&state.data_dir, &state.git_repos);
             state.status_message = Some(label);
@@ -416,6 +428,60 @@ fn current_branch(state: &AppState) -> String {
         .unwrap_or_else(|| "main".to_owned())
 }
 
+
+fn owned_collection_ids(state: &AppState, repo_id: &str) -> Vec<String> {
+    let all: Vec<String> = state.collections.iter().map(|c| c.id.clone()).collect();
+    owned_ids(&state.git_repos, &all, repo_id)
+}
+
+fn owned_ids(repos: &[GitRepo], all_collection_ids: &[String], repo_id: &str) -> Vec<String> {
+    if repo_id == repos::LOCAL_ID {
+        let claimed: HashSet<&String> = repos
+            .iter()
+            .filter(|r| r.id != repos::LOCAL_ID)
+            .flat_map(|r| r.collection_ids.iter())
+            .collect();
+        all_collection_ids.iter().filter(|id| !claimed.contains(id)).cloned().collect()
+    } else {
+        repos
+            .iter()
+            .find(|r| r.id == repo_id)
+            .map(|r| r.collection_ids.clone())
+            .unwrap_or_default()
+    }
+}
+
+
+fn resync_open_tabs(state: &mut AppState) {
+    use crate::state::tabs::RequestTabState;
+    for tab in &mut state.tabs.tabs {
+        let Some((col_id, req_id)) = tab.saved_as.clone() else { continue };
+        let restored = state
+            .requests
+            .get(&col_id)
+            .and_then(|reqs| reqs.iter().find(|r| r.id == req_id))
+            .cloned();
+        if let Some(req) = restored {
+            let mut fresh = RequestTabState::from_saved(&req);
+            fresh.active_request_tab = tab.active_request_tab.clone(); // keep the open sub-panel
+            fresh.response = tab.response.take(); // keep the last response visible
+            *tab = fresh;
+        }
+    }
+}
+
+/// Remove a collection and its requests from both state and the database.
+fn remove_collection(state: &mut AppState, id: &str) {
+    state.collections.retain(|c| c.id != id);
+    let reqs = state.requests.remove(id).unwrap_or_default();
+    if let Some(db) = &state.db {
+        for req in &reqs {
+            let _ = storage::delete_request(db, &req.id);
+        }
+        let _ = storage::delete_collection(db, id);
+    }
+}
+
 fn apply_sync(state: &mut AppState, collections: Vec<(Collection, Vec<SavedRequest>)>) {
     for (collection, requests) in collections {
         let exists = state.collections.iter().any(|c| c.id == collection.id);
@@ -442,5 +508,35 @@ fn apply_sync(state: &mut AppState, collections: Vec<(Collection, Vec<SavedReque
             state.collections.push(collection.clone());
         }
         state.requests.insert(collection.id.clone(), requests);
+    }
+}
+
+#[cfg(test)]
+mod restore_tests {
+    use super::*;
+
+    fn repo(id: &str, cols: &[&str]) -> GitRepo {
+        GitRepo {
+            id: id.to_owned(),
+            name: id.to_owned(),
+            path: PathBuf::from("/tmp"),
+            remote_url: None,
+            collection_ids: cols.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn real_repo_owns_only_its_tracked_ids() {
+        let repos = vec![repo(repos::LOCAL_ID, &[]), repo("r1", &["a", "b"]), repo("r2", &["c"])];
+        let all = vec!["a".into(), "b".into(), "c".into(), "local".into()];
+        // A restore on r1 must never reach c (r2) or local — only a, b are deletable.
+        assert_eq!(owned_ids(&repos, &all, "r1"), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn local_owns_everything_unclaimed() {
+        let repos = vec![repo(repos::LOCAL_ID, &[]), repo("r1", &["a", "b"])];
+        let all = vec!["a".into(), "b".into(), "local1".into(), "local2".into()];
+        assert_eq!(owned_ids(&repos, &all, repos::LOCAL_ID), vec!["local1", "local2"]);
     }
 }

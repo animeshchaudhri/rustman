@@ -23,7 +23,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     )
     .width(Length::Fill);
 
-    let mut col = column![action_bar, iced::widget::rule::horizontal(1.0)].spacing(0);
+    let mut col = column![action_bar, iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider)].spacing(0);
 
     for collection in &state.collections {
         let is_expanded = state.sidebar.expanded.contains(&collection.id);
@@ -59,7 +59,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             .on_press(Message::Sidebar(SidebarMsg::CollectionToggled(col_id)))
             .style(|_t, s| iced::widget::button::Style {
                 background: if matches!(s, iced::widget::button::Status::Hovered) {
-                    Some(Background::Color(Palette::surface_high()))
+                    Some(Background::Color(Palette::hover()))
                 } else {
                     None
                 },
@@ -93,7 +93,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                 .on_press(Message::Sidebar(SidebarMsg::DeleteCollection(col_id_del)))
                 .style(|_t, s| iced::widget::button::Style {
                     background: if matches!(s, iced::widget::button::Status::Hovered) {
-                        Some(Background::Color(Color { r: 0.3, g: 0.05, b: 0.05, a: 1.0 }))
+                Some(Background::Color(Palette::error_soft()))
                     } else {
                         None
                     },
@@ -188,7 +188,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                         }))
                         .style(|_t, s| iced::widget::button::Style {
                             background: if matches!(s, iced::widget::button::Status::Hovered) {
-                                Some(Background::Color(Color { r: 0.3, g: 0.05, b: 0.05, a: 1.0 }))
+                                Some(Background::Color(Palette::error_soft()))
                             } else {
                                 None
                             },
@@ -258,7 +258,7 @@ fn icon_btn_only(icon: iced::widget::Text<'static>, _tooltip: &str, msg: Message
         .on_press(msg)
         .style(|_t, s| iced::widget::button::Style {
             background: if matches!(s, iced::widget::button::Status::Hovered) {
-                Some(Background::Color(Palette::surface_high()))
+                Some(Background::Color(Palette::hover()))
             } else {
                 None
             },
@@ -276,9 +276,9 @@ fn req_item_style(
 ) -> iced::widget::button::Style {
     iced::widget::button::Style {
         background: if selected {
-            Some(Background::Color(Palette::surface_high()))
+            Some(Background::Color(Palette::accent_soft()))
         } else if matches!(status, iced::widget::button::Status::Hovered) {
-            Some(Background::Color(Color { r: 0.14, g: 0.14, b: 0.16, a: 1.0 }))
+            Some(Background::Color(Palette::hover()))
         } else {
             None
         },

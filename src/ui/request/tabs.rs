@@ -1,6 +1,6 @@
 use iced::{
     widget::{button, container, row, text},
-    Background, Border, Color, Element, Length,
+    Background, Border, Element, Length,
 };
 
 use crate::{
@@ -78,15 +78,15 @@ fn pill_tab_style(
     let hovered = matches!(status, iced::widget::button::Status::Hovered);
     iced::widget::button::Style {
         background: if active {
-            Some(Background::Color(Palette::surface_high()))
+            Some(Background::Color(Palette::accent_soft()))
         } else if hovered {
-            Some(Background::Color(Color { r: 0.13, g: 0.13, b: 0.15, a: 1.0 }))
+            Some(Background::Color(Palette::hover()))
         } else {
             None
         },
         text_color: if active { Palette::text() } else { Palette::text_muted() },
         border: Border {
-            color: if active { Palette::border() } else { Color::TRANSPARENT },
+            color: if active { Palette::accent() } else { iced::Color::TRANSPARENT },
             width: if active { 1.0 } else { 0.0 },
             radius: 6.0.into(),
         },

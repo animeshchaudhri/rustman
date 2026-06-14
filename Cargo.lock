@@ -2116,7 +2116,6 @@ dependencies = [
  "iced_core",
  "iced_debug",
  "iced_futures",
- "iced_highlighter",
  "iced_renderer",
  "iced_runtime",
  "iced_widget",
@@ -2255,16 +2254,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "iced_highlighter"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb24e1610502779b4e307c6f95da616ec7e883b67a18108cb0a036b169e50359"
-dependencies = [
- "iced_core",
- "two-face",
-]
-
-[[package]]
 name = "iced_program"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2346,7 +2335,6 @@ version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1596afa0d3109c2618e8bc12bae6c11d3064df8f95c42dfce570397dbe957ab"
 dependencies = [
- "iced_highlighter",
  "iced_renderer",
  "log",
  "num-traits",
@@ -4942,7 +4930,7 @@ dependencies = [
 
 [[package]]
 name = "rustman"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "base64",
  "boa_engine",
@@ -6018,17 +6006,6 @@ dependencies = [
  "sha1",
  "thiserror 1.0.69",
  "utf-8",
-]
-
-[[package]]
-name = "two-face"
-version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39e51b6e60e545cfdae5a4639ff423818f52372211a8d9a3e892b4b0761f76b2"
-dependencies = [
- "serde",
- "serde_derive",
- "syntect",
 ]
 
 [[package]]

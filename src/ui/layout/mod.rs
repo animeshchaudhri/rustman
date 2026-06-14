@@ -27,6 +27,8 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         iced::widget::stack![root, crate::ui::command_palette::view(state)].into()
     } else if state.close_confirm_tab.is_some() {
         iced::widget::stack![root, dialogs::close_confirm_dialog(state)].into()
+    } else if state.git_restore_confirm.is_some() {
+        iced::widget::stack![root, dialogs::restore_confirm_dialog(state)].into()
     } else if state.export_dialog_collection.is_some() {
         iced::widget::stack![root, dialogs::export_dialog(state)].into()
     } else if state.save_dialog_open {
@@ -145,7 +147,7 @@ fn main_area(state: &AppState) -> Element<'_, Message> {
         .unwrap_or_else(|| Space::new().into());
 
     let resp_body: Element<Message> = match active_tab.active_response_tab {
-        ResponseTab::Body    => response::body::view(active_tab),
+        ResponseTab::Body    => response::body::view(active_tab, state.spinner_frame),
         ResponseTab::Headers => response::headers::view(active_tab),
         ResponseTab::Cookies => response::cookies::view(active_tab),
         ResponseTab::Tests   => status_bar::response_tests(active_tab),
@@ -162,10 +164,23 @@ fn main_area(state: &AppState) -> Element<'_, Message> {
     .width(Length::Fill)
     .padding(2);
 
-    // One guard over the whole editor so Cmd/Ctrl+Z works in the URL bar, headers,
-    // params and auth fields alike. Inactive while a code editor is focused so the
-    // body/response editors keep their own undo. Guard delegates layout, so this
-    // doesn't change the panel proportions.
+    let middle: Element<Message> = if active_tab.is_websocket() {
+        container(request::websocket::view(active_tab))
+            .style(surface_content_style)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    } else {
+        column![
+            request_panel,
+            iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider),
+            response_panel,
+        ]
+        .spacing(0)
+        .height(Length::Fill)
+        .into()
+    };
+
     let editors_focused = active_tab.body_editor.has_keyboard_focus()
         || active_tab.response_editor.has_keyboard_focus();
 
@@ -173,13 +188,11 @@ fn main_area(state: &AppState) -> Element<'_, Message> {
         crate::ui::widgets::key_guard::key_guard(
             column![
                 tab_bar::multi_tab_bar(state),
-                iced::widget::rule::horizontal(1.0),
+                iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider),
                 url_bar,
-                iced::widget::rule::horizontal(1.0),
-                request_panel,
-                iced::widget::rule::horizontal(1.0),
-                response_panel,
-                iced::widget::rule::horizontal(1.0),
+                iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider),
+                middle,
+                iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider),
                 status_bar::status_bar(state),
             ]
             .spacing(0)

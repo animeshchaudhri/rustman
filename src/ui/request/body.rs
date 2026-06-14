@@ -69,12 +69,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
                 .padding([3, 8]),
             )
             .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(Color {
-                    r: 0.07,
-                    g: 0.07,
-                    b: 0.08,
-                    a: 1.0,
-                })),
+                background: Some(Background::Color(Palette::background())),
                 border: Border {
                     color: Palette::border_subtle(),
                     width: 0.0,
@@ -127,9 +122,9 @@ fn form_data_view(fields: &[FormField]) -> Element<'_, Message> {
         )
         .on_press(Message::Request(RequestMsg::FormFieldTypeToggled(i)))
         .style(move |_, _| iced::widget::button::Style {
-            background: if is_file { Some(Background::Color(Color { r: accent.r * 0.2, g: accent.g * 0.2, b: accent.b * 0.2, a: 1.0 })) } else { None },
+            background: if is_file { Some(Background::Color(Palette::accent_soft())) } else { None },
             text_color: if is_file { accent } else { muted },
-            border: iced::Border { color: if is_file { accent } else { Color::TRANSPARENT }, width: 1.0, radius: 3.0.into() },
+            border: iced::Border { color: if is_file { accent } else { Color::TRANSPARENT }, width: 1.0, radius: 6.0.into() },
             ..Default::default()
         })
         .padding([2, 6]);
@@ -139,10 +134,14 @@ fn form_data_view(fields: &[FormField]) -> Element<'_, Message> {
             row![
                 button(text(label).size(11).color(Palette::text()))
                     .on_press(Message::Request(RequestMsg::FormFieldPickFile(i)))
-                    .style(|_, _| iced::widget::button::Style {
-                        background: Some(Background::Color(Color { r: 0.12, g: 0.12, b: 0.14, a: 1.0 })),
+                    .style(|_, s| iced::widget::button::Style {
+                        background: Some(Background::Color(if matches!(s, iced::widget::button::Status::Hovered) {
+                            Palette::surface_raised()
+                        } else {
+                            Palette::surface_high()
+                        })),
                         text_color: Palette::text(),
-                        border: iced::Border { color: Palette::border_subtle(), width: 1.0, radius: 3.0.into() },
+                        border: iced::Border { color: Palette::border_subtle(), width: 1.0, radius: 6.0.into() },
                         ..Default::default()
                     })
                     .padding([3, 8])
@@ -178,7 +177,7 @@ fn form_data_view(fields: &[FormField]) -> Element<'_, Message> {
         )
         .style(move |_| iced::widget::container::Style {
             background: if i % 2 == 0 {
-                Some(Background::Color(Color { r: 0.095, g: 0.095, b: 0.105, a: 1.0 }))
+                Some(Background::Color(Palette::row_odd()))
             } else {
                 None
             },

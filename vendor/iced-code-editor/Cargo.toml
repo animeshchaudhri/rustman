@@ -23,7 +23,7 @@ path = "src/lib.rs"
 
 [dependencies.iced]
 version = "0.14"
-features = ["advanced", "highlighter", "canvas", "markdown"]
+features = ["advanced", "canvas", "markdown"]
 
 [dependencies.iced_aw]
 version = "0.13"

@@ -297,7 +297,7 @@ fn history_group(state: &AppState) -> Element<'_, Message> {
                     ]
                     .spacing(2),
                     Space::new().width(Length::Fill),
-                    tool_text("Restore", Message::Git(GitMsg::RestoreCommit(id))),
+                    tool_text("Restore", Message::Git(GitMsg::AskRestore(id))),
                 ]
                 .spacing(6)
                 .align_y(iced::Alignment::Center),
@@ -369,7 +369,7 @@ fn count_badge(n: usize) -> Element<'static, Message> {
 }
 
 fn divider() -> Element<'static, Message> {
-    container(iced::widget::rule::horizontal(1.0)).padding([3, 0]).into()
+    container(iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider)).padding([3, 0]).into()
 }
 
 fn badge(state: &str) -> String {
@@ -384,8 +384,8 @@ fn badge(state: &str) -> String {
 fn state_color(state: &str) -> Color {
     match state {
         "new" => Palette::SUCCESS,
-        "deleted" => Color { r: 0.85, g: 0.35, b: 0.35, a: 1.0 },
-        _ => Color { r: 0.90, g: 0.68, b: 0.30, a: 1.0 },
+        "deleted" => Palette::ERROR,
+        _ => Palette::WARNING,
     }
 }
 

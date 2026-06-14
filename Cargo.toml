@@ -1,6 +1,6 @@
 [package]
 name = "rustman"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 description = "Rustman — pure-Rust native API testing tool built with iced"
 authors = ["animeshchaudhri"]
@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 # GUI
-iced = { version = "0.14", features = ["tokio", "advanced", "image", "svg", "highlighter"] }
+iced = { version = "0.14", features = ["tokio", "advanced", "image", "svg"] }
 # Full-featured code editor widget (line numbers, syntect highlight, selection, undo)
 iced-code-editor = "0.3.9"
 
@@ -73,10 +73,8 @@ rfd = "0.14"
 iced-code-editor = { path = "vendor/iced-code-editor" }
 
 [profile.release]
+opt-level = 'z'  
 strip = true
 lto = true
 codegen-units = 1
-opt-level = 3
-# Drop unwinding tables/landing pads for a smaller binary. A panic aborts the
-# process instead of unwinding (no per-task isolation) — revert if that bites.
 panic = "abort"
