@@ -4590,7 +4590,7 @@ dependencies = [
 
 [[package]]
 name = "rustman"
-version = "0.3.7"
+version = "0.3.8"
 dependencies = [
  "base64",
  "chrono",
@@ -4610,6 +4610,7 @@ dependencies = [
  "self-replace",
  "serde",
  "serde_json",
+ "serde_yaml",
  "sha2",
  "tar",
  "tokio",

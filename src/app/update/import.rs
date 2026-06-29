@@ -24,7 +24,8 @@ pub(super) fn handle(state: &mut AppState, msg: ImportMsg) -> Task<Message> {
                 Some(json) => {
                     let result = crate::services::import::postman::import(&json)
                         .or_else(|_| crate::services::import::native_import(&json))
-                        .or_else(|_| crate::services::import::httpie_export::import(&json));
+                        .or_else(|_| crate::services::import::httpie_export::import(&json))
+                        .or_else(|_| crate::services::import::swagger::import(&json));
                     match result {
                         Ok(data) => Message::Import(ImportMsg::PostmanLoaded(data)),
                         Err(e) => Message::Import(ImportMsg::Error(e)),

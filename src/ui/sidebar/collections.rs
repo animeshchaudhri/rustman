@@ -14,7 +14,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         row![
             text("Collections").size(13).color(Palette::text()),
             Space::new().width(Length::Fill),
-            icon_btn_only(icons::import(), "Import Postman / HTTPie / JSON", Message::Import(ImportMsg::OpenPostmanDialog)),
+            icon_btn_only(icons::import(), "Import Postman / OpenAPI / HTTPie / JSON", Message::Import(ImportMsg::OpenPostmanDialog)),
             icon_btn_only(icons::plus(), "New Collection", Message::Sidebar(SidebarMsg::NewCollection)),
         ]
         .align_y(iced::Alignment::Center)
