@@ -1,17 +1,17 @@
 use iced::{
-    widget::{button, container, pick_list, row, text, text_input},
-    Background, Border, Color, Element, Length,
+    widget::{button, container, pick_list, row, text, text_input, Space},
+    Background, Border, Color, Element, Length, Shadow, Vector,
 };
 
 use crate::{
-    domain::request::HttpMethod,
+    domain::{environment::substitute, request::HttpMethod},
     message::{Message, RequestMsg},
     state::tabs::RequestTabState,
     ui::{theme::Palette, icons},
 };
 
 
-pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
+pub fn view<'a>(tab: &'a RequestTabState, env: Option<&'a crate::domain::environment::AppEnvironment>) -> Element<'a, Message> {
     let methods: Vec<&str> = HttpMethod::all().iter().map(|m| m.as_str()).collect();
 
     let color = method_color(&tab.method);
@@ -47,7 +47,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         }
     })
     .size(13)
-    .padding([7, 12])
+    .padding([10, 14])
     .width(Length::Fill)
     .style(url_input_style);
 
@@ -66,13 +66,13 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         button(row![text("Abort").size(12)].align_y(iced::Alignment::Center).spacing(4))
             .on_press(Message::Request(RequestMsg::Abort))
             .style(abort_button)
-            .padding([5, 14])
+            .padding([8, 18])
             .into()
     } else {
-        button(row![text("Send").size(12)].align_y(iced::Alignment::Center).spacing(4))
+        button(row![text("Send").size(13)].align_y(iced::Alignment::Center).spacing(4))
             .on_press(Message::Request(RequestMsg::Send))
             .style(send_button)
-            .padding([5, 14])
+            .padding([8, 20])
             .into()
     };
 
@@ -87,10 +87,39 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         bar = bar.push(curl_btn);
     }
 
-    container(bar)
-        .style(url_bar_container)
-        .width(Length::Fill)
-        .into()
+    if !ws_mode {
+        bar = bar.padding(iced::Padding { top: 8.0, right: 10.0, bottom: 8.0, left: 10.0 });
+    }
+
+    let expanded = (!ws_mode && env.is_some() && tab.url.contains("{{"))
+        .then(|| substitute(&tab.url, env));
+
+    let mut outer = iced::widget::Column::new()
+        .push(container(bar).style(url_bar_container).width(Length::Fill));
+
+    if let Some(exp) = expanded {
+        outer = outer.push(
+            container(
+                row![
+                    Space::new().width(100 + 6),
+                    text(exp).size(10).color(Palette::accent()).font(crate::ui::theme::MONO),
+                ]
+                .padding([0, 10]),
+            )
+            .style(|_| iced::widget::container::Style {
+                background: Some(Background::Color(Palette::chrome())),
+                border: Border {
+                    color: Palette::border_subtle(),
+                    width: 0.0,
+                    radius: 0.0.into(),
+                },
+                ..Default::default()
+            })
+            .width(Length::Fill),
+        );
+    }
+
+    outer.into()
 }
 
 fn ws_action_button(tab: &RequestTabState) -> Element<'static, Message> {
@@ -137,21 +166,22 @@ fn url_input_style(
     _theme: &iced::Theme,
     status: iced::widget::text_input::Status,
 ) -> iced::widget::text_input::Style {
+    let accent = Palette::accent();
     iced::widget::text_input::Style {
         background: Background::Color(Palette::surface_high()),
         border: Border {
             color: match status {
-                iced::widget::text_input::Status::Focused { .. } => Palette::accent(),
+                iced::widget::text_input::Status::Focused { .. } => accent,
                 iced::widget::text_input::Status::Hovered => Palette::border(),
                 _ => Palette::border_subtle(),
             },
-            width: 1.0,
-            radius: 6.0.into(),
+            width: 2.0,
+            radius: 8.0.into(),
         },
         icon: Palette::text_muted(),
         placeholder: Palette::text_subtle(),
         value: Palette::text(),
-        selection: Color { r: Palette::accent().r, g: Palette::accent().g, b: Palette::accent().b, a: 0.3 },
+        selection: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.3 },
     }
 }
 
@@ -163,6 +193,7 @@ fn url_bar_container(_theme: &iced::Theme) -> iced::widget::container::Style {
             width: 1.0,
             radius: 0.0.into(),
         },
+        shadow: Shadow { color: crate::ui::theme::SHADOW_LIGHT, offset: Vector::new(0.0, 1.0), blur_radius: 6.0 },
         ..Default::default()
     }
 }
@@ -181,7 +212,8 @@ fn send_button(_theme: &iced::Theme, status: iced::widget::button::Status) -> ic
             _ => base_bg,
         })),
         text_color: Color::WHITE,
-        border: Border { radius: 6.0.into(), ..Default::default() },
+        border: Border { radius: 8.0.into(), ..Default::default() },
+        shadow: Shadow { color: Color { r: base_bg.r, g: base_bg.g, b: base_bg.b, a: 0.35 }, offset: Vector::new(0.0, 2.0), blur_radius: 10.0 },
         ..Default::default()
     }
 }

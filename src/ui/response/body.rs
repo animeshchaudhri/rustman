@@ -1,6 +1,6 @@
 use iced::{
     widget::{button, column, container, row, text, Space},
-    Element, Length,
+    Color, Element, Length,
 };
 
 use crate::{
@@ -15,12 +15,24 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
     }
 
     let Some(resp) = tab.response.as_ref() else {
+        let accent = Palette::accent();
+        let icon = text("⇧").size(48).color(Color { r: accent.r, g: accent.g, b: accent.b, a: 0.15 });
         return container(
-            text("Send a request to see the response.").size(13).color(Palette::text_muted()),
+            column![
+                container(icon).center_x(Length::Fill).width(Length::Fill),
+                Space::new().height(12),
+                text("Send a request").size(15).color(Palette::text_muted()),
+                text("Press Cmd+Enter or click Send to run the request")
+                    .size(11).color(Palette::text_subtle()),
+            ]
+            .spacing(4)
+            .align_x(iced::Alignment::Center),
         )
-        .padding([24, 16])
+        .padding([32, 16])
         .width(Length::Fill)
         .height(Length::Fill)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
         .into();
     };
 

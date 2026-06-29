@@ -179,12 +179,12 @@ async fn do_send(
                     continue;
                 }
                 if let crate::domain::request::FormFieldType::File = field.field_type {
-                    let bytes = match &field.file_data {
-                        Some(data) => general_purpose::STANDARD
-                            .decode(data)
-                            .map_err(|e| format!("Base64 decode: {e}"))?,
-                        None => vec![],
-                    };
+                    let file_data = field.file_data.as_ref().ok_or_else(|| {
+                        format!("File field '{}' has no data — pick a file first", field.key)
+                    })?;
+                    let bytes = general_purpose::STANDARD
+                        .decode(file_data)
+                        .map_err(|e| format!("Base64 decode: {e}"))?;
                     let fname = field.file_name.clone().unwrap_or_else(|| "file".to_owned());
                     let mut part = reqwest::multipart::Part::bytes(bytes).file_name(fname);
                     if let Some(mime) = &field.mime_type {

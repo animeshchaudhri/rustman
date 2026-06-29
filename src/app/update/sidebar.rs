@@ -163,15 +163,31 @@ pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
         }
         SidebarMsg::EnvironmentVarKeyChanged(env_id, idx, new_key) => {
             if let Some(row) = state.sidebar.env_edit_rows.get_mut(idx) {
-                row.0 = new_key;
+                let old_key = std::mem::replace(&mut row.0, new_key);
+                if let Some(env) = state.environments.iter_mut().find(|e| e.id == env_id) {
+                    let trimmed_old = old_key.trim().to_owned();
+                    if !trimmed_old.is_empty() {
+                        env.variables.remove(&trimmed_old);
+                    }
+                    let trimmed = row.0.trim().to_owned();
+                    if !trimmed.is_empty() {
+                        env.variables.insert(trimmed, row.1.clone());
+                    }
+                    if let Some(db) = &state.db { let _ = storage::save_environment(db, env); }
+                }
             }
-            rebuild_env_vars(state, &env_id);
         }
         SidebarMsg::EnvironmentVarValueChanged(env_id, idx, new_val) => {
             if let Some(row) = state.sidebar.env_edit_rows.get_mut(idx) {
                 row.1 = new_val;
+                if let Some(env) = state.environments.iter_mut().find(|e| e.id == env_id) {
+                    let trimmed = row.0.trim().to_owned();
+                    if !trimmed.is_empty() {
+                        env.variables.insert(trimmed, row.1.clone());
+                    }
+                    if let Some(db) = &state.db { let _ = storage::save_environment(db, env); }
+                }
             }
-            rebuild_env_vars(state, &env_id);
         }
         SidebarMsg::EnvironmentVarRemoved(env_id, idx) => {
             if idx < state.sidebar.env_edit_rows.len() {

@@ -63,6 +63,9 @@ pub struct AppState {
     pub github_username: String,
     pub github_email: String,
     pub github_website: String,
+    pub git_user_name: String,
+    pub git_user_email: String,
+    pub git_history_search: String,
     pub accent_idx: usize,
     /// Split ratio: request panel FillPortion (1-9). Response = 10 - panel_split.
     pub panel_split: u16,

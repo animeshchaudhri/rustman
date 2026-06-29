@@ -983,6 +983,13 @@ impl CodeEditor {
             );
         }
 
+        // Handle Ctrl+X (cut)
+        if modifiers.command()
+            && matches!(key, keyboard::Key::Character(x) if x.as_str() == "x")
+        {
+            return Some(Action::publish(Message::Cut).and_capture());
+        }
+
         // Handle Ctrl+C / Ctrl+Insert (copy)
         if (modifiers.command()
             && matches!(key, keyboard::Key::Character(c) if c.as_str() == "c"))

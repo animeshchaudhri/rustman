@@ -52,13 +52,14 @@ pub(super) fn multi_tab_bar(state: &AppState) -> Element<'_, Message> {
                 button(label_row)
                     .on_press(Message::Request(RequestMsg::SwitchTab(i)))
                     .style(move |t, s| tab_btn_style(t, s, active))
-                    .padding([5, 8]),
+                    .padding([6, 10]),
                 close_btn,
             ]
             .spacing(0)
             .align_y(iced::Alignment::Center),
         )
-        .style(move |t| tab_container_style(t, active));
+        .style(move |t| tab_container_style(t, active))
+        .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 0.0 });
 
         Element::from(tab_btn)
     });

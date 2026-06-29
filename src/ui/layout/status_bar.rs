@@ -1,6 +1,6 @@
 use iced::{
     widget::{container, row, text, Space},
-    Background, Element, Length,
+    Background, Border, Element, Length,
 };
 
 use crate::{
@@ -37,13 +37,14 @@ pub(super) fn status_bar(state: &AppState) -> Element<'_, Message> {
         ]
         .spacing(8)
         .align_y(iced::Alignment::Center)
-        .padding([0, 8]),
+        .padding([2, 10]),
     )
     .style(|_| iced::widget::container::Style {
         background: Some(Background::Color(Palette::chrome())),
+        border: Border { color: Palette::border_subtle(), width: 1.0, radius: 0.0.into() },
         ..Default::default()
     })
-    .height(22)
+    .height(26)
     .width(Length::Fill)
     .into()
 }

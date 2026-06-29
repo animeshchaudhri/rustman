@@ -105,6 +105,8 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
 
     let git_repos = crate::services::repos::load(&data_dir);
 
+    let git_identity = crate::services::vcs::resolve_identity(&data_dir.join("collections"));
+
     let state = AppState {
         tabs,
         sidebar,
@@ -147,6 +149,14 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         github_username: String::from("animeshchaudhri"),
         github_email: String::from("ac04@duck.com"),
         github_website: String::from("animesh.us"),
+        git_history_search: String::new(),
+        git_user_name: git_identity
+            .as_ref()
+            .map(|i| i.name.clone())
+            .unwrap_or_default(),
+        git_user_email: git_identity
+            .map(|i| i.email)
+            .unwrap_or_default(),
         accent_idx: 0,
         panel_split: 5,
         ui_scale: 1.0,
@@ -171,7 +181,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         crate::services::update::check(),
         |res| match res {
             Ok(opt) => Message::Update(crate::message::UpdateMsg::Checked(Ok(opt))),
-            Err(_) => Message::App(AppMsg::Noop),
+            Err(e) => Message::Update(crate::message::UpdateMsg::Checked(Err(e))),
         },
     );
 

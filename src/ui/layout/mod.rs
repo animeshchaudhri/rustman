@@ -118,11 +118,12 @@ fn icon_btn(icon: Text<'static>, panel: SidebarPanel, active: bool) -> Element<'
 
 fn main_area(state: &AppState) -> Element<'_, Message> {
     let active_tab = state.tabs.active_tab();
-    let url_bar = request::url_bar::view(active_tab);
+    let active_env = state.environments.iter().find(|e| e.is_active);
+    let url_bar = request::url_bar::view(active_tab, active_env);
     let req_tabs = request::tabs::view(active_tab);
 
     let req_body: Element<Message> = match active_tab.active_request_tab {
-        RequestTab::Params    => request::params::view(active_tab),
+        RequestTab::Params    => request::params::view(active_tab, active_env),
         RequestTab::Headers   => request::headers::view(active_tab),
         RequestTab::Body      => request::body::view(active_tab),
         RequestTab::Auth      => request::auth::view(active_tab),
@@ -198,6 +199,7 @@ fn main_area(state: &AppState) -> Element<'_, Message> {
             !editors_focused,
             Message::Request(RequestMsg::Undo),
             Message::Request(RequestMsg::Redo),
+            Message::Request(RequestMsg::Send),
         ),
     )
     .width(Length::Fill)

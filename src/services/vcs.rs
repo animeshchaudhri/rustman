@@ -61,6 +61,7 @@ pub struct FileChange {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct BranchInfo {
     pub name: String,
     pub is_head: bool,
@@ -75,17 +76,25 @@ pub struct RepoStatus {
     pub behind: usize,
 }
 
-pub fn resolve_identity(data_dir: &PathBuf, fallback_name: &str, fallback_email: &str) -> GitIdentity {
+pub fn set_identity(data_dir: &PathBuf, name: &str, email: &str) -> Result<(), String> {
+    let repo = open_at(data_dir)?;
+    let mut cfg = repo.config().map_err(|e| e.to_string())?;
+    cfg.set_str("user.name", name).map_err(|e| e.to_string())?;
+    cfg.set_str("user.email", email).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn resolve_identity(data_dir: &PathBuf) -> Option<GitIdentity> {
     if let Ok(repo) = open_at(data_dir) {
         if let Ok(cfg) = repo.config() {
             let name = cfg.get_string("user.name").ok().filter(|s| !s.is_empty());
             let email = cfg.get_string("user.email").ok().filter(|s| !s.is_empty());
             if let (Some(name), Some(email)) = (name, email) {
-                return GitIdentity { name, email };
+                return Some(GitIdentity { name, email });
             }
         }
     }
-    GitIdentity { name: fallback_name.to_owned(), email: fallback_email.to_owned() }
+    None
 }
 
 pub fn status(data_dir: &PathBuf) -> Result<RepoStatus, String> {

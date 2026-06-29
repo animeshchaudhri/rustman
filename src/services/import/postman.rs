@@ -26,8 +26,6 @@ enum PostmanItem {
 
 #[derive(Deserialize)]
 struct PostmanFolder {
-    #[allow(dead_code)]
-    name: String,
     item: Vec<PostmanItem>,
 }
 

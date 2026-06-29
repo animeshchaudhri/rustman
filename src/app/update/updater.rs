@@ -7,8 +7,7 @@ use crate::services::update;
 pub(super) fn handle(state: &mut AppState, msg: UpdateMsg) -> Task<Message> {
     match msg {
         UpdateMsg::Check => {
-            // Don't clobber an install that's already in flight or finished.
-            if matches!(state.update, UpdateState::Installing | UpdateState::Ready(_)) {
+            if matches!(state.update, UpdateState::Checking | UpdateState::Installing | UpdateState::Ready(_)) {
                 return Task::none();
             }
             state.update = UpdateState::Checking;

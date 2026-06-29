@@ -7,11 +7,14 @@ use iced::{keyboard, Element, Event, Length, Rectangle, Size, Vector};
 /// the character (macOS delivers text for Cmd+letter), so this is the only way to
 /// give the URL bar real undo. Interception is gated by `active` so it does not
 /// steal the shortcut from a focused code editor.
+/// Cmd/Ctrl+Enter is ALWAYS intercepted to prevent the body editor from inserting
+/// a newline while the request is being sent.
 pub struct KeyGuard<'a, Message, Theme, Renderer> {
     content: Element<'a, Message, Theme, Renderer>,
     active: bool,
     on_undo: Message,
     on_redo: Message,
+    on_send: Message,
 }
 
 pub fn key_guard<'a, Message, Theme, Renderer>(
@@ -19,8 +22,9 @@ pub fn key_guard<'a, Message, Theme, Renderer>(
     active: bool,
     on_undo: Message,
     on_redo: Message,
+    on_send: Message,
 ) -> KeyGuard<'a, Message, Theme, Renderer> {
-    KeyGuard { content: content.into(), active, on_undo, on_redo }
+    KeyGuard { content: content.into(), active, on_undo, on_redo, on_send }
 }
 
 impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer>
@@ -71,8 +75,15 @@ where
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        if self.active {
-            if let Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event {
+        if let Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event {
+            use keyboard::key::Named;
+            // Always intercept Cmd+Enter so body editors don't also insert a newline.
+            if *key == keyboard::Key::Named(Named::Enter) && modifiers.command() {
+                shell.publish(self.on_send.clone());
+                shell.capture_event();
+                return;
+            }
+            if self.active {
                 if let keyboard::Key::Character(c) = key.as_ref() {
                     if c.eq_ignore_ascii_case("z") && modifiers.command() {
                         shell.publish(if modifiers.shift() {

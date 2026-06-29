@@ -1653,6 +1653,7 @@ impl CodeEditor {
             }
 
             // Clipboard operations
+            Message::Cut => self.cut_selection(),
             Message::Copy => self.copy_selection(),
             Message::SelectAll => {
                 self.select_all_text();

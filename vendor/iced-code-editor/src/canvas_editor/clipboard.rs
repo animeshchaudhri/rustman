@@ -96,6 +96,12 @@ impl CodeEditor {
     /// // cursor 0 selects "foo", cursor 1 selects "bar"
     /// // → clipboard contains "foo\nbar"
     /// ```
+    pub(crate) fn cut_selection(&mut self) -> Task<Message> {
+        let task = self.copy_selection();
+        self.delete_selection();
+        task
+    }
+
     pub(crate) fn copy_selection(&self) -> Task<Message> {
         let texts: Vec<String> = self
             .cursors
