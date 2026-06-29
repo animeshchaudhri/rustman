@@ -2,13 +2,7 @@ use iced::advanced::widget::{Operation, Tree};
 use iced::advanced::{layout, mouse, overlay, renderer, Clipboard, Layout, Shell, Widget};
 use iced::{keyboard, Element, Event, Length, Rectangle, Size, Vector};
 
-/// Wraps an input and intercepts Cmd/Ctrl+Z (undo) and Cmd/Ctrl+Shift+Z (redo)
-/// before the inner widget can consume them. iced's `text_input` otherwise types
-/// the character (macOS delivers text for Cmd+letter), so this is the only way to
-/// give the URL bar real undo. Interception is gated by `active` so it does not
-/// steal the shortcut from a focused code editor.
-/// Cmd/Ctrl+Enter is ALWAYS intercepted to prevent the body editor from inserting
-/// a newline while the request is being sent.
+
 pub struct KeyGuard<'a, Message, Theme, Renderer> {
     content: Element<'a, Message, Theme, Renderer>,
     active: bool,
@@ -82,6 +76,13 @@ where
                 shell.publish(self.on_send.clone());
                 shell.capture_event();
                 return;
+            }
+            // Always intercept Cmd+S so text inputs don't insert 's' on macOS.
+            if let keyboard::Key::Character(c) = key.as_ref() {
+                if c.eq_ignore_ascii_case("s") && modifiers.command() {
+                    shell.capture_event();
+                    return;
+                }
             }
             if self.active {
                 if let keyboard::Key::Character(c) = key.as_ref() {
