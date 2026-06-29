@@ -96,7 +96,6 @@ fn global_keys(event: Event, _status: event::Status, window_id: window::Id) -> O
         return None;
     };
 
-    use keyboard::key::Named;
     match key.as_ref() {
         keyboard::Key::Character("p") if modifiers.command() => Some(Message::Palette(PaletteMsg::Open)),
         keyboard::Key::Character("t") if modifiers.command() => Some(Message::Request(RequestMsg::NewTab)),
@@ -108,7 +107,7 @@ fn global_keys(event: Event, _status: event::Status, window_id: window::Id) -> O
         keyboard::Key::Character("=") if modifiers.command() => Some(Message::Layout(crate::message::LayoutMsg::ZoomIn)),
         keyboard::Key::Character("-") if modifiers.command() => Some(Message::Layout(crate::message::LayoutMsg::ZoomOut)),
         keyboard::Key::Character("0") if modifiers.command() => Some(Message::Layout(crate::message::LayoutMsg::ZoomReset)),
-        keyboard::Key::Named(Named::Enter) if modifiers.command() => Some(Message::Request(RequestMsg::Send)),
+        // Cmd+Enter is handled in key_guard.rs to prevent body editors from inserting a newline.
         keyboard::Key::Character("1") if modifiers.alt() => Some(Message::Request(RequestMsg::SwitchTab(0))),
         keyboard::Key::Character("2") if modifiers.alt() => Some(Message::Request(RequestMsg::SwitchTab(1))),
         keyboard::Key::Character("3") if modifiers.alt() => Some(Message::Request(RequestMsg::SwitchTab(2))),

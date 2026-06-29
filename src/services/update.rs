@@ -49,9 +49,19 @@ struct GhAsset {
 }
 
 fn client() -> Result<reqwest::Client, String> {
-    // GitHub's API rejects requests without a User-Agent.
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::ACCEPT,
+        reqwest::header::HeaderValue::from_static("application/vnd.github+json"),
+    );
+    if let Ok(token) = std::env::var("GITHUB_TOKEN").or_else(|_| std::env::var("GH_TOKEN")) {
+        if let Ok(val) = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}")) {
+            headers.insert(reqwest::header::AUTHORIZATION, val);
+        }
+    }
     reqwest::Client::builder()
         .user_agent(concat!("rustman/", env!("CARGO_PKG_VERSION")))
+        .default_headers(headers)
         .build()
         .map_err(|e| e.to_string())
 }
@@ -109,10 +119,45 @@ pub async fn install() -> Result<String, String> {
 /// Relaunch the freshly-updated executable and exit the current process.
 pub fn restart() -> Result<std::convert::Infallible, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    std::process::Command::new(exe)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    std::process::exit(0);
+
+    if !exe.exists() {
+        return Err(format!(
+            "Binary not found at {path}. The update replaced the file but the current \
+             process may be reading a stale inode. Try running {path} manually.",
+            path = exe.display(),
+        ));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // On macOS, a downloaded binary is often quarantined.  Try to remove the
+        // quarantine attribute so Gatekeeper doesn't block the relaunch.  If this
+        // fails we still attempt to spawn — the error is propagated if it fails.
+        let _ = std::process::Command::new("xattr")
+            .args(["-dr", "com.apple.quarantine"])
+            .arg(&exe)
+            .output();
+    }
+
+    match std::process::Command::new(&exe).spawn() {
+        Ok(_) => std::process::exit(0),
+        Err(e) => {
+            let hint = if cfg!(target_os = "macos") {
+                "The binary may need code-signing or the quarantine flag removed. \
+                 Try: xattr -dr com.apple.quarantine "
+            } else if cfg!(target_os = "linux") {
+                "If you are running via cargo run, the binary was swapped but the \
+                 old inode may still be cached. Try running the binary directly: "
+            } else {
+                ""
+            };
+            Err(format!(
+                "Failed to restart from {path}: {e}. {hint}{path}",
+                path = exe.display(),
+                hint = hint,
+            ))
+        }
+    }
 }
 
 /// Compare two `MAJOR.MINOR.PATCH` strings (pre-release suffixes are ignored).
@@ -134,9 +179,36 @@ fn extract_and_replace(bytes: Vec<u8>) -> Result<(), String> {
     let tmp = dir.join(".rustman-update.tmp");
 
     extract_binary(&bytes, &tmp)?;
+
+    // Sanity-check: the extracted binary should look like a valid executable.
+    verify_binary(&tmp)?;
+
     self_replace::self_replace(&tmp).map_err(|e| e.to_string())?;
     let _ = std::fs::remove_file(&tmp);
     Ok(())
+}
+
+/// Quick validation that a file at `path` is plausibly a native binary.
+/// Checks the ELF / Mach-O / PE magic bytes.
+fn verify_binary(path: &std::path::Path) -> Result<(), String> {
+    let magic = std::fs::read(path)
+        .map_err(|e| e.to_string())?;
+    if magic.len() < 4 {
+        return Err("extracted binary is too small".into());
+    }
+    match &magic[..4] {
+        // ELF  (Linux)
+        [0x7f, b'E', b'L', b'F'] => Ok(()),
+        // Mach-O 64-bit  (macOS, fat binary)
+        [0xcf, 0xfa, 0xed, 0xfe] | [0xca, 0xfe, 0xba, 0xbe] | [0xbe, 0xba, 0xfe, 0xca] => {
+            Ok(())
+        }
+        // PE  (Windows)
+        [b'M', b'Z', _, _] => Ok(()),
+        h => Err(format!(
+            "extracted binary has unknown header {h:02x?} — refusing to replace"
+        )),
+    }
 }
 
 #[cfg(not(target_os = "windows"))]

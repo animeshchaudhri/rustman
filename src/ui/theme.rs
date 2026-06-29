@@ -7,16 +7,20 @@ pub const MONO: Font = Font::with_name("JetBrains Mono");
 static DARK_MODE: AtomicBool = AtomicBool::new(true);
 static ACCENT_IDX: AtomicUsize = AtomicUsize::new(0);
 
+/// Default accent is indigo/violet (index 0).
 pub const ACCENT_PALETTE: &[Color] = &[
-    Color { r: 0.388, g: 0.400, b: 0.945, a: 1.0 },
-    Color { r: 0.133, g: 0.773, b: 0.478, a: 1.0 },
-    Color { r: 0.247, g: 0.631, b: 0.961, a: 1.0 },
-    Color { r: 0.678, g: 0.400, b: 0.945, a: 1.0 },
-    Color { r: 0.251, g: 0.878, b: 0.816, a: 1.0 },
-    Color { r: 0.961, g: 0.267, b: 0.341, a: 1.0 },
-    Color { r: 0.988, g: 0.580, b: 0.110, a: 1.0 },
-    Color { r: 0.608, g: 0.349, b: 0.714, a: 1.0 },
+    Color { r: 0.557, g: 0.420, b: 0.965, a: 1.0 },  // Violet (default)
+    Color { r: 0.133, g: 0.773, b: 0.478, a: 1.0 },  // Green
+    Color { r: 0.247, g: 0.631, b: 0.961, a: 1.0 },  // Blue
+    Color { r: 0.678, g: 0.400, b: 0.945, a: 1.0 },  // Purple
+    Color { r: 0.251, g: 0.878, b: 0.816, a: 1.0 },  // Teal
+    Color { r: 0.961, g: 0.267, b: 0.341, a: 1.0 },  // Red
+    Color { r: 0.988, g: 0.580, b: 0.110, a: 1.0 },  // Orange
+    Color { r: 0.608, g: 0.349, b: 0.714, a: 1.0 },  // Magenta
 ];
+
+pub const SHADOW: Color = Color { r: 0.0, g: 0.0, b: 0.0, a: 0.28 };
+pub const SHADOW_LIGHT: Color = Color { r: 0.0, g: 0.0, b: 0.0, a: 0.14 };
 
 pub fn thin_scrollbar(
     _theme: &iced::Theme,
@@ -57,32 +61,32 @@ impl Palette {
     pub fn is_dark() -> bool { DARK_MODE.load(Ordering::Relaxed) }
 
     pub fn background() -> Color {
-        if Self::is_dark() { Color::from_rgb(0.050, 0.052, 0.060) }
+        if Self::is_dark() { Color::from_rgb(0.035, 0.038, 0.048) }
         else { Color::from_rgb(0.965, 0.972, 0.984) }
     }
     pub fn surface() -> Color {
-        if Self::is_dark() { Color::from_rgb(0.086, 0.090, 0.104) }
+        if Self::is_dark() { Color::from_rgb(0.075, 0.080, 0.100) }
         else { Color::from_rgb(0.996, 0.997, 1.000) }
     }
     pub fn surface_high() -> Color {
-        if Self::is_dark() { Color::from_rgb(0.132, 0.139, 0.160) }
+        if Self::is_dark() { Color::from_rgb(0.120, 0.128, 0.155) }
         else { Color::from_rgb(0.925, 0.941, 0.965) }
     }
     pub fn surface_raised() -> Color {
-        if Self::is_dark() { Color::from_rgb(0.166, 0.176, 0.204) }
+        if Self::is_dark() { Color::from_rgb(0.155, 0.165, 0.195) }
         else { Color::from_rgb(0.890, 0.914, 0.949) }
     }
     pub fn row_even() -> Color { Self::surface() }
     pub fn row_odd() -> Color {
-        if Self::is_dark() { Color::from_rgb(0.073, 0.077, 0.091) }
+        if Self::is_dark() { Color::from_rgb(0.062, 0.068, 0.088) }
         else { Color::from_rgb(0.977, 0.982, 0.991) }
     }
     pub fn border() -> Color {
-        if Self::is_dark() { Color::from_rgb(0.234, 0.246, 0.283) }
+        if Self::is_dark() { Color::from_rgb(0.220, 0.235, 0.275) }
         else { Color::from_rgb(0.737, 0.776, 0.835) }
     }
     pub fn border_subtle() -> Color {
-        if Self::is_dark() { Color::from_rgb(0.153, 0.162, 0.190) }
+        if Self::is_dark() { Color::from_rgb(0.140, 0.152, 0.185) }
         else { Color::from_rgb(0.847, 0.875, 0.918) }
     }
     pub fn text() -> Color {
@@ -90,11 +94,11 @@ impl Palette {
         else { Color::from_rgb(0.105, 0.124, 0.158) }
     }
     pub fn text_muted() -> Color {
-        if Self::is_dark() { Color::from_rgb(0.632, 0.659, 0.710) }
+        if Self::is_dark() { Color::from_rgb(0.620, 0.645, 0.695) }
         else { Color::from_rgb(0.355, 0.400, 0.475) }
     }
     pub fn text_subtle() -> Color {
-        if Self::is_dark() { Color::from_rgb(0.456, 0.483, 0.540) }
+        if Self::is_dark() { Color::from_rgb(0.440, 0.470, 0.530) }
         else { Color::from_rgb(0.554, 0.604, 0.680) }
     }
     pub fn accent() -> Color {

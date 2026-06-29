@@ -1,5 +1,5 @@
 use iced::{
-    widget::{button, column, container, image, row, scrollable, svg, text, Space},
+    widget::{button, column, container, image, row, scrollable, svg, text, text_input, Space},
     Background, Border, Color, Element, Length,
 };
 
@@ -23,18 +23,82 @@ pub fn view(state: &crate::app::AppState) -> Element<'_, Message> {
         state.github_website.clone(),
         state.accent_idx,
     ));
+    let git_identity = card(build_git_identity(
+        &state.git_user_name,
+        &state.git_user_email,
+    ));
     let appearance = card(build_appearance(state.accent_idx));
     let updates = card(build_updates(&state.update));
     let shortcuts = card(build_shortcuts());
     let footer = build_footer();
 
     scrollable(
-        column![header, profile, appearance, updates, shortcuts, footer]
+        column![header, profile, git_identity, appearance, updates, shortcuts, footer]
             .spacing(8)
             .padding(iced::Padding { top: 0.0, right: 8.0, bottom: 20.0, left: 8.0 }),
     )
     .height(Length::Fill)
     .style(crate::ui::theme::thin_scrollbar)
+    .into()
+}
+
+fn build_git_identity(name: &str, email: &str) -> Element<'static, Message> {
+    column![
+        section_label("GIT IDENTITY"),
+        field_label("Name"),
+        text_input("Your Name", name)
+            .on_input(|v| Message::Settings(SettingsMsg::GitNameChanged(v)))
+            .size(12)
+            .padding([6, 10])
+            .style(|_theme, status| {
+                let accent = Palette::accent();
+                iced::widget::text_input::Style {
+                    background: Background::Color(Palette::surface_high()),
+                    border: Border {
+                        color: match status {
+                            iced::widget::text_input::Status::Focused { .. } => accent,
+                            iced::widget::text_input::Status::Hovered => Palette::border(),
+                            _ => Palette::border_subtle(),
+                        },
+                        width: 1.0,
+                        radius: 6.0.into(),
+                    },
+                    icon: Palette::text_muted(),
+                    placeholder: Palette::text_subtle(),
+                    value: Palette::text(),
+                    selection: iced::Color { r: accent.r, g: accent.g, b: accent.b, a: 0.25 },
+                }
+            }),
+        Space::new().height(6),
+        field_label("Email"),
+        text_input("you@example.com", email)
+            .on_input(|v| Message::Settings(SettingsMsg::GitEmailChanged(v)))
+            .size(12)
+            .padding([6, 10])
+            .style(|_theme, status| {
+                let accent = Palette::accent();
+                iced::widget::text_input::Style {
+                    background: Background::Color(Palette::surface_high()),
+                    border: Border {
+                        color: match status {
+                            iced::widget::text_input::Status::Focused { .. } => accent,
+                            iced::widget::text_input::Status::Hovered => Palette::border(),
+                            _ => Palette::border_subtle(),
+                        },
+                        width: 1.0,
+                        radius: 6.0.into(),
+                    },
+                    icon: Palette::text_muted(),
+                    placeholder: Palette::text_subtle(),
+                    value: Palette::text(),
+                    selection: iced::Color { r: accent.r, g: accent.g, b: accent.b, a: 0.25 },
+                }
+            }),
+        Space::new().height(4),
+        text("Used for git commits. Saves to the active repo's config.")
+            .size(9).color(Palette::text_subtle()),
+    ]
+    .spacing(0)
     .into()
 }
 

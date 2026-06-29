@@ -202,11 +202,13 @@ pub enum GitMsg {
     ToggleDiff,
     DiffLoaded(String),
     Synced(Box<SyncPayload>),
+    HistorySearchChanged(String),
     Done(String),
     Error(String),
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct RepoSummary {
     pub id: String,
     pub branch: String,
@@ -324,6 +326,8 @@ pub enum FormatTarget {
 #[derive(Debug, Clone)]
 pub enum SettingsMsg {
     AccentChanged(usize),
+    GitNameChanged(String),
+    GitEmailChanged(String),
 }
 
 // ── Auto-update ───────────────────────────────────────────────────────────────

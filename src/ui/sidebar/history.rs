@@ -17,12 +17,12 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
     let header = container(
         row![
-            text("History").size(12).color(Palette::text_muted()),
+            text("History").size(13).color(Palette::text()),
             iced::widget::Space::new().width(Length::Fill),
             clear_btn,
         ]
         .align_y(iced::Alignment::Center)
-        .padding([4, 8]),
+        .padding([10, 10]),
     )
     .width(Length::Fill);
 

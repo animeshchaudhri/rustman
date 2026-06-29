@@ -10,7 +10,7 @@ pub(super) fn handle(state: &mut AppState, msg: ImportMsg) -> Task<Message> {
             async {
                 let file = rfd::AsyncFileDialog::new()
                     .add_filter("JSON", &["json"])
-                    .set_title("Import Collection (Postman / Rustman)")
+                    .set_title("Import Collection (Postman / HTTPie / Rustman)")
                     .pick_file()
                     .await;
                 if let Some(f) = file {
@@ -23,7 +23,8 @@ pub(super) fn handle(state: &mut AppState, msg: ImportMsg) -> Task<Message> {
             |content| match content {
                 Some(json) => {
                     let result = crate::services::import::postman::import(&json)
-                        .or_else(|_| crate::services::import::native_import(&json));
+                        .or_else(|_| crate::services::import::native_import(&json))
+                        .or_else(|_| crate::services::import::httpie_export::import(&json));
                     match result {
                         Ok(data) => Message::Import(ImportMsg::PostmanLoaded(data)),
                         Err(e) => Message::Import(ImportMsg::Error(e)),

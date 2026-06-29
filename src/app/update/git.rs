@@ -22,6 +22,11 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
             state.git_branches = view.branches;
             state.git_log = view.log;
             state.git_busy = false;
+            let repo_path = active_path(state);
+            if let Some(id) = vcs::resolve_identity(&repo_path) {
+                state.git_user_name = id.name;
+                state.git_user_email = id.email;
+            }
         }
         GitMsg::SelectRepo(id) => {
             crate::app::request_ops::flush_modified_tabs(state);
@@ -114,6 +119,7 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
             return refresh_task(state);
         }
         GitMsg::CommitMessageChanged(value) => state.git_commit_message = value,
+        GitMsg::HistorySearchChanged(value) => state.git_history_search = value,
         GitMsg::RemoteUrlChanged(value) => state.git_remote_input = value,
         GitMsg::NewBranchNameChanged(value) => state.git_new_branch = value,
         GitMsg::Commit => {
@@ -126,7 +132,16 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
             let repo_path = active_path(state);
             let collections = collections_for_active(state);
             let requests = state.requests.clone();
-            let identity = vcs::resolve_identity(&repo_path, &state.github_username, &state.github_email);
+            let identity = match vcs::resolve_identity(&repo_path) {
+                Some(id) => id,
+                None => {
+                    state.status_message = Some(
+                        "Set git user.name and user.email first:\n  git config user.name \"Your Name\"\n  git config user.email \"you@example.com\""
+                            .to_owned(),
+                    );
+                    return Task::none();
+                }
+            };
             state.git_commit_message.clear();
             state.git_busy = true;
             return blocking(move || {

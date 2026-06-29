@@ -1,4 +1,5 @@
 pub mod httpie;
+pub mod httpie_export;
 pub mod postman;
 
 use serde::{Deserialize, Serialize};

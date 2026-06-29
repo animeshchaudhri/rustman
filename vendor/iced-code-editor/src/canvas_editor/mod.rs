@@ -349,6 +349,8 @@ pub enum Message {
     TripleClick(iced::Point),
     /// Copy selected text (Ctrl+C)
     Copy,
+    /// Cut selected text (Ctrl+X)
+    Cut,
     /// Select the entire buffer (Ctrl/Cmd+A)
     SelectAll,
     /// Paste text from clipboard (Ctrl+V)

@@ -1,4 +1,4 @@
-use iced::{Background, Border, Color};
+use iced::{Background, Border, Color, Shadow};
 
 use crate::ui::theme::Palette;
 
@@ -17,6 +17,7 @@ pub fn method_color(method: &crate::domain::request::HttpMethod) -> Color {
 pub fn icon_rail_style(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(Background::Color(Palette::chrome())),
+        border: Border { color: Palette::border_subtle(), width: 1.0, radius: 0.0.into() },
         ..Default::default()
     }
 }
@@ -34,8 +35,9 @@ pub fn icon_btn_style(
         } else {
             None
         },
-        border: Border { radius: 6.0.into(), ..Default::default() },
+        border: Border { radius: 8.0.into(), ..Default::default() },
         text_color: Palette::text(),
+        shadow: Shadow { color: crate::ui::theme::SHADOW_LIGHT, offset: iced::Vector::new(0.0, 1.0), blur_radius: 4.0 },
         ..Default::default()
     }
 }
@@ -43,7 +45,7 @@ pub fn icon_btn_style(
 pub fn sidebar_style(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(Background::Color(Palette::surface())),
-        border: Border { color: Palette::border_subtle(), width: 1.0, radius: 0.0.into() },
+        border: Border { color: Palette::border(), width: 1.0, radius: 0.0.into() },
         ..Default::default()
     }
 }
@@ -52,10 +54,11 @@ pub fn surface_style(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(Background::Color(Palette::surface())),
         border: Border {
-            color: Palette::border_subtle(),
+            color: Palette::border(),
             width: 1.0,
-            radius: 4.0.into(),
+            radius: 8.0.into(),
         },
+        shadow: Shadow { color: crate::ui::theme::SHADOW, offset: iced::Vector::new(0.0, 2.0), blur_radius: 12.0 },
         ..Default::default()
     }
 }
@@ -63,6 +66,11 @@ pub fn surface_style(_theme: &iced::Theme) -> iced::widget::container::Style {
 pub fn tab_bar_container(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(Background::Color(Palette::chrome())),
+        border: Border {
+            color: Palette::border_subtle(),
+            width: 1.0,
+            radius: 0.0.into(),
+        },
         ..Default::default()
     }
 }
@@ -71,9 +79,15 @@ pub fn tab_container_style(_theme: &iced::Theme, active: bool) -> iced::widget::
     iced::widget::container::Style {
         background: if active { Some(Background::Color(Palette::surface())) } else { None },
         border: Border {
-            color: if active { Palette::border_subtle() } else { Color::TRANSPARENT },
+            color: if active { Palette::accent() } else { Color::TRANSPARENT },
             width: if active { 1.0 } else { 0.0 },
-            radius: 6.0.into(),
+            radius: 8.0.into(),
+        },
+        shadow: if active {
+            let accent = Palette::accent();
+            Shadow { color: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.3 }, offset: iced::Vector::new(0.0, 0.0), blur_radius: 10.0 }
+        } else {
+            Shadow::default()
         },
         ..Default::default()
     }

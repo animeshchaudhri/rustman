@@ -12,14 +12,14 @@ use crate::{
 pub fn view(state: &AppState) -> Element<'_, Message> {
     let action_bar = container(
         row![
-            text("Collections").size(11).color(Palette::text_muted()),
+            text("Collections").size(13).color(Palette::text()),
             Space::new().width(Length::Fill),
-            icon_btn_only(icons::import(), "Import Postman/OpenAPI", Message::Import(ImportMsg::OpenPostmanDialog)),
+            icon_btn_only(icons::import(), "Import Postman / HTTPie / JSON", Message::Import(ImportMsg::OpenPostmanDialog)),
             icon_btn_only(icons::plus(), "New Collection", Message::Sidebar(SidebarMsg::NewCollection)),
         ]
         .align_y(iced::Alignment::Center)
         .spacing(2)
-        .padding([4, 6]),
+        .padding([10, 10]),
     )
     .width(Length::Fill);
 

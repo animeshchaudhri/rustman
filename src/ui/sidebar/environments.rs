@@ -12,7 +12,7 @@ use crate::{
 pub fn view(state: &AppState) -> Element<'_, Message> {
     let action_bar = container(
         row![
-            text("Environments").size(12).color(Palette::text_muted()),
+            text("Environments").size(13).color(Palette::text()),
             iced::widget::Space::new().width(Length::Fill),
             button(text("+ New").size(11).color(Palette::accent()))
                 .on_press(Message::Sidebar(SidebarMsg::EnvironmentCreated))
@@ -20,7 +20,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                 .padding([2, 6]),
         ]
         .align_y(iced::Alignment::Center)
-        .padding([6, 8]),
+        .padding([10, 10]),
     )
     .width(Length::Fill);
 
