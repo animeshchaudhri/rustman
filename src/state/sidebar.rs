@@ -9,6 +9,7 @@ pub struct SidebarState {
     pub req_renaming: Option<String>,
     pub env_editing: Option<String>,
     pub env_edit_rows: Vec<(String, String)>,
+    pub collapsed: bool,
 }
 
 impl Default for SidebarState {
@@ -21,6 +22,7 @@ impl Default for SidebarState {
             req_renaming: None,
             env_editing: None,
             env_edit_rows: Vec::new(),
+            collapsed: false,
         }
     }
 }

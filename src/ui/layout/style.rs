@@ -35,9 +35,7 @@ pub fn icon_btn_style(
         } else {
             None
         },
-        border: Border { radius: 8.0.into(), ..Default::default() },
         text_color: Palette::text(),
-        shadow: Shadow { color: crate::ui::theme::SHADOW_LIGHT, offset: iced::Vector::new(0.0, 1.0), blur_radius: 4.0 },
         ..Default::default()
     }
 }
@@ -56,9 +54,9 @@ pub fn surface_style(_theme: &iced::Theme) -> iced::widget::container::Style {
         border: Border {
             color: Palette::border(),
             width: 1.0,
-            radius: 8.0.into(),
+            radius: 0.0.into(),
         },
-        shadow: Shadow { color: crate::ui::theme::SHADOW, offset: iced::Vector::new(0.0, 2.0), blur_radius: 12.0 },
+        shadow: Shadow::default(),
         ..Default::default()
     }
 }
@@ -75,32 +73,26 @@ pub fn tab_bar_container(_theme: &iced::Theme) -> iced::widget::container::Style
     }
 }
 
-pub fn tab_container_style(_theme: &iced::Theme, active: bool) -> iced::widget::container::Style {
+pub fn tab_container_style(_theme: &iced::Theme, active: bool, dragging: bool) -> iced::widget::container::Style {
     iced::widget::container::Style {
-        background: if active { Some(Background::Color(Palette::surface())) } else { None },
+        background: if dragging {
+            Some(Background::Color(Palette::accent_soft()))
+        } else if active {
+            Some(Background::Color(Palette::surface()))
+        } else {
+            None
+        },
         border: Border {
-            color: if active { Palette::accent() } else { Color::TRANSPARENT },
-            width: if active { 1.0 } else { 0.0 },
+            color: if dragging || active { Palette::accent() } else { Color::TRANSPARENT },
+            width: if dragging || active { 1.0 } else { 0.0 },
             radius: 8.0.into(),
         },
-        shadow: if active {
+        shadow: if active || dragging {
             let accent = Palette::accent();
             Shadow { color: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.3 }, offset: iced::Vector::new(0.0, 0.0), blur_radius: 10.0 }
         } else {
             Shadow::default()
         },
-        ..Default::default()
-    }
-}
-
-pub fn tab_btn_style(
-    _theme: &iced::Theme,
-    _status: iced::widget::button::Status,
-    active: bool,
-) -> iced::widget::button::Style {
-    iced::widget::button::Style {
-        background: None,
-        text_color: if active { Palette::text() } else { Palette::text_muted() },
         ..Default::default()
     }
 }

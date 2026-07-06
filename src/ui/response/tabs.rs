@@ -27,7 +27,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         .collect();
 
     container(
-        row(btns).spacing(2).padding([4, 8]),
+        row(btns).spacing(4).padding([6, 10]),
     )
     .style(|_| iced::widget::container::Style {
         background: Some(Background::Color(Palette::surface())),

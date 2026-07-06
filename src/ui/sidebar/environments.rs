@@ -6,15 +6,15 @@ use iced::{
 use crate::{
     app::AppState,
     message::{Message, SidebarMsg},
-    ui::{icons, theme::Palette},
+    ui::{icons, theme::{Palette, TEXT_LG, TEXT_SM}, widgets::kv_table},
 };
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
     let action_bar = container(
         row![
-            text("Environments").size(13).color(Palette::text()),
+            text("Environments").size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
             iced::widget::Space::new().width(Length::Fill),
-            button(text("+ New").size(11).color(Palette::accent()))
+            button(text("+ New").size(TEXT_SM).color(Palette::accent()))
                 .on_press(Message::Sidebar(SidebarMsg::EnvironmentCreated))
                 .style(iced::widget::button::text)
                 .padding([2, 6]),
@@ -24,18 +24,18 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     )
     .width(Length::Fill);
 
-    let mut col = column![action_bar, iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider)].spacing(0);
-
     if state.environments.is_empty() {
-        col = col.push(
-            container(
-                text("No environments yet.\nClick + New to create one.")
-                    .size(12)
-                    .color(Palette::text_muted()),
-            )
-            .padding([12, 8]),
-        );
+        return column![
+            action_bar,
+            iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider),
+            kv_table::empty_state("No environments yet.\nClick + New to create one."),
+        ]
+        .spacing(0)
+        .height(Length::Fill)
+        .into();
     }
+
+    let mut col = column![action_bar, iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider)].spacing(0);
 
     for env in &state.environments {
         let env_id = env.id.clone();

@@ -36,14 +36,14 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     scrollable(root)
         .height(Length::Fill)
         .spacing(8)
-        .style(crate::ui::theme::thin_scrollbar)
+        .style(crate::ui::theme::hidden_scrollbar)
         .into()
 }
 
 fn title_bar() -> Element<'static, Message> {
     container(
         row![
-            text("Source Control").size(12).color(Palette::text()),
+            text("Source Control").size(crate::ui::theme::TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
             Space::new().width(Length::Fill),
             button(text("↻").size(14).color(Palette::text_muted()))
                 .on_press(Message::Git(GitMsg::Refresh))
@@ -302,7 +302,7 @@ fn changes_card(state: &AppState) -> Element<'_, Message> {
         let diff_container = container(
             scrollable(text(diff.clone()).size(10).font(MONO).color(Palette::text_muted()))
                 .height(160)
-                .style(crate::ui::theme::thin_scrollbar),
+                .style(crate::ui::theme::hidden_scrollbar),
         )
         .padding([6, 8])
         .style(|_| container::Style {
@@ -478,44 +478,31 @@ fn repos_card(state: &AppState) -> Element<'_, Message> {
         content = content.push(entry);
     }
 
-    // Only show clone/open when there are no repos
-    let bottom: Option<Element<'_, Message>> = if state.git_repos.is_empty() {
-        Some(
-            container(
-                column![
-                    text_input("Clone URL", &state.git_clone_url)
-                        .on_input(|v| Message::Git(GitMsg::CloneUrlChanged(v)))
-                        .on_submit(Message::Git(GitMsg::CloneRepo))
-                        .size(11)
-                        .padding([5, 8])
-                        .width(Length::Fill)
-                        .style(scm_input_style),
-                    Space::new().height(4),
-                    row![
-                        ghost_button("Clone", Message::Git(GitMsg::CloneRepo)),
-                        ghost_button("Open folder", Message::Git(GitMsg::OpenFolder)),
-                    ]
-                    .spacing(4),
-                ]
-                .spacing(0),
-            )
-            .into(),
-        )
-    } else {
-        None
-    };
+    let clone_form = container(
+        column![
+            text_input("Clone URL", &state.git_clone_url)
+                .on_input(|v| Message::Git(GitMsg::CloneUrlChanged(v)))
+                .on_submit(Message::Git(GitMsg::CloneRepo))
+                .size(11)
+                .padding([5, 8])
+                .width(Length::Fill)
+                .style(scm_input_style),
+            Space::new().height(4),
+            row![
+                ghost_button("Clone", Message::Git(GitMsg::CloneRepo)),
+                ghost_button("Open folder", Message::Git(GitMsg::OpenFolder)),
+            ]
+            .spacing(4),
+        ]
+        .spacing(0),
+    );
 
     card(
         column![
             card_header('\u{e0d7}', "Repositories", Some(state.git_repos.len()), None),
             content,
-            {
-                let empty: Element<'_, Message> = {
-                let e: Element<'_, Message> = Space::new().height(0).into();
-                e
-            };
-                bottom.unwrap_or(empty)
-            },
+            Space::new().height(6),
+            clone_form,
         ]
         .spacing(0)
         .padding([10, SIDE as u16]),

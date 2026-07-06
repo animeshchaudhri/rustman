@@ -304,6 +304,10 @@ pub fn clone_repo(url: &str, dest: &Path) -> Result<(), String> {
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
+    if dest.join(".git").is_dir() {
+
+        return Ok(());
+    }
     let output = std::process::Command::new("git")
         .arg("clone")
         .arg(url)

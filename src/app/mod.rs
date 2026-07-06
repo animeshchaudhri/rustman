@@ -32,6 +32,8 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub status_message: Option<String>,
     pub close_confirm_tab: Option<usize>,
+    /// Index of the tab currently being dragged to reorder, if any.
+    pub dragging_tab: Option<usize>,
     pub git_restore_confirm: Option<String>,
     pub spinner_frame: u32,
     pub palette_open: bool,
@@ -66,7 +68,7 @@ pub struct AppState {
     pub git_user_name: String,
     pub git_user_email: String,
     pub git_history_search: String,
-    pub accent_idx: usize,
+    pub theme_idx: usize,
     /// Split ratio: request panel FillPortion (1-9). Response = 10 - panel_split.
     pub panel_split: u16,
     /// UI zoom level (0.7 – 2.0). Applied via iced scale_factor.
@@ -105,6 +107,9 @@ pub fn run() -> iced::Result {
         .title("Rustman")
         .font(include_bytes!("../../assets/fonts/lucide.ttf").as_slice())
         .font(include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf").as_slice())
+        .font(include_bytes!("../../assets/fonts/NotoSans-Regular.ttf").as_slice())
+        .font(include_bytes!("../../assets/fonts/NotoSans-Medium.ttf").as_slice())
+        .default_font(crate::ui::theme::UI_FONT)
         .window(window)
         .subscription(subscription::subscription)
         .theme(app_theme)

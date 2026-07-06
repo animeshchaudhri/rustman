@@ -1,6 +1,6 @@
 use iced::{
-    widget::{button, column, container, row, Space, Text},
-    Background, Color, Element, Length,
+    widget::{button, column, container, row, text, tooltip, Space, Text},
+    Background, Border, Color, Element, Length,
 };
 
 use crate::{
@@ -41,6 +41,14 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 }
 
 fn left_panel(state: &AppState) -> Element<'_, Message> {
+    if state.sidebar.collapsed {
+        return container(icon_rail(state))
+            .style(sidebar_style)
+            .width(48)
+            .height(Length::Fill)
+            .into();
+    }
+
     let panel_content: Element<Message> = match state.sidebar.panel {
         SidebarPanel::Collections => sidebar::collections::view(state),
         SidebarPanel::History    => sidebar::history::view(state),
@@ -64,35 +72,82 @@ fn left_panel(state: &AppState) -> Element<'_, Message> {
 }
 
 fn icon_rail(state: &AppState) -> Element<'_, Message> {
-    let top_icons: [(SidebarPanel, fn() -> Text<'static>); 4] = [
-        (SidebarPanel::Collections, icons::collections),
-        (SidebarPanel::History, icons::history),
-        (SidebarPanel::Environments, icons::environments),
-        (SidebarPanel::Git, icons::git_branch),
+    let top_icons: [(SidebarPanel, fn() -> Text<'static>, &'static str); 4] = [
+        (SidebarPanel::Collections, icons::collections, "Collections"),
+        (SidebarPanel::History, icons::history, "History"),
+        (SidebarPanel::Environments, icons::environments, "Environments"),
+        (SidebarPanel::Git, icons::git_branch, "Source Control"),
     ];
 
-    let mut top_col = column![].spacing(0);
-    for (panel, icon) in top_icons {
+    let mut top_col = column![].spacing(2);
+    for (panel, icon, label) in top_icons {
         let active = state.sidebar.panel == panel;
-        top_col = top_col.push(icon_btn(icon(), panel, active));
+        top_col = top_col.push(icon_btn(icon(), panel, active, label));
     }
 
     let settings_active = state.sidebar.panel == SidebarPanel::Settings;
+    let collapsed = state.sidebar.collapsed;
     container(
         column![
             top_col,
             Space::new().height(Length::Fill),
-            icon_btn(icons::settings(), SidebarPanel::Settings, settings_active),
+            collapse_toggle_btn(collapsed),
+            icon_btn(icons::settings(), SidebarPanel::Settings, settings_active, "Settings"),
         ]
-        .padding([0, 0]),
+        .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 6.0, left: 0.0 })
+        .spacing(2),
     )
-    .width(44)
+    .width(48)
     .height(Length::Fill)
     .style(icon_rail_style)
     .into()
 }
 
-fn icon_btn(icon: Text<'static>, panel: SidebarPanel, active: bool) -> Element<'static, Message> {
+fn collapse_toggle_btn(collapsed: bool) -> Element<'static, Message> {
+    let icon = if collapsed { icons::arrow_right() } else { icons::arrow_left() };
+    let label = if collapsed { "Expand sidebar" } else { "Collapse sidebar" };
+
+    let btn = button(
+        container(icon.size(14).color(Palette::text_subtle()))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
+    )
+    .on_press(Message::Sidebar(SidebarMsg::ToggleCollapsed))
+    .style(|_t, s| iced::widget::button::Style {
+        background: if matches!(s, iced::widget::button::Status::Hovered) {
+            Some(Background::Color(Palette::hover()))
+        } else {
+            None
+        },
+        text_color: Palette::text_subtle(),
+        border: Border { radius: 6.0.into(), ..Default::default() },
+        ..Default::default()
+    })
+    .width(48)
+    .height(28)
+    .padding(0);
+
+    tooltip(
+        btn,
+        container(text(label).size(crate::ui::theme::TEXT_SM).color(Palette::text()))
+            .padding([4, 8])
+            .style(|_| iced::widget::container::Style {
+                background: Some(Background::Color(Palette::surface_raised())),
+                border: Border { color: Palette::border(), width: 1.0, radius: 6.0.into() },
+                ..Default::default()
+            }),
+        tooltip::Position::Right,
+    )
+    .gap(8)
+    .into()
+}
+
+fn icon_btn(
+    icon: Text<'static>,
+    panel: SidebarPanel,
+    active: bool,
+    label: &'static str,
+) -> Element<'static, Message> {
     let accent_bar = container(Space::new().width(2).height(Length::Fill))
         .style(move |_| iced::widget::container::Style {
             background: Some(Background::Color(if active { Palette::accent() } else { Color::TRANSPARENT })),
@@ -107,13 +162,26 @@ fn icon_btn(icon: Text<'static>, panel: SidebarPanel, active: bool) -> Element<'
     .center_y(Length::Fill)
     .height(Length::Fill);
 
-    button(row![accent_bar, icon_el].height(40))
+    let btn = button(row![accent_bar, icon_el].height(42))
         .on_press(Message::Sidebar(SidebarMsg::PanelSelected(panel)))
         .style(move |t, s| icon_btn_style(t, s, active))
-        .width(44)
-        .height(40)
-        .padding(0)
-        .into()
+        .width(48)
+        .height(42)
+        .padding(0);
+
+    tooltip(
+        btn,
+        container(text(label).size(crate::ui::theme::TEXT_SM).color(Palette::text()))
+            .padding([4, 8])
+            .style(|_| iced::widget::container::Style {
+                background: Some(Background::Color(Palette::surface_raised())),
+                border: Border { color: Palette::border(), width: 1.0, radius: 6.0.into() },
+                ..Default::default()
+            }),
+        tooltip::Position::Right,
+    )
+    .gap(8)
+    .into()
 }
 
 fn main_area(state: &AppState) -> Element<'_, Message> {
@@ -160,8 +228,7 @@ fn main_area(state: &AppState) -> Element<'_, Message> {
     )
     .style(surface_style)
     .height(Length::FillPortion(resp_split))
-    .width(Length::Fill)
-    .padding(2);
+    .width(Length::Fill);
 
     let middle: Element<Message> = if active_tab.is_websocket() {
         container(request::websocket::view(active_tab))
