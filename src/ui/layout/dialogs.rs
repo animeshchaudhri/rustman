@@ -6,7 +6,7 @@ use iced::{
 use crate::{
     app::AppState,
     message::{GitMsg, Message, RequestMsg, SaveDialogMsg},
-    ui::{icons, theme::{Palette, MONO}},
+    ui::{icons, theme::{Palette, MONO, TEXT_LG}},
 };
 
 pub(super) fn save_dialog(state: &AppState) -> Element<'_, Message> {
@@ -59,7 +59,7 @@ pub(super) fn save_dialog(state: &AppState) -> Element<'_, Message> {
     .align_y(iced::Alignment::Center);
 
     let mut body_col = column![
-        text("Save Request").size(14).color(Palette::text()),
+        text("Save Request").size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
         Space::new().height(8),
         text("Name").size(11).color(Palette::text_muted()),
         name_input,
@@ -90,7 +90,7 @@ pub(super) fn export_dialog(state: &AppState) -> Element<'_, Message> {
     let native_id = col_id;
 
     let body_col = column![
-        text(format!("Export “{col_name}”")).size(14).color(Palette::text()),
+        text(format!("Export “{col_name}”")).size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
         Space::new().height(4),
         text("Choose a format:").size(11).color(Palette::text_muted()),
         Space::new().height(10),
@@ -159,7 +159,7 @@ pub(super) fn close_confirm_dialog(_state: &AppState) -> Element<'_, Message> {
     .align_y(iced::Alignment::Center);
 
     let body_col = column![
-        text("Discard unsaved changes?").size(14).color(Palette::text()),
+        text("Discard unsaved changes?").size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
         Space::new().height(8),
         text("This tab has unsaved edits that will be lost if you close it.")
             .size(12)
@@ -192,9 +192,9 @@ pub(super) fn restore_confirm_dialog(state: &AppState) -> Element<'_, Message> {
 
     let body_col = column![
         row![
-            text("Restore commit ").size(14).color(Palette::text()),
-            text(short).size(14).color(Palette::accent()).font(MONO),
-            text("?").size(14).color(Palette::text()),
+            text("Restore commit ").size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
+            text(short).size(TEXT_LG).color(Palette::accent()).font(MONO),
+            text("?").size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
         ],
         Space::new().height(8),
         text("Your collections will be reset to this commit. Uncommitted local \
@@ -213,7 +213,7 @@ pub(super) fn restore_confirm_dialog(state: &AppState) -> Element<'_, Message> {
 
 pub(super) fn curl_modal(state: &AppState) -> Element<'_, Message> {
     let title = row![
-        text("cURL Command").size(14).color(Palette::text()),
+        text("cURL Command").size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
         Space::new().width(Length::Fill),
         button(icons::close().size(16).color(Palette::text_muted()))
             .on_press(Message::Request(RequestMsg::CloseCurlModal))

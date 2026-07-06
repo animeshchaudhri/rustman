@@ -1,12 +1,12 @@
 # Rustman development notes
 
-This is the doc I keep for myself about how Rustman is built, what is solid, and what is still rough. It is about 10k lines of pure Rust, an [iced](https://iced.rs) GUI API client that ships as one binary. Entry point is `src/main.rs` which calls `app::run` in `src/app/mod.rs`.
+This is the doc I keep for myself about how Rustman is built, what is solid, and what is still rough. It is a little over 13k lines of pure Rust, an [iced](https://iced.rs) GUI API client that ships as one binary. Entry point is `src/main.rs` which calls `app::run` in `src/app/mod.rs`.
 
 I try to be honest here. Where something is UI only, stubbed, or half wired, I say so.
 
 ## Toolchain
 
-You need Rust 1.85 or newer. Rustman is edition 2021, but it vendors `iced-code-editor` which is edition 2024, so older toolchains will not build it. The latest stable Rust works fine. You also need a C toolchain and CMake, because git2 builds vendored libgit2 and OpenSSL and rusqlite bundles SQLite, all from source. On Linux add the X, xkb, and dbus dev packages (`libxkbcommon-dev libxi-dev libx11-dev libxcb1-dev libxcb-xkb-dev libdbus-1-dev pkg-config cmake build-essential`). Build with `cargo build --release` and the binary lands at `target/release/rustman`. Day to day I just use `cargo run`.
+You need Rust 1.85 or newer. Rustman is edition 2024, as is the vendored `iced-code-editor`, so older toolchains will not build it. The latest stable Rust works fine. You also need a C toolchain and CMake, because git2 builds vendored libgit2 and OpenSSL and rusqlite bundles SQLite, all from source. On Linux add the X, xkb, and dbus dev packages (`libxkbcommon-dev libxi-dev libx11-dev libxcb1-dev libxcb-xkb-dev libdbus-1-dev pkg-config cmake build-essential`). Build with `cargo build --release` and the binary lands at `target/release/rustman`. Day to day I just use `cargo run`.
 
 ## Architecture
 
@@ -61,7 +61,7 @@ A multi megabyte JSON response should not crash the UI, blow up memory, or freez
 
 - **Inline threshold (wired).** `do_send` reads the full body and compares its length to `INLINE_BODY_THRESHOLD` of 10 MB in `services/http.rs`. Above that the response comes back with an empty body and `body_stored` set, below it the body is pretty printed if it parses as JSON. The editor never gets handed a 10 MB string inline.
 - **Parsed JSON LRU cache (wired).** `ParsedBodyCache` in `services/cache.rs` is a 20 entry LRU keyed by a hash of the raw body, so two tabs with the same response share one parse and eviction only drops the parsed tree. The raw text always survives on `HttpResponse`.
-- **ResponseStore (not wired yet).** `services/response_store.rs` is a full slice and search store clearly meant to back windowed viewing of bodies that set `body_stored`. It is declared but never instantiated. So a `body_stored` response is flagged but empty today. This is scaffolding, not a finished feature.
+- **Windowed viewing for large bodies (not started).** `HttpResponse::body_stored` gets set when a response crosses `INLINE_BODY_THRESHOLD`, but there is no store backing it yet — a `body_stored` response is flagged and comes back with an empty body today. Windowed slice-and-search viewing is still just an idea, not code.
 
 ### Release profile
 
@@ -81,8 +81,7 @@ Ctrl+Enter or Cmd+Enter sends the current request without moving your hands to t
 
 ## Rough edges I know about
 
-- **The request field set is copied by hand in a few places** (`send_request`, `save_request`, the history entry, and `TabSnapshot::from`) with no single canonical conversion. Because Rust will not warn on a hand written copy that forgets a field, the shapes have drifted. `cookies` is dropped from the session snapshot, for example, so a tab restored from a saved request with non empty `cookies` loses that vector on restart. In practice it is usually empty, but it is a real hole.
-- **A couple of session fields are written but never read.** `active_env_id` and `sidebar_panel` get persisted but boot does not restore them, so the active environment and sidebar panel reset on launch.
+- **The request field set is copied by hand in a few places** (`send_request`, `save_request`, the history entry, and `TabSnapshot::from`) with no single canonical conversion. Because Rust will not warn on a hand written copy that forgets a field, the shapes can drift silently — worth a periodic check that a new field on `RequestTabState` actually made it into all four.
 - **`timeout_ms` is half wired.** It lives on the tab and round trips through the session, but `SavedRequest` has no such field, no message edits it, and the HTTP layer hardcodes 30s. See the roadmap.
 - **Save dialog can duplicate a request across collections.** It mints a fresh id before saving, so re-saving an already saved tab into a different collection can update an id that is not in the DB yet and orphan the old row. Quick save with Cmd+S avoids this by reusing `saved_as`.
 - **File upload sends can fail silently if no file was selected.** This now returns a clear error message: `"File field 'X' has no data - pick a file first"`.

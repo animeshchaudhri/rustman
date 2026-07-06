@@ -24,7 +24,7 @@ This is not a startup and I am not trying to sell you anything. It is a tool I w
 ## Why Rustman
 
 | | Rustman | Postman | Bruno |
-|---|---|---|---|---|
+|---|---|---|---|
 | Price | Free forever | Freemium / $14mo | Free |
 | Install size | ~30 MB | ~350 MB | ~100 MB |
 | No account | Yes | No | Yes |
@@ -79,7 +79,7 @@ Grab the latest binary from the [releases page](https://github.com/animeshchaudh
 
 You will need a few things first.
 
-- A recent [Rust toolchain](https://www.rust-lang.org/tools/install), 1.85 or newer. Rustman is edition 2021, but it vendors the iced-code-editor widget, which is edition 2024, so older toolchains will not build it. The latest stable Rust works fine.
+- A recent [Rust toolchain](https://www.rust-lang.org/tools/install), 1.85 or newer. Rustman is edition 2024, as is the vendored iced-code-editor widget, so older toolchains will not build it. The latest stable Rust works fine.
 - A C toolchain and CMake. git2 builds with vendored-libgit2 and vendored-openssl, so libgit2 and OpenSSL compile from source, and rusqlite bundles SQLite. You need a C compiler and cmake on the machine.
 - A few system libraries on Linux, listed below.
 

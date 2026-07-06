@@ -1,44 +1,55 @@
 use iced::{
     widget::{button, column, container, row, text, text_editor, Space},
-    Element, Length,
+    Background, Border, Element, Length,
 };
 
-use crate::{message::Message, ui::theme::Palette};
+use crate::{
+    message::Message,
+    ui::theme::{Palette, TEXT_SM},
+};
 
 
+pub fn empty_state(message: &str) -> Element<'static, Message> {
+    container(text(message.to_owned()).size(TEXT_SM).color(Palette::text_subtle()))
+        .padding(24)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .into()
+}
 
-pub fn add_row_btn_fn(msg: Message, label: &'static str) -> Element<'static, Message> {
+pub fn table_footer(add_msg: Message, add_label: &'static str, bulk_msg: Message) -> Element<'static, Message> {
     let ac = Palette::accent();
-    let btn = button(
+    let add_btn = button(
         row![
-            text("+").size(12).color(ac),
-            text(format!(" {label}")).size(11).color(Palette::text_muted()),
+            text("+").size(TEXT_SM).color(ac),
+            text(format!(" {add_label}")).size(TEXT_SM).color(Palette::text_muted()),
         ]
         .spacing(2)
         .align_y(iced::Alignment::Center),
     )
-    .on_press(msg)
-    .style(iced::widget::button::text)
-    .padding([5, 12]);
-    container(btn)
+    .on_press(add_msg)
+    .style(|_t, status| {
+        let hovered = matches!(status, iced::widget::button::Status::Hovered);
+        iced::widget::button::Style {
+            background: if hovered { Some(Background::Color(Palette::hover())) } else { None },
+            text_color: Palette::text_muted(),
+            border: Border { color: Palette::border_subtle(), width: 1.0, radius: 6.0.into() },
+            ..Default::default()
+        }
+    })
+    .padding([7, 12]);
+
+    let bulk_btn = button(text("Bulk Edit").size(TEXT_SM).color(Palette::text_muted()))
+        .on_press(bulk_msg)
+        .style(iced::widget::button::text)
+        .padding([7, 8]);
+
+    container(row![add_btn, Space::new().width(Length::Fill), bulk_btn].align_y(iced::Alignment::Center))
+        .padding(iced::Padding { top: 8.0, right: 10.0, bottom: 10.0, left: 10.0 })
         .width(Length::Fill)
         .into()
-}
-
-pub fn bulk_toggle_bar(on_toggle: Message, label: &str) -> Element<'static, Message> {
-    let label = label.to_owned();
-    container(
-        row![
-            Space::new().width(Length::Fill),
-            button(text(label).size(10).color(Palette::text_muted()))
-                .on_press(on_toggle)
-                .style(iced::widget::button::text)
-                .padding([2, 8]),
-        ]
-        .align_y(iced::Alignment::Center),
-    )
-    .width(Length::Fill)
-    .into()
 }
 
 pub fn bulk_panel<'a>(
@@ -49,16 +60,16 @@ pub fn bulk_panel<'a>(
     let toolbar = container(
         row![
             text("Key: Value per line · prefix # to disable")
-                .size(10)
+                .size(TEXT_SM)
                 .color(Palette::text_subtle()),
             Space::new().width(Length::Fill),
-            button(text("Done").size(10).color(Palette::accent()))
+            button(text("Done").size(TEXT_SM).color(Palette::accent()))
                 .on_press(on_toggle)
                 .style(iced::widget::button::text)
-                .padding([2, 8]),
+                .padding([4, 8]),
         ]
         .align_y(iced::Alignment::Center)
-        .padding([2, 8]),
+        .padding([4, 8]),
     )
     .style(crate::ui::styles::section_header)
     .width(Length::Fill);

@@ -44,6 +44,7 @@ pub enum SidebarMsg {
     EnvironmentVarKeyChanged(String, usize, String),
     EnvironmentVarValueChanged(String, usize, String),
     EnvironmentVarRemoved(String, usize),
+    ToggleCollapsed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,6 +118,9 @@ pub enum RequestMsg {
     ConfirmCloseTab,
     CancelCloseTab,
     SwitchTab(usize),
+    TabDragStart(usize),
+    TabDragOver(usize),
+    TabDragEnd,
     TimeoutChanged(String),
     // Actions
     Send,
@@ -325,7 +329,7 @@ pub enum FormatTarget {
 
 #[derive(Debug, Clone)]
 pub enum SettingsMsg {
-    AccentChanged(usize),
+    ThemeChanged(usize),
     GitNameChanged(String),
     GitEmailChanged(String),
 }

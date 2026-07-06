@@ -10,6 +10,10 @@ use crate::message::{AppMsg, FormatTarget, Message, RequestMsg};
 use crate::services::curl;
 use crate::state::tabs::{EditKind, RequestTabState};
 
+/// Tab drag-to-reorder is implemented but turned off for now — flip to
+/// `true` to re-enable.
+const TAB_DRAG_ENABLED: bool = false;
+
 pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
     let tab = state.tabs.active_tab_mut();
     record_undo(tab, &msg);
@@ -82,6 +86,28 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             tab.modified = true;
         }
         RequestMsg::SwitchTab(i) => { state.tabs.switch_to(i); persist_session(state); return Task::none(); }
+        RequestMsg::TabDragStart(i) => {
+            state.tabs.switch_to(i);
+            if TAB_DRAG_ENABLED {
+                state.dragging_tab = Some(i);
+            }
+            persist_session(state);
+            return Task::none();
+        }
+        RequestMsg::TabDragOver(i) => {
+            if TAB_DRAG_ENABLED && let Some(from) = state.dragging_tab {
+                if from != i {
+                    state.tabs.reorder(from, i);
+                    state.dragging_tab = Some(i);
+                }
+            }
+            return Task::none();
+        }
+        RequestMsg::TabDragEnd => {
+            state.dragging_tab = None;
+            persist_session(state);
+            return Task::none();
+        }
         RequestMsg::Send => return send_request(state),
         RequestMsg::HeaderAdded => { tab.headers.push(crate::domain::request::KeyValue::new_empty()); tab.modified = true; }
         RequestMsg::HeaderRemoved(i) => { tab.headers.remove(i); tab.modified = true; }

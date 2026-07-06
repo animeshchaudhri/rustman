@@ -6,9 +6,9 @@ use crate::services::vcs;
 
 pub(super) fn handle(state: &mut AppState, msg: SettingsMsg) -> Task<Message> {
     match msg {
-        SettingsMsg::AccentChanged(idx) => {
-            state.accent_idx = idx;
-            crate::ui::theme::Palette::set_accent_idx(idx);
+        SettingsMsg::ThemeChanged(idx) => {
+            state.theme_idx = idx;
+            crate::ui::theme::Palette::set_theme_idx(idx);
             for tab in &mut state.tabs.tabs { tab.sync_editor_themes(); }
         }
         SettingsMsg::GitNameChanged(name) => {

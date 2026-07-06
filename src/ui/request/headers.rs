@@ -7,7 +7,7 @@ use crate::{
     domain::request::KeyValue,
     message::{Message, RequestMsg},
     state::tabs::RequestTabState,
-    ui::{icons, styles, theme::Palette, widgets::kv_table},
+    ui::{icons, styles, theme::{Palette, TEXT_SM, TEXT_XS}, widgets::kv_table},
 };
 
 const CONTENT_TYPE_SUGGESTIONS: &[&str] = &[
@@ -53,12 +53,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
             |a| Message::Request(RequestMsg::HeadersBulkEdited(a)),
             Message::Request(RequestMsg::HeadersBulkToggle),
         ),
-        None => column![
-            kv_table::bulk_toggle_bar(Message::Request(RequestMsg::HeadersBulkToggle), "Bulk Edit"),
-            header_table(&tab.headers),
-        ]
-        .height(Length::Fill)
-        .into(),
+        None => header_table(&tab.headers),
     }
 }
 
@@ -66,24 +61,25 @@ fn header_table(items: &[KeyValue]) -> Element<'_, Message> {
     let header = row![
         container(text("").size(1)).width(24),
         container(text("").size(1)).width(24),
-        text("Key").size(10).color(Palette::text_subtle()).width(Length::Fill),
-        text("Value").size(10).color(Palette::text_subtle()).width(Length::Fill),
+        text("Key").size(TEXT_SM).color(Palette::text_muted()).width(Length::Fill),
+        text("Value").size(TEXT_SM).color(Palette::text_muted()).width(Length::Fill),
         container(text("").size(1)).width(28),
     ]
     .spacing(6)
-    .padding(iced::Padding { top: 3.0, right: 10.0, bottom: 3.0, left: 10.0 });
+    .padding(iced::Padding { top: 6.0, right: 10.0, bottom: 6.0, left: 10.0 });
 
     let header = container(header)
         .style(crate::ui::styles::section_header)
         .width(Length::Fill);
 
+    let footer = || kv_table::table_footer(
+        Message::Request(RequestMsg::HeaderAdded),
+        "Add header",
+        Message::Request(RequestMsg::HeadersBulkToggle),
+    );
+
     if items.is_empty() {
-        return column![
-            header,
-            kv_table::add_row_btn_fn(Message::Request(RequestMsg::HeaderAdded), "Add header"),
-        ]
-        .spacing(0)
-        .into();
+        return column![header, footer()].spacing(0).into();
     }
 
     let mut col = column![header].spacing(0);
@@ -106,8 +102,8 @@ fn header_table(items: &[KeyValue]) -> Element<'_, Message> {
             if suggestions.is_empty() {
                 text_input("value", &item.value)
                     .on_input(move |s| Message::Request(RequestMsg::HeaderValueChanged(i, s)))
-                    .size(12)
-                    .padding([3, 6])
+                    .size(TEXT_SM)
+                    .padding([5, 6])
                     .width(Length::Fill)
                     .style(styles::cell_input)
                     .into()
@@ -118,8 +114,8 @@ fn header_table(items: &[KeyValue]) -> Element<'_, Message> {
                     Some(current),
                     move |s| Message::Request(RequestMsg::HeaderValueChanged(i, s.to_owned())),
                 )
-                .text_size(12)
-                .padding([3, 6])
+                .text_size(TEXT_SM)
+                .padding([5, 6])
                 .width(Length::Fill)
                 .style(move |_t, _s| iced::widget::pick_list::Style {
                     text_color: Palette::text(),
@@ -133,8 +129,8 @@ fn header_table(items: &[KeyValue]) -> Element<'_, Message> {
         } else {
             text_input("value", &item.value)
                 .on_input(move |s| Message::Request(RequestMsg::HeaderValueChanged(i, s)))
-                .size(12)
-                .padding([3, 6])
+                .size(TEXT_SM)
+                .padding([5, 6])
                 .width(Length::Fill)
                 .style(styles::cell_input)
                 .into()
@@ -147,24 +143,24 @@ fn header_table(items: &[KeyValue]) -> Element<'_, Message> {
                     .size(12)
                     .spacing(0),
                 text(format!("{}", i + 1))
-                    .size(9)
+                    .size(TEXT_XS)
                     .color(Palette::text_subtle())
                     .font(crate::ui::theme::MONO)
                     .width(20),
                 text_input("key", &item.key)
                     .on_input(move |s| Message::Request(RequestMsg::HeaderKeyChanged(i, s)))
-                    .size(12)
-                    .padding([3, 6])
+                    .size(TEXT_SM)
+                    .padding([5, 6])
                     .width(Length::Fill)
                     .style(styles::cell_input),
                 value_widget,
-                button(icons::close().size(10).color(Palette::text_subtle()))
+                button(icons::close().size(TEXT_XS).color(Palette::text_subtle()))
                     .on_press(Message::Request(RequestMsg::HeaderRemoved(i)))
                     .style(iced::widget::button::text)
                     .padding([2, 6]),
             ]
             .spacing(4)
-            .padding(iced::Padding { top: 2.0, right: 8.0, bottom: 2.0, left: 10.0 })
+            .padding(iced::Padding { top: 4.0, right: 8.0, bottom: 4.0, left: 10.0 })
             .align_y(iced::Alignment::Center),
         )
         .style(move |_| iced::widget::container::Style {
@@ -176,7 +172,7 @@ fn header_table(items: &[KeyValue]) -> Element<'_, Message> {
         col = col.push(row_el);
     }
 
-    col = col.push(kv_table::add_row_btn_fn(Message::Request(RequestMsg::HeaderAdded), "Add header"));
+    col = col.push(footer());
 
     scrollable(col)
         .height(Length::Fill)
