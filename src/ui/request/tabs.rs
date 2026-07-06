@@ -6,7 +6,7 @@ use iced::{
 use crate::{
     message::{Message, RequestMsg, RequestTab},
     state::tabs::RequestTabState,
-    ui::theme::Palette,
+    ui::theme::{Palette, TEXT_SM},
 };
 
 pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
@@ -39,7 +39,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         .collect();
 
     container(
-        row(btns).spacing(2).padding([4, 8]),
+        row(btns).spacing(4).padding([6, 10]),
     )
     .style(|_| iced::widget::container::Style {
         background: Some(Background::Color(Palette::surface())),
@@ -59,7 +59,7 @@ pub fn pill_tab<'a>(label: &str, badge: Option<usize>, active: bool, msg: Messag
     let badge_text = badge.map(|n| format!(" {n}")).unwrap_or_default();
     let content = row![
         text(format!("{label_owned}{badge_text}"))
-            .size(11)
+            .size(TEXT_SM)
             .color(if active { Palette::text() } else { Palette::text_muted() }),
     ]
     .align_y(iced::Alignment::Center);
@@ -67,7 +67,7 @@ pub fn pill_tab<'a>(label: &str, badge: Option<usize>, active: bool, msg: Messag
     button(content)
         .on_press(msg)
         .style(move |_, status| pill_tab_style(status, active))
-        .padding([4, 10])
+        .padding([6, 12])
         .into()
 }
 

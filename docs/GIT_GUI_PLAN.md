@@ -4,7 +4,7 @@ This doc covers where the git store is today and what is left to build. It is gr
 
 ## What is built
 
-The entire VCS layer is `src/services/vcs.rs` (roughly 160 lines over git2 via the `git2` crate).
+The entire VCS layer is `src/services/vcs.rs`, built on the `git2` crate plus shelling out to the system `git` binary for remote operations.
 
 ### Source Control panel
 

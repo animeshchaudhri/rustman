@@ -7,7 +7,7 @@ use crate::{
     domain::{environment::substitute, request::HttpMethod},
     message::{Message, RequestMsg},
     state::tabs::RequestTabState,
-    ui::{theme::Palette, icons},
+    ui::{theme::{Palette, TEXT_MD}, icons},
 };
 
 
@@ -22,7 +22,7 @@ pub fn view<'a>(tab: &'a RequestTabState, env: Option<&'a crate::domain::environ
         |m| Message::Request(RequestMsg::MethodChanged(m.to_owned())),
     )
     .width(100)
-    .text_size(13)
+    .text_size(TEXT_MD)
     .padding([6, 8])
     .style(move |_theme, _status| iced::widget::pick_list::Style {
         text_color: color,
@@ -46,7 +46,7 @@ pub fn view<'a>(tab: &'a RequestTabState, env: Option<&'a crate::domain::environ
             Message::Request(RequestMsg::UrlChanged(v))
         }
     })
-    .size(13)
+    .size(TEXT_MD)
     .padding([10, 14])
     .width(Length::Fill)
     .style(url_input_style);
@@ -69,7 +69,7 @@ pub fn view<'a>(tab: &'a RequestTabState, env: Option<&'a crate::domain::environ
             .padding([8, 18])
             .into()
     } else {
-        button(row![text("Send").size(13)].align_y(iced::Alignment::Center).spacing(4))
+        button(row![text("Send").size(TEXT_MD)].align_y(iced::Alignment::Center).spacing(4))
             .on_press(Message::Request(RequestMsg::Send))
             .style(send_button)
             .padding([8, 20])
