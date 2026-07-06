@@ -347,6 +347,19 @@ impl TabManager {
         }
     }
 
+
+    pub fn reorder(&mut self, from: usize, to: usize) {
+        if from == to || from >= self.tabs.len() || to >= self.tabs.len() {
+            return;
+        }
+        let active_id = self.tabs[self.active].id.clone();
+        let tab = self.tabs.remove(from);
+        self.tabs.insert(to, tab);
+        if let Some(new_active) = self.tabs.iter().position(|t| t.id == active_id) {
+            self.active = new_active;
+        }
+    }
+
     pub fn open_request(&mut self, req: &SavedRequest) {
         let req_id = &req.id;
         if let Some(idx) = self

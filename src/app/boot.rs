@@ -119,6 +119,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         data_dir,
         status_message: None,
         close_confirm_tab: None,
+        dragging_tab: None,
         git_restore_confirm: None,
         spinner_frame: 0,
         palette_open: false,
@@ -157,7 +158,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         git_user_email: git_identity
             .map(|i| i.email)
             .unwrap_or_default(),
-        accent_idx: 0,
+        theme_idx: 0,
         panel_split: 5,
         ui_scale: 1.0,
         update: crate::app::UpdateState::Idle,

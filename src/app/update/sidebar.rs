@@ -7,9 +7,17 @@ use crate::services::storage;
 
 pub(super) fn handle(state: &mut AppState, msg: SidebarMsg) -> Task<Message> {
     match msg {
+        SidebarMsg::ToggleCollapsed => {
+            state.sidebar.collapsed = !state.sidebar.collapsed;
+        }
         SidebarMsg::PanelSelected(panel) => {
+            if state.sidebar.panel == panel && !state.sidebar.collapsed {
+                state.sidebar.collapsed = true;
+                return Task::none();
+            }
             let is_git = panel == crate::message::SidebarPanel::Git;
             state.sidebar.panel = panel;
+            state.sidebar.collapsed = false;
             if is_git {
                 return Task::done(Message::Git(crate::message::GitMsg::Refresh));
             }

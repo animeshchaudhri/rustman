@@ -6,13 +6,13 @@ use iced::{
 use crate::{
     app::AppState,
     message::{ImportMsg, Message, SidebarMsg},
-    ui::{icons, theme::Palette},
+    ui::{icons, theme::{Palette, TEXT_LG}, widgets::kv_table},
 };
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
     let action_bar = container(
         row![
-            text("Collections").size(13).color(Palette::text()),
+            text("Collections").size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
             Space::new().width(Length::Fill),
             icon_btn_only(icons::import(), "Import Postman / OpenAPI / HTTPie / JSON", Message::Import(ImportMsg::OpenPostmanDialog)),
             icon_btn_only(icons::plus(), "New Collection", Message::Sidebar(SidebarMsg::NewCollection)),
@@ -175,34 +175,41 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                     .into()
                 };
 
-                let item_row = row![
-                    name_part,
-                    hover_icon_btn(
-                        icons::edit().size(10),
-                        Message::Sidebar(SidebarMsg::ToggleRenameRequest(req.id.clone())),
-                    ),
-                    button(icons::close().size(11))
-                        .on_press(Message::Sidebar(SidebarMsg::DeleteRequest {
-                            id: req_id,
-                            collection_id: col_id,
-                        }))
-                        .style(|_t, s| iced::widget::button::Style {
-                            background: if matches!(s, iced::widget::button::Status::Hovered) {
-                                Some(Background::Color(Palette::error_soft()))
-                            } else {
-                                None
-                            },
-                            text_color: if matches!(s, iced::widget::button::Status::Hovered) {
-                                Palette::ERROR
-                            } else {
-                                Color::TRANSPARENT
-                            },
-                            border: Border { radius: 3.0.into(), ..Default::default() },
-                            ..Default::default()
-                        })
-                        .padding([2, 5]),
-                ]
-                .align_y(iced::Alignment::Center)
+                let item_row = container(
+                    row![
+                        name_part,
+                        hover_icon_btn(
+                            icons::edit().size(10),
+                            Message::Sidebar(SidebarMsg::ToggleRenameRequest(req.id.clone())),
+                        ),
+                        button(icons::close().size(11))
+                            .on_press(Message::Sidebar(SidebarMsg::DeleteRequest {
+                                id: req_id,
+                                collection_id: col_id,
+                            }))
+                            .style(|_t, s| iced::widget::button::Style {
+                                background: if matches!(s, iced::widget::button::Status::Hovered) {
+                                    Some(Background::Color(Palette::error_soft()))
+                                } else {
+                                    None
+                                },
+                                text_color: if matches!(s, iced::widget::button::Status::Hovered) {
+                                    Palette::ERROR
+                                } else {
+                                    Color::TRANSPARENT
+                                },
+                                border: Border { radius: 3.0.into(), ..Default::default() },
+                                ..Default::default()
+                            })
+                            .padding([2, 5]),
+                    ]
+                    .align_y(iced::Alignment::Center)
+                    .width(Length::Fill),
+                )
+                .style(move |_| iced::widget::container::Style {
+                    background: if is_selected { Some(Background::Color(Palette::accent_soft())) } else { None },
+                    ..Default::default()
+                })
                 .width(Length::Fill);
 
                 col = col.push(item_row);
@@ -211,14 +218,10 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     }
 
     if state.collections.is_empty() {
-        col = col.push(
-            container(
-                text("No collections yet.\nClick + New to create one.")
-                    .size(12)
-                    .color(Palette::text_muted()),
-            )
-            .padding([12, 8]),
-        );
+        return col
+            .push(kv_table::empty_state("No collections yet.\nClick + New to create one."))
+            .height(Length::Fill)
+            .into();
     }
 
     scrollable(col)
@@ -274,10 +277,10 @@ fn req_item_style(
     status: iced::widget::button::Status,
     selected: bool,
 ) -> iced::widget::button::Style {
+    // Selection background/border is owned by the wrapping row container now
+    // (so it spans the edit/delete icons too, not just this name button).
     iced::widget::button::Style {
-        background: if selected {
-            Some(Background::Color(Palette::accent_soft()))
-        } else if matches!(status, iced::widget::button::Status::Hovered) {
+        background: if !selected && matches!(status, iced::widget::button::Status::Hovered) {
             Some(Background::Color(Palette::hover()))
         } else {
             None

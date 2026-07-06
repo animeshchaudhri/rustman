@@ -8,7 +8,7 @@ const LOGO_SVG: &[u8] = include_bytes!("../../../public/rustman-logo.svg");
 use crate::{
     app::UpdateState,
     message::{AppMsg, Message, SettingsMsg, UpdateMsg},
-    ui::theme::{Palette, ACCENT_PALETTE},
+    ui::theme::{Palette, ThemeSpec, THEMES, TEXT_SM},
 };
 
 
@@ -21,13 +21,12 @@ pub fn view(state: &crate::app::AppState) -> Element<'_, Message> {
         state.github_username.clone(),
         state.github_email.clone(),
         state.github_website.clone(),
-        state.accent_idx,
     ));
     let git_identity = card(build_git_identity(
         &state.git_user_name,
         &state.git_user_email,
     ));
-    let appearance = card(build_appearance(state.accent_idx));
+    let appearance = card(build_appearance(state.theme_idx));
     let updates = card(build_updates(&state.update));
     let shortcuts = card(build_shortcuts());
     let footer = build_footer();
@@ -38,7 +37,7 @@ pub fn view(state: &crate::app::AppState) -> Element<'_, Message> {
             .padding(iced::Padding { top: 0.0, right: 8.0, bottom: 20.0, left: 8.0 }),
     )
     .height(Length::Fill)
-    .style(crate::ui::theme::thin_scrollbar)
+    .style(crate::ui::theme::hidden_scrollbar)
     .into()
 }
 
@@ -138,9 +137,8 @@ fn build_profile(
     github_username: String,
     github_email: String,
     github_website: String,
-    accent_idx: usize,
 ) -> Element<'static, Message> {
-    let accent = ACCENT_PALETTE.get(accent_idx).copied().unwrap_or(Palette::accent());
+    let accent = Palette::accent();
     let accent_dim = Color { r: accent.r * 0.62, g: accent.g * 0.62, b: accent.b * 0.63, a: 1.0 };
 
     let avatar: Element<'static, Message> = if let Some(handle) = avatar_handle {
@@ -201,41 +199,76 @@ fn build_profile(
     .into()
 }
 
-fn build_appearance(accent_idx: usize) -> Element<'static, Message> {
-
-    let mut swatches = row![].spacing(5);
-    for (i, &color) in ACCENT_PALETTE.iter().enumerate() {
-        let is_selected = i == accent_idx;
-        swatches = swatches.push(
-            button(Space::new().width(0))
-                .on_press(Message::Settings(SettingsMsg::AccentChanged(i)))
-                .style(move |_t, s| {
-                    let hov = matches!(s, iced::widget::button::Status::Hovered);
-                    iced::widget::button::Style {
-                        background: Some(Background::Color(color)),
-                        border: Border {
-                            color: if is_selected || hov { Color::WHITE } else {
-                                Color { r: color.r * 0.5, g: color.g * 0.5, b: color.b * 0.5, a: 1.0 }
-                            },
-                            width: if is_selected { 2.5 } else { 1.0 },
-                            radius: 12.0.into(),
-                        },
-                        ..Default::default()
-                    }
-                })
-                .width(22)
-                .height(22)
-                .padding(0),
-        );
+fn build_appearance(theme_idx: usize) -> Element<'static, Message> {
+    let mut cards = column![].spacing(4);
+    for (i, spec) in THEMES.iter().enumerate() {
+        let is_selected = i == theme_idx;
+        cards = cards.push(theme_card(spec, is_selected, i));
     }
 
     column![
         section_label("APPEARANCE"),
-        field_label("Accent"),
-        swatches,
+        field_label("Theme"),
+        cards,
     ]
     .spacing(6)
     .into()
+}
+
+fn theme_card(spec: &'static ThemeSpec, is_selected: bool, idx: usize) -> Element<'static, Message> {
+    let preview = row![swatch(spec.background), swatch(spec.surface), swatch(spec.accent)].spacing(3);
+
+    let check: Element<'static, Message> = if is_selected {
+        text("\u{2713}").size(TEXT_SM).color(spec.accent).into()
+    } else {
+        Space::new().width(0).into()
+    };
+
+    button(
+        row![
+            preview,
+            text(spec.name).size(TEXT_SM).color(Palette::text()),
+            Space::new().width(Length::Fill),
+            check,
+        ]
+        .spacing(8)
+        .align_y(iced::Alignment::Center),
+    )
+    .on_press(Message::Settings(SettingsMsg::ThemeChanged(idx)))
+    .style(move |_t, s| {
+        let hovered = matches!(s, iced::widget::button::Status::Hovered);
+        iced::widget::button::Style {
+            background: Some(Background::Color(if is_selected {
+                Palette::accent_soft()
+            } else if hovered {
+                Palette::hover()
+            } else {
+                Palette::surface_high()
+            })),
+            border: Border {
+                color: if is_selected { Palette::accent() } else { Palette::border_subtle() },
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            text_color: Palette::text(),
+            ..Default::default()
+        }
+    })
+    .padding([6, 10])
+    .width(Length::Fill)
+    .into()
+}
+
+fn swatch(color: Color) -> Element<'static, Message> {
+    container(Space::new())
+        .width(14)
+        .height(14)
+        .style(move |_| iced::widget::container::Style {
+            background: Some(Background::Color(color)),
+            border: Border { color: Color { a: 0.3, ..color }, width: 1.0, radius: 4.0.into() },
+            ..Default::default()
+        })
+        .into()
 }
 
 fn build_updates(update: &UpdateState) -> Element<'static, Message> {

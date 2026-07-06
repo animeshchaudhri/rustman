@@ -6,18 +6,18 @@ use iced::{
 use crate::{
     app::AppState,
     message::{Message, SidebarMsg},
-    ui::theme::Palette,
+    ui::{theme::{Palette, TEXT_LG, TEXT_SM}, widgets::kv_table},
 };
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
-    let clear_btn = button(text("Clear").size(11).color(Palette::text_muted()))
+    let clear_btn = button(text("Clear").size(TEXT_SM).color(Palette::text_muted()))
         .on_press(Message::Sidebar(SidebarMsg::ClearHistory))
         .style(iced::widget::button::text)
         .padding([2, 6]);
 
     let header = container(
         row![
-            text("History").size(13).color(Palette::text()),
+            text("History").size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
             iced::widget::Space::new().width(Length::Fill),
             clear_btn,
         ]
@@ -25,6 +25,13 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         .padding([10, 10]),
     )
     .width(Length::Fill);
+
+    if state.history.is_empty() {
+        return column![header, kv_table::empty_state("No history yet.")]
+            .spacing(0)
+            .height(Length::Fill)
+            .into();
+    }
 
     let mut col = column![header].spacing(0);
 
@@ -55,18 +62,18 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             .spacing(2),
         )
         .on_press(Message::Sidebar(SidebarMsg::HistoryEntryOpened(entry.clone())))
-        .style(iced::widget::button::text)
+        .style(|_t, status| {
+            let hovered = matches!(status, iced::widget::button::Status::Hovered);
+            iced::widget::button::Style {
+                background: if hovered { Some(iced::Background::Color(Palette::hover())) } else { None },
+                text_color: Palette::text(),
+                ..Default::default()
+            }
+        })
         .width(Length::Fill)
-        .padding([4, 8]);
+        .padding([6, 8]);
 
         col = col.push(item);
-    }
-
-    if state.history.is_empty() {
-        col = col.push(
-            container(text("No history yet.").size(12).color(Palette::text_muted()))
-                .padding([12, 8]),
-        );
     }
 
     scrollable(col)

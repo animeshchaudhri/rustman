@@ -1,12 +1,12 @@
 use iced::{
     widget::{button, column, container, row, text, Space},
-    Color, Element, Length,
+    Element, Length,
 };
 
 use crate::{
     message::{Message, ResponseMsg},
     state::tabs::RequestTabState,
-    ui::theme::{Palette, MONO},
+    ui::theme::{Palette, MONO, TEXT_SM, TEXT_XL, TEXT_XS},
 };
 
 pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
@@ -16,24 +16,22 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
 
     let Some(resp) = tab.response.as_ref() else {
         let accent = Palette::accent();
-        let icon = text("⇧").size(48).color(Color { r: accent.r, g: accent.g, b: accent.b, a: 0.15 });
-        return container(
-            column![
-                container(icon).center_x(Length::Fill).width(Length::Fill),
-                Space::new().height(12),
-                text("Send a request").size(15).color(Palette::text_muted()),
-                text("Press Cmd+Enter or click Send to run the request")
-                    .size(11).color(Palette::text_subtle()),
-            ]
-            .spacing(4)
-            .align_x(iced::Alignment::Center),
-        )
-        .padding([32, 16])
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .into();
+        let shortcut = if cfg!(target_os = "macos") { "Cmd+Enter" } else { "Ctrl+Enter" };
+        let content = column![
+            text("⇧").size(32).color(accent),
+            Space::new().height(10),
+            text("Send a request").size(TEXT_XL).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
+            Space::new().height(2),
+            text(format!("Press {shortcut} or click Send")).size(TEXT_SM).color(Palette::text_subtle()),
+        ]
+        .align_x(iced::Alignment::Center);
+
+        return container(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into();
     };
 
     if let Some(err) = &resp.error {
@@ -44,22 +42,22 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
         row![
             Space::new().width(Length::Fill),
             if tab.viewer_processing {
-                text("Parsing…").size(10).color(Palette::text_subtle())
+                text("Parsing…").size(TEXT_XS).color(Palette::text_subtle())
             } else {
-                text(format!("{}L", tab.response_viewer_lines)).size(10).color(Palette::text_subtle())
+                text(format!("{}L", tab.response_viewer_lines)).size(TEXT_XS).color(Palette::text_subtle())
             },
-            button(text("Copy").size(11).color(Palette::text_muted()))
+            button(text("Copy").size(TEXT_SM).color(Palette::text_muted()))
                 .on_press(Message::Response(ResponseMsg::CopyBody))
                 .style(iced::widget::button::text)
                 .padding([2, 8]),
         ]
         .align_y(iced::Alignment::Center)
-        .padding([3, 6]),
+        .padding([4, 6]),
     )
     .width(Length::Fill);
 
     let body: Element<Message> = if tab.viewer_processing {
-        container(text("Parsing…").size(12).color(Palette::text_subtle()))
+        container(text("Parsing…").size(TEXT_SM).color(Palette::text_subtle()))
             .padding([8, 12])
             .width(Length::Fill)
             .height(Length::Fill)
@@ -77,17 +75,15 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
 }
 
 fn error_view(err: &str) -> Element<'static, Message> {
-    let card = container(
-        column![
-            text("Request failed").size(14).color(Palette::ERROR),
-            text(err.to_owned()).size(12).color(Palette::text_muted()),
-        ]
-        .spacing(8)
-        .align_x(iced::Alignment::Center),
-    )
-    .max_width(560);
+    let content = column![
+        text("Request failed").size(TEXT_XL).color(Palette::ERROR),
+        text(err.to_owned()).size(TEXT_SM).color(Palette::text_muted()),
+    ]
+    .spacing(8)
+    .max_width(480)
+    .align_x(iced::Alignment::Center);
 
-    container(card)
+    container(content)
         .padding([24, 24])
         .width(Length::Fill)
         .height(Length::Fill)
