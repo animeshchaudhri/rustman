@@ -69,8 +69,10 @@ pub struct AppState {
     pub git_user_email: String,
     pub git_history_search: String,
     pub theme_idx: usize,
-    /// Split ratio: request panel FillPortion (1-9). Response = 10 - panel_split.
+    /// Split ratio: request panel FillPortion (1-99). Response = 100 - panel_split.
     pub panel_split: u16,
+    /// Layout direction: false = top/bottom, true = left/right.
+    pub horizontal_layout: bool,
     /// UI zoom level (0.7 – 2.0). Applied via iced scale_factor.
     pub ui_scale: f64,
     /// Auto-update progress for the banner + settings panel.

@@ -25,6 +25,9 @@ pub(super) fn handle(state: &mut AppState, msg: SettingsMsg) -> Task<Message> {
                 let _ = vcs::set_identity(&path, &state.git_user_name, &email);
             }
         }
+        SettingsMsg::LayoutDirectionToggled => {
+            state.horizontal_layout = !state.horizontal_layout;
+        }
     }
     Task::none()
 }

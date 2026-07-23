@@ -43,6 +43,11 @@ fn handle_layout(state: &mut AppState, msg: LayoutMsg) -> Task<Message> {
         LayoutMsg::ZoomIn => state.ui_scale = (state.ui_scale + 0.1).min(2.0),
         LayoutMsg::ZoomOut => state.ui_scale = (state.ui_scale - 0.1).max(0.5),
         LayoutMsg::ZoomReset => state.ui_scale = 1.0,
+        LayoutMsg::PanelSplitChanged(split) => {
+            if split >= 1 && split <= 99 {
+                state.panel_split = split;
+            }
+        }
     }
     Task::none()
 }
