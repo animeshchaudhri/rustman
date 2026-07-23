@@ -9,4 +9,6 @@ pub struct AppSession {
     pub active_tab: usize,
     pub active_env_id: Option<String>,
     pub sidebar_panel: String,
+    #[serde(default)]
+    pub theme_idx: usize,
 }

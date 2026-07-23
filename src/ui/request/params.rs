@@ -65,7 +65,8 @@ fn param_table<'a>(
                 checkbox(item.enabled)
                     .on_toggle(move |_| Message::Request(RequestMsg::ParamToggled(i)))
                     .size(12)
-                    .spacing(0),
+                    .spacing(0)
+                    .style(crate::ui::styles::checkbox),
                 text(format!("{}", i + 1))
                     .size(TEXT_XS)
                     .color(Palette::text_subtle())

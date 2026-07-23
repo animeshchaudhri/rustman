@@ -14,7 +14,8 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         .on_input(|v| Message::Request(RequestMsg::TimeoutChanged(v)))
         .size(13)
         .padding([7, 10])
-        .width(160);
+        .width(160)
+        .style(crate::ui::styles::field_input);
 
     let timeout_row = row![
         column![

@@ -238,7 +238,7 @@ fn name_input_style(
                 _ => Color::TRANSPARENT,
             },
             width: 1.0,
-            radius: 3.0.into(),
+            radius: 6.0.into(),
         },
         icon: Palette::text_muted(),
         placeholder: Palette::text_subtle(),

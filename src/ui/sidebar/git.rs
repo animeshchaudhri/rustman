@@ -71,7 +71,7 @@ fn card<'a>(content: impl Into<Element<'a, Message>>) -> container::Container<'a
 
 fn card_header(icon: char, label: &'static str, count: Option<usize>, actions: Option<Element<'static, Message>>) -> Element<'static, Message> {
     let mut h = row![
-        text(icon).size(13).color(Palette::text_muted()),
+        text(icon).size(13).color(Palette::text_muted()).font(icons::ICON_FONT),
         text(label).size(11).color(Palette::text()),
     ]
     .spacing(5)
@@ -134,7 +134,7 @@ fn repo_card(state: &AppState) -> Element<'_, Message> {
         .size(12)
         .padding([7, 10])
         .width(Length::Fill)
-        .style(scm_input_style);
+        .style(crate::ui::styles::field_input);
 
     let commit_btn = button(
         row![
@@ -170,7 +170,7 @@ fn repo_card(state: &AppState) -> Element<'_, Message> {
                     .size(11)
                     .padding([5, 8])
                     .width(Length::Fill)
-                    .style(scm_input_style),
+                    .style(crate::ui::styles::field_input),
                 primary_button("Set", Message::Git(GitMsg::SetRemote)),
             ]
             .spacing(4),
@@ -206,7 +206,7 @@ fn repo_card(state: &AppState) -> Element<'_, Message> {
             .size(11)
             .padding([5, 8])
             .width(Length::Fill)
-            .style(scm_input_style),
+            .style(crate::ui::styles::field_input),
         Space::new().width(4),
         icon_btn("\u{2795}", Message::Git(GitMsg::CreateBranch)),
     ]
@@ -353,7 +353,7 @@ fn history_card(state: &AppState) -> Element<'_, Message> {
             .size(11)
             .padding([5, 8])
             .width(Length::Fill)
-            .style(scm_input_style),
+            .style(crate::ui::styles::field_input),
     ]
     .spacing(4)
     .align_y(iced::Alignment::Center);
@@ -486,7 +486,7 @@ fn repos_card(state: &AppState) -> Element<'_, Message> {
                 .size(11)
                 .padding([5, 8])
                 .width(Length::Fill)
-                .style(scm_input_style),
+                .style(crate::ui::styles::field_input),
             Space::new().height(4),
             row![
                 ghost_button("Clone", Message::Git(GitMsg::CloneRepo)),
@@ -541,7 +541,7 @@ fn badge(state: &str) -> Element<'static, Message> {
     let (ch, color) = match state {
         "new" => ("A", Palette::SUCCESS),
         "deleted" => ("D", Palette::ERROR),
-        "renamed" => ("R", Color::from_rgb(0.388, 0.400, 0.945)),
+        "renamed" => ("R", Palette::PUT),
         _ => ("M", Palette::WARNING),
     };
     container(
@@ -584,7 +584,11 @@ fn time_ago(timestamp: i64) -> String {
 }
 
 fn soft_bg(color: Color) -> Color {
-    Color { r: color.r * 0.22, g: color.g * 0.22, b: color.b * 0.24, a: 1.0 }
+    if Palette::is_dark() {
+        Color { r: color.r * 0.22, g: color.g * 0.22, b: color.b * 0.24, a: 1.0 }
+    } else {
+        Color { r: color.r + (1.0 - color.r) * 0.78, g: color.g + (1.0 - color.g) * 0.78, b: color.b + (1.0 - color.b) * 0.76, a: 1.0 }
+    }
 }
 
 // ── Styles ──
@@ -592,12 +596,7 @@ fn soft_bg(color: Color) -> Color {
 fn commit_style(_t: &iced::Theme, status: iced::widget::button::Status) -> iced::widget::button::Style {
     let accent = Palette::accent();
     let bg = match status {
-        iced::widget::button::Status::Hovered => Color {
-            r: (accent.r * 1.15).min(1.0),
-            g: (accent.g * 1.15).min(1.0),
-            b: (accent.b * 1.15).min(1.0),
-            a: 1.0,
-        },
+        iced::widget::button::Status::Hovered => Palette::accent_hover(),
         iced::widget::button::Status::Disabled => Color { r: 0.3, g: 0.3, b: 0.3, a: 0.4 },
         _ => accent,
     };
@@ -620,12 +619,7 @@ fn primary_button(label: &str, msg: Message) -> Element<'static, Message> {
 fn primary_style(_t: &iced::Theme, status: iced::widget::button::Status) -> iced::widget::button::Style {
     let accent = Palette::accent();
     let bg = match status {
-        iced::widget::button::Status::Hovered => Color {
-            r: (accent.r * 1.15).min(1.0),
-            g: (accent.g * 1.15).min(1.0),
-            b: (accent.b * 1.15).min(1.0),
-            a: 1.0,
-        },
+        iced::widget::button::Status::Hovered => Palette::accent_hover(),
         _ => accent,
     };
     iced::widget::button::Style {
@@ -681,27 +675,6 @@ fn tool_text(label: &str, msg: Message) -> Element<'static, Message> {
         .style(iced::widget::button::text)
         .padding([2, 6])
         .into()
-}
-
-fn scm_input_style(
-    _theme: &iced::Theme,
-    status: iced::widget::text_input::Status,
-) -> iced::widget::text_input::Style {
-    iced::widget::text_input::Style {
-        background: Background::Color(Palette::surface_high()),
-        border: Border {
-            color: match status {
-                iced::widget::text_input::Status::Focused { .. } => Palette::accent(),
-                _ => Palette::border_subtle(),
-            },
-            width: 1.0,
-            radius: 5.0.into(),
-        },
-        icon: Palette::text_muted(),
-        placeholder: Palette::text_subtle(),
-        value: Palette::text(),
-        selection: Color { r: Palette::accent().r, g: Palette::accent().g, b: Palette::accent().b, a: 0.3 },
-    }
 }
 
 fn repo_row_style(status: iced::widget::button::Status, active: bool) -> iced::widget::button::Style {

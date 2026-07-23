@@ -649,6 +649,40 @@ impl Command for ReplaceTextCommand {
     }
 }
 
+/// Command for moving a line up or down by swapping two lines.
+#[derive(Debug, Clone)]
+pub struct MoveLineCommand {
+    /// The index of the first line being swapped
+    pub line_a: usize,
+    /// The index of the second line being swapped
+    pub line_b: usize,
+    cursor_before: (usize, usize),
+    cursor_after: (usize, usize),
+}
+
+impl MoveLineCommand {
+    pub fn new(
+        line_a: usize,
+        line_b: usize,
+        cursor: (usize, usize),
+        cursor_after: (usize, usize),
+    ) -> Self {
+        Self { line_a, line_b, cursor_before: cursor, cursor_after }
+    }
+}
+
+impl Command for MoveLineCommand {
+    fn execute(&mut self, buffer: &mut TextBuffer, cursor: &mut (usize, usize)) {
+        buffer.swap_lines(self.line_a, self.line_b);
+        *cursor = self.cursor_after;
+    }
+
+    fn undo(&mut self, buffer: &mut TextBuffer, cursor: &mut (usize, usize)) {
+        buffer.swap_lines(self.line_a, self.line_b);
+        *cursor = self.cursor_before;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

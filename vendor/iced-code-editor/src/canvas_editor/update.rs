@@ -3,9 +3,12 @@
 use iced::Task;
 use iced::widget::operation::{focus, select_all};
 
+use crate::text_buffer::TextBuffer;
+
 use super::command::{
     Command, CompositeCommand, DeleteCharCommand, DeleteForwardCommand,
-    InsertCharCommand, InsertNewlineCommand, ReplaceTextCommand,
+    DeleteRangeCommand, InsertCharCommand, InsertNewlineCommand,
+    InsertTextCommand, MoveLineCommand, ReplaceTextCommand,
 };
 use super::{
     ArrowDirection, CURSOR_BLINK_INTERVAL, CodeEditor, ImePreedit, IndentStyle,
@@ -25,6 +28,8 @@ enum EditType {
     DeleteCharBack,
     /// Delete-forward: delete char at `(edit_line, edit_col)`.
     DeleteCharForward,
+    /// Deletes a range from `start_col` to `end_col` on `edit_line`.
+    DeleteRange { start_col: usize, end_col: usize },
     /// Enter: split `edit_line` at `edit_col`; new line has `extra` indent chars.
     InsertNewline { indent_len: usize },
     /// Backspace-at-col-0: merge `edit_line` into `edit_line - 1`.
@@ -33,6 +38,24 @@ enum EditType {
     /// Delete-at-end-of-line: merge `edit_line + 1` into `edit_line`.
     /// `extra` = length of `edit_line` before merge.
     MergeNext { edit_line_len: usize },
+}
+
+/// Returns the matching closing bracket/quote for auto-close, or None.
+fn matching_close_char(ch: char) -> Option<char> {
+    match ch {
+        '(' => Some(')'),
+        '[' => Some(']'),
+        '{' => Some('}'),
+        '"' => Some('"'),
+        '\'' => Some('\''),
+        '`' => Some('`'),
+        _ => None,
+    }
+}
+
+/// Returns true if the character should trigger auto-close (i.e. is an opening bracket/quote).
+fn is_auto_close_open(ch: char) -> bool {
+    matches!(ch, '(' | '[' | '{' | '"' | '\'' | '`')
 }
 
 /// Adjusts a single `(line, col)` pair after an edit.
@@ -56,6 +79,16 @@ fn adjust_pos(
         EditType::DeleteCharForward => {
             if pos.0 == edit_line && pos.1 > edit_col {
                 pos.1 -= 1;
+            }
+        }
+        EditType::DeleteRange { start_col, end_col } => {
+            if pos.0 == edit_line {
+                let len = end_col.saturating_sub(start_col);
+                if pos.1 >= end_col {
+                    pos.1 = pos.1.saturating_sub(len);
+                } else if pos.1 > start_col {
+                    pos.1 = start_col;
+                }
             }
         }
         EditType::InsertNewline { indent_len } => {
@@ -187,11 +220,16 @@ impl CodeEditor {
     // Text Input Handlers
     // =========================================================================
 
-    /// Handles character input message operations.
+    /// Handles character input message operations with auto-close bracket/quote support.
     ///
     /// Inserts a character at the current cursor position and adds it to the
     /// undo history. Characters are grouped together for smart undo.
     /// Only processes input when the editor has active focus and is not locked.
+    ///
+    /// Auto-close features (single cursor only):
+    /// - Opening `(`, `[`, `{`, `"`, `'`, `` ` `` with selection: wraps selection in the pair.
+    /// - Opening bracket/quote with next char already the matching closer: type-over (skip).
+    /// - Otherwise: inserts the full pair with cursor in between.
     ///
     /// # Arguments
     ///
@@ -199,19 +237,98 @@ impl CodeEditor {
     ///
     /// # Returns
     ///
-    /// A `Task<Message>` that scrolls to keep the cursor visible (including
-    /// horizontal scroll when wrap is disabled)
+    /// A `Task<Message>` that scrolls to keep the cursor visible
     fn handle_character_input_msg(&mut self, ch: char) -> Task<Message> {
-        // Guard clause: only process character input if editor has focus and is not locked
         if !self.has_focus() {
             return Task::none();
         }
 
-        // Start grouping if not already grouping (for smart undo)
+        // Auto-close brackets/quotes for single cursor
+        if self.cursors.len() == 1 && is_auto_close_open(ch) {
+            let close_ch = matching_close_char(ch).unwrap();
+            let pos = self.cursors.primary_position();
+            let has_sel = self.cursors.primary().has_selection();
+            let line = self.buffer.line(pos.0);
+            let line_len = self.buffer.line_len(pos.0);
+
+            if has_sel {
+                self.end_grouping_if_active();
+                let sel_range = self.cursors.primary().selection_range().unwrap();
+                let (sel_start, sel_end) = sel_range;
+                let mut del_cmd =
+                    DeleteRangeCommand::new(&self.buffer, sel_start, sel_end, pos);
+                let mut cursor_pos = sel_start;
+                del_cmd.execute(&mut self.buffer, &mut cursor_pos);
+                self.history.push(Box::new(del_cmd));
+                self.cursors.primary_mut().position = cursor_pos;
+                self.cursors.primary_mut().anchor = None;
+
+                let mut cmd1 =
+                    InsertCharCommand::new(cursor_pos.0, cursor_pos.1, ch, cursor_pos);
+                cmd1.execute(&mut self.buffer, &mut cursor_pos);
+                self.history.push(Box::new(cmd1));
+
+                let mut cmd2 = InsertCharCommand::new(
+                    cursor_pos.0,
+                    cursor_pos.1,
+                    close_ch,
+                    cursor_pos,
+                );
+                cmd2.execute(&mut self.buffer, &mut cursor_pos);
+                self.history.push(Box::new(cmd2));
+
+                self.cursors.primary_mut().position = (cursor_pos.0, cursor_pos.1 - 1);
+                self.finish_edit_operation();
+                return self.scroll_to_cursor();
+            }
+
+            if pos.1 < line_len {
+                let next_char = line.chars().nth(pos.1).unwrap();
+                if next_char == close_ch {
+                    self.end_grouping_if_active();
+                    self.clear_selection();
+                    for cursor in self.cursors.as_mut_slice() {
+                        cursor.position.1 += 1;
+                    }
+                    self.finish_navigation_operation();
+                    return self.scroll_to_cursor();
+                }
+            }
+
+            self.ensure_grouping_started("Typing");
+            let mut cmd1 =
+                InsertCharCommand::new(pos.0, pos.1, ch, pos);
+            let mut cursor_pos = pos;
+            cmd1.execute(&mut self.buffer, &mut cursor_pos);
+            self.history.push(Box::new(cmd1));
+
+            let mut cmd2 = InsertCharCommand::new(
+                pos.0,
+                cursor_pos.1,
+                close_ch,
+                cursor_pos,
+            );
+            cmd2.execute(&mut self.buffer, &mut cursor_pos);
+            self.history.push(Box::new(cmd2));
+
+            self.cursors.primary_mut().position = (pos.0, pos.1 + 1);
+            self.finish_edit_operation();
+
+            if ch.is_alphanumeric() || ch == '_' || ch == '.' {
+                self.lsp_flush_pending_changes();
+                self.lsp_request_completion();
+            }
+            return self.scroll_to_cursor();
+        }
+
+        // For non-auto-close characters, delete any active selections first
+        if self.cursors.iter().any(|c| c.has_selection()) {
+            self.end_grouping_if_active();
+            self.delete_selection();
+        }
+
         self.ensure_grouping_started("Typing");
 
-        // Multi-cursor: build a sorted index list (descending document order)
-        // so that edits at higher positions don't invalidate lower positions.
         let mut order: Vec<usize> = (0..self.cursors.len()).collect();
         order.sort_by(|&a, &b| {
             self.cursors.as_slice()[b]
@@ -221,8 +338,6 @@ impl CodeEditor {
 
         for &idx in &order {
             let cursor = &self.cursors.as_slice()[idx];
-            // Insert at the selection start when the cursor has an active selection,
-            // otherwise insert at the cursor position.
             let pos = match cursor.anchor {
                 Some(anchor) if anchor < cursor.position => anchor,
                 _ => cursor.position,
@@ -243,7 +358,6 @@ impl CodeEditor {
 
         self.finish_edit_operation();
 
-        // Auto-trigger LSP completion for identifier characters and trigger characters
         if ch.is_alphanumeric() || ch == '_' || ch == '.' {
             self.lsp_flush_pending_changes();
             self.lsp_request_completion();
@@ -524,6 +638,99 @@ impl CodeEditor {
         Task::none()
     }
 
+    /// Handles Ctrl+Backspace (delete word backward) with cross-line support.
+    fn handle_delete_word_backward(&mut self) -> Task<Message> {
+        self.end_grouping_if_active();
+        if self.delete_selection_if_present() {
+            return self.scroll_to_cursor();
+        }
+        let mut order: Vec<usize> = (0..self.cursors.len()).collect();
+        order.sort_by(|&a, &b| {
+            self.cursors.as_slice()[b].position.cmp(&self.cursors.as_slice()[a].position)
+        });
+        for &idx in &order {
+            let pos = self.cursors.as_slice()[idx].position;
+            if pos.1 == 0 {
+                if pos.0 > 0 {
+                    let prev_line_len = self.buffer.line_len(pos.0 - 1);
+                    let mut cmd = DeleteCharCommand::new(&self.buffer, pos.0, 0, pos);
+                    let mut cursor_pos = pos;
+                    cmd.execute(&mut self.buffer, &mut cursor_pos);
+                    self.cursors.as_mut_slice()[idx].position = cursor_pos;
+                    adjust_other_cursors(
+                        self.cursors.as_mut_slice(), idx, pos.0, 0,
+                        EditType::MergePrev { prev_line_len },
+                    );
+                    self.history.push(Box::new(cmd));
+                }
+            } else {
+                let prev = Self::move_to_prev_word(pos, &self.buffer);
+                if prev < pos {
+                    let mut cmd = DeleteRangeCommand::new(
+                        &self.buffer, prev, pos, pos,
+                    );
+                    let mut cursor_pos = pos;
+                    cmd.execute(&mut self.buffer, &mut cursor_pos);
+                    self.cursors.as_mut_slice()[idx].position = cursor_pos;
+                    adjust_other_cursors(
+                        self.cursors.as_mut_slice(), idx, prev.0, prev.1,
+                        EditType::DeleteRange { start_col: prev.1, end_col: pos.1 },
+                    );
+                    self.history.push(Box::new(cmd));
+                }
+            }
+        }
+        self.finish_edit_operation();
+        self.scroll_to_cursor()
+    }
+
+    /// Handles Ctrl+Delete (delete word forward) with cross-line support.
+    fn handle_delete_word_forward(&mut self) -> Task<Message> {
+        self.end_grouping_if_active();
+        if self.delete_selection_if_present() {
+            return self.scroll_to_cursor();
+        }
+        let mut order: Vec<usize> = (0..self.cursors.len()).collect();
+        order.sort_by(|&a, &b| {
+            self.cursors.as_slice()[b].position.cmp(&self.cursors.as_slice()[a].position)
+        });
+        for &idx in &order {
+            let pos = self.cursors.as_slice()[idx].position;
+            let line_len = self.buffer.line_len(pos.0);
+            if pos.1 >= line_len {
+                if pos.0 + 1 < self.buffer.line_count() {
+                    let edit_line_len = line_len;
+                    let mut cmd = DeleteForwardCommand::new(&self.buffer, pos.0, pos.1, pos);
+                    let mut cursor_pos = pos;
+                    cmd.execute(&mut self.buffer, &mut cursor_pos);
+                    self.cursors.as_mut_slice()[idx].position = cursor_pos;
+                    adjust_other_cursors(
+                        self.cursors.as_mut_slice(), idx, pos.0, pos.1,
+                        EditType::MergeNext { edit_line_len },
+                    );
+                    self.history.push(Box::new(cmd));
+                }
+            } else {
+                let next = Self::move_to_next_word(pos, &self.buffer);
+                if next > pos {
+                    let mut cmd = DeleteRangeCommand::new(
+                        &self.buffer, pos, next, pos,
+                    );
+                    let mut cursor_pos = pos;
+                    cmd.execute(&mut self.buffer, &mut cursor_pos);
+                    self.cursors.as_mut_slice()[idx].position = cursor_pos;
+                    adjust_other_cursors(
+                        self.cursors.as_mut_slice(), idx, pos.0, pos.1,
+                        EditType::DeleteRange { start_col: pos.1, end_col: next.1 },
+                    );
+                    self.history.push(Box::new(cmd));
+                }
+            }
+        }
+        self.finish_edit_operation();
+        Task::none()
+    }
+
     /// Handles explicit selection deletion (Shift+Delete).
     ///
     /// Deletes the selected text if a selection exists.
@@ -583,30 +790,38 @@ impl CodeEditor {
         self.scroll_to_cursor()
     }
 
-    /// Handles Home key press.
+    /// Handles Home key press with smart toggle behaviour.
     ///
-    /// Moves the cursor to the start of the current line.
-    ///
-    /// # Arguments
-    ///
-    /// * `shift_pressed` - Whether Shift is held (for selection)
-    ///
-    /// # Returns
-    ///
-    /// A `Task<Message>` that scrolls to keep the cursor visible (including
-    /// horizontal scroll back to x=0 when wrap is disabled)
+    /// First press moves to first non-whitespace character on the line.
+    /// Second press moves to column 0. Toggles between these two positions.
     fn handle_home(&mut self, shift_pressed: bool) -> Task<Message> {
         if shift_pressed {
             for cursor in self.cursors.as_mut_slice() {
+                let line = self.buffer.line(cursor.position.0);
+                let indent_col = line.chars().take_while(|c| c.is_whitespace()).count();
+                let target = if cursor.position.1 > indent_col {
+                    indent_col
+                } else {
+                    0
+                };
                 if cursor.anchor.is_none() {
                     cursor.set_anchor();
                 }
-                cursor.position.1 = 0;
+                cursor.position.1 = target;
             }
         } else {
             self.clear_selection();
             for cursor in self.cursors.as_mut_slice() {
-                cursor.position.1 = 0;
+                let line = self.buffer.line(cursor.position.0);
+                let indent_col = line.chars().take_while(|c| c.is_whitespace()).count();
+                let target = if cursor.position.1 > indent_col {
+                    indent_col
+                } else if cursor.position.1 == indent_col && indent_col > 0 {
+                    0
+                } else {
+                    indent_col
+                };
+                cursor.position.1 = target;
             }
         }
         self.cursors.sort_and_merge();
@@ -638,6 +853,169 @@ impl CodeEditor {
             self.clear_selection();
             for cursor in self.cursors.as_mut_slice() {
                 cursor.position.1 = self.buffer.line_len(cursor.position.0);
+            }
+        }
+        self.cursors.sort_and_merge();
+        self.finish_navigation_operation();
+        self.scroll_to_cursor()
+    }
+
+    /// Returns the start column of the last word on a line (or 0 if none).
+    fn last_word_start(line: &str) -> usize {
+        let chars: Vec<char> = line.chars().collect();
+        let len = chars.len();
+        if len == 0 {
+            return 0;
+        }
+        let mut idx = len;
+        while idx > 0 && !Self::is_word_char(chars[idx - 1]) {
+            idx -= 1;
+        }
+        while idx > 0 && Self::is_word_char(chars[idx - 1]) {
+            idx -= 1;
+        }
+        idx
+    }
+
+    /// Moves cursor to the previous word boundary, crossing lines if needed.
+    fn move_to_prev_word(pos: (usize, usize), buffer: &TextBuffer) -> (usize, usize) {
+        let (line_idx, col) = pos;
+        if col == 0 {
+            if line_idx == 0 {
+                return pos;
+            }
+            let prev_line = buffer.line(line_idx - 1);
+            let prev_col = Self::last_word_start(prev_line);
+            return (line_idx - 1, prev_col);
+        }
+        let line = buffer.line(line_idx);
+        let chars: Vec<char> = line.chars().collect();
+        let len = chars.len();
+        let mut idx = col.min(len);
+
+        if idx < len && Self::is_word_char(chars[idx]) {
+            while idx > 0 && Self::is_word_char(chars[idx - 1]) {
+                idx -= 1;
+            }
+            return (line_idx, idx);
+        }
+
+        if idx > 0 && Self::is_word_char(chars[idx - 1]) {
+            while idx > 0 && Self::is_word_char(chars[idx - 1]) {
+                idx -= 1;
+            }
+            return (line_idx, idx);
+        }
+
+        while idx > 0 && !Self::is_word_char(chars[idx - 1]) {
+            idx -= 1;
+        }
+        if idx > 0 {
+            while idx > 0 && Self::is_word_char(chars[idx - 1]) {
+                idx -= 1;
+            }
+        }
+        (line_idx, idx)
+    }
+
+    /// Returns the column after the first word on a line starting from col 0.
+    fn next_word_end_from(line: &str, start_col: usize) -> usize {
+        let chars: Vec<char> = line.chars().collect();
+        let len = chars.len();
+        let mut idx = start_col.min(len);
+        // Skip non-word chars
+        while idx < len && !Self::is_word_char(chars[idx]) {
+            idx += 1;
+        }
+        // Skip word chars
+        while idx < len && Self::is_word_char(chars[idx]) {
+            idx += 1;
+        }
+        idx
+    }
+
+    /// Moves cursor to the next word boundary, crossing lines if needed.
+    fn move_to_next_word(pos: (usize, usize), buffer: &TextBuffer) -> (usize, usize) {
+        let (line_idx, col) = pos;
+        let line = buffer.line(line_idx);
+        let line_len = buffer.line_len(line_idx);
+        if col >= line_len {
+            if line_idx + 1 < buffer.line_count() {
+                let next_line = buffer.line(line_idx + 1);
+                let next_col = Self::next_word_end_from(next_line, 0);
+                return (line_idx + 1, next_col);
+            }
+            return pos;
+        }
+        let chars: Vec<char> = line.chars().collect();
+        // If we're on a word char, find its end
+        if Self::is_word_char(chars[col]) {
+            let mut idx = col;
+            while idx < line_len && Self::is_word_char(chars[idx]) {
+                idx += 1;
+            }
+            return (line_idx, idx);
+        }
+        // We're on non-word; skip to next word start then find its end
+        let mut idx = col;
+        while idx < line_len && !Self::is_word_char(chars[idx]) {
+            idx += 1;
+        }
+        if idx < line_len {
+            while idx < line_len && Self::is_word_char(chars[idx]) {
+                idx += 1;
+            }
+            return (line_idx, idx);
+        }
+        // No more words on this line, go to next line
+        if line_idx + 1 < buffer.line_count() {
+            let next_line = buffer.line(line_idx + 1);
+            let next_col = Self::next_word_end_from(next_line, 0);
+            (line_idx + 1, next_col)
+        } else {
+            (line_idx, line_len)
+        }
+    }
+
+    /// Handles Ctrl+Left (word-left) navigation with cross-line support.
+    fn handle_word_left(&mut self, shift_pressed: bool) -> Task<Message> {
+        self.end_grouping_if_active();
+        if shift_pressed {
+            for cursor in self.cursors.as_mut_slice() {
+                if cursor.anchor.is_none() {
+                    cursor.set_anchor();
+                }
+                cursor.position =
+                    Self::move_to_prev_word(cursor.position, &self.buffer);
+            }
+        } else {
+            self.clear_selection();
+            for cursor in self.cursors.as_mut_slice() {
+                cursor.position =
+                    Self::move_to_prev_word(cursor.position, &self.buffer);
+            }
+        }
+        self.cursors.sort_and_merge();
+        self.finish_navigation_operation();
+        self.scroll_to_cursor()
+    }
+
+    /// Handles Ctrl+Right (word-right) navigation with cross-line support.
+    fn handle_word_right(&mut self, shift_pressed: bool) -> Task<Message> {
+        self.end_grouping_if_active();
+        if shift_pressed {
+            for cursor in self.cursors.as_mut_slice() {
+                if cursor.anchor.is_none() {
+                    cursor.set_anchor();
+                }
+                cursor.position =
+                    Self::move_to_next_word(cursor.position, &self.buffer);
+            }
+        } else {
+            self.clear_selection();
+            for cursor in self.cursors.as_mut_slice() {
+                cursor.position =
+                    Self::move_to_next_word(cursor.position, &self.buffer);
             }
         }
         self.cursors.sort_and_merge();
@@ -924,7 +1302,87 @@ impl CodeEditor {
     // Search and Replace Handlers
     // =========================================================================
 
+    /// Extracts the text from the primary cursor's selection, if any.
+    fn selected_text(&self) -> Option<String> {
+        let primary = self.cursors.primary();
+        let (start, end) = primary.selection_range()?;
+        if start == end {
+            return None;
+        }
+        if start.0 == end.0 {
+            let line = self.buffer.line(start.0);
+            let chars: Vec<char> = line.chars().collect();
+            let text: String = chars[start.1..end.1.min(chars.len())].iter().collect();
+            Some(text)
+        } else {
+            let mut text = String::new();
+            let first_line = self.buffer.line(start.0);
+            let first_chars: Vec<char> = first_line.chars().collect();
+            text.extend(&first_chars[start.1..]);
+            text.push('\n');
+            for line_idx in (start.0 + 1)..end.0 {
+                text.push_str(self.buffer.line(line_idx));
+                text.push('\n');
+            }
+            let last_line = self.buffer.line(end.0);
+            let last_chars: Vec<char> = last_line.chars().collect();
+            text.extend(&last_chars[..end.1.min(last_chars.len())]);
+            Some(text)
+        }
+    }
+
+    /// Returns the word (contiguous alphanumeric / underscore chars) under
+    /// the primary cursor position, or `None` when the cursor sits on
+    /// non-word characters or whitespace.
+    fn word_at_cursor(&self) -> Option<String> {
+        let pos = self.cursors.primary_position();
+        let line = self.buffer.line(pos.0);
+        let chars: Vec<char> = line.chars().collect();
+        if chars.is_empty() || pos.1 >= chars.len() {
+            return None;
+        }
+        if !chars[pos.1].is_alphanumeric() && chars[pos.1] != '_' {
+            return None;
+        }
+        let mut start = pos.1;
+        while start > 0 {
+            let c = chars[start - 1];
+            if c.is_alphanumeric() || c == '_' {
+                start -= 1;
+            } else {
+                break;
+            }
+        }
+        let mut end = pos.1;
+        while end < chars.len() {
+            let c = chars[end];
+            if c.is_alphanumeric() || c == '_' {
+                end += 1;
+            } else {
+                break;
+            }
+        }
+        Some(chars[start..end].iter().collect())
+    }
+
+    /// Auto-fills the search query from selection or word under cursor.
+    fn fill_search_query_from_context(&mut self) {
+        let query = self
+            .selected_text()
+            .or_else(|| self.word_at_cursor())
+            .and_then(|t| {
+                let first = t.lines().next().unwrap_or("").to_string();
+                if first.is_empty() { None } else { Some(first) }
+            });
+        if let Some(q) = query {
+            self.search_state.set_query(q, &self.buffer);
+        }
+    }
+
     /// Handles opening the search dialog.
+    ///
+    /// If text is selected, auto-fills the search query with the selection.
+    /// Otherwise, uses the word under the cursor.
     ///
     /// # Returns
     ///
@@ -932,8 +1390,8 @@ impl CodeEditor {
     fn handle_open_search_msg(&mut self) -> Task<Message> {
         self.search_state.open_search();
         self.overlay_cache.clear();
+        self.fill_search_query_from_context();
 
-        // Focus the search input and select all text if any
         Task::batch([
             focus(self.search_state.search_input_id.clone()),
             select_all(self.search_state.search_input_id.clone()),
@@ -942,14 +1400,17 @@ impl CodeEditor {
 
     /// Handles opening the search and replace dialog.
     ///
+    /// If text is selected, auto-fills the search query with the selection.
+    /// Otherwise, uses the word under the cursor.
+    ///
     /// # Returns
     ///
     /// A `Task<Message>` that focuses and selects all in the search input
     fn handle_open_search_replace_msg(&mut self) -> Task<Message> {
         self.search_state.open_replace();
         self.overlay_cache.clear();
+        self.fill_search_query_from_context();
 
-        // Focus the search input and select all text if any
         Task::batch([
             focus(self.search_state.search_input_id.clone()),
             select_all(self.search_state.search_input_id.clone()),
@@ -1595,6 +2056,226 @@ impl CodeEditor {
     }
 
     // =========================================================================
+    // Line Move Handlers
+    // =========================================================================
+
+    /// Handles Alt+Up: move current line up.
+    fn handle_move_line_up(&mut self) -> Task<Message> {
+        self.end_grouping_if_active();
+        let pos = self.cursors.primary_position();
+        if pos.0 == 0 {
+            return Task::none();
+        }
+        let new_line = pos.0 - 1;
+        let new_col = pos.1.min(self.buffer.line_len(new_line));
+        let mut cmd = MoveLineCommand::new(pos.0, new_line, pos, (new_line, new_col));
+        let mut cursor_pos = pos;
+        cmd.execute(&mut self.buffer, &mut cursor_pos);
+        self.cursors.primary_mut().position = cursor_pos;
+        self.history.push(Box::new(cmd));
+        self.finish_edit_operation();
+        self.scroll_to_cursor()
+    }
+
+    /// Handles Alt+Down: move current line down.
+    fn handle_move_line_down(&mut self) -> Task<Message> {
+        self.end_grouping_if_active();
+        let pos = self.cursors.primary_position();
+        let last_line = self.buffer.line_count().saturating_sub(1);
+        if pos.0 >= last_line {
+            return Task::none();
+        }
+        let new_line = pos.0 + 1;
+        let new_col = pos.1.min(self.buffer.line_len(new_line));
+        let mut cmd = MoveLineCommand::new(pos.0, new_line, pos, (new_line, new_col));
+        let mut cursor_pos = pos;
+        cmd.execute(&mut self.buffer, &mut cursor_pos);
+        self.cursors.primary_mut().position = cursor_pos;
+        self.history.push(Box::new(cmd));
+        self.finish_edit_operation();
+        self.scroll_to_cursor()
+    }
+
+    // =========================================================================
+    // Indent / Unindent Handlers
+    // =========================================================================
+
+    /// Handles Tab with selection: indent all selected lines.
+    fn handle_indent_lines(&mut self) -> Task<Message> {
+        self.end_grouping_if_active();
+        let mut lines: Vec<usize> = Vec::new();
+        for cursor in self.cursors.as_slice() {
+            let l = cursor.position.0;
+            if !lines.contains(&l) { lines.push(l); }
+            if let Some((start, end)) = cursor.selection_range() {
+                for l in start.0..=end.0 {
+                    if !lines.contains(&l) { lines.push(l); }
+                }
+            }
+        }
+        lines.sort_by(|a, b| b.cmp(a));
+        let indent = match self.indent_style {
+            IndentStyle::Spaces(n) => " ".repeat(n as usize),
+            IndentStyle::Tab => "\t".to_string(),
+        };
+        for &line in &lines {
+            let pos = (line, 0);
+            let mut cmd = InsertTextCommand::new(line, 0, indent.clone(), pos);
+            let mut cursor_pos = pos;
+            cmd.execute(&mut self.buffer, &mut cursor_pos);
+            self.history.push(Box::new(cmd));
+        }
+        self.finish_edit_operation();
+        self.scroll_to_cursor()
+    }
+
+    /// Handles Shift+Tab with selection: unindent selected lines.
+    fn handle_unindent_lines(&mut self) -> Task<Message> {
+        self.end_grouping_if_active();
+        let mut lines: Vec<usize> = Vec::new();
+        for cursor in self.cursors.as_slice() {
+            let l = cursor.position.0;
+            if !lines.contains(&l) { lines.push(l); }
+            if let Some((start, end)) = cursor.selection_range() {
+                for l in start.0..=end.0 {
+                    if !lines.contains(&l) { lines.push(l); }
+                }
+            }
+        }
+        lines.sort_by(|a, b| b.cmp(a));
+        for &line in &lines {
+            let line_str = self.buffer.line(line);
+            let indent_chars: usize = match self.indent_style {
+                IndentStyle::Spaces(n) => {
+                    let spaces = line_str.chars().take_while(|c| *c == ' ').count();
+                    let remove = (spaces / n as usize) * n as usize;
+                    if remove > 0 { remove } else { continue; }
+                }
+                IndentStyle::Tab => {
+                    if line_str.starts_with('\t') { 1 } else { continue; }
+                }
+            };
+            if indent_chars == 0 { continue; }
+            let pos = (line, 0);
+            let mut cmd = DeleteRangeCommand::new(
+                &self.buffer, pos, (line, indent_chars), pos,
+            );
+            let mut cursor_pos = pos;
+            cmd.execute(&mut self.buffer, &mut cursor_pos);
+            self.history.push(Box::new(cmd));
+        }
+        self.finish_edit_operation();
+        self.scroll_to_cursor()
+    }
+
+    // =========================================================================
+    // Join Lines Handler
+    // =========================================================================
+
+    /// Handles Ctrl+J: join current line with the next line.
+    fn handle_join_lines(&mut self) -> Task<Message> {
+        self.end_grouping_if_active();
+        let pos = self.cursors.primary_position();
+        if pos.0 + 1 >= self.buffer.line_count() {
+            return Task::none();
+        }
+        let line_len = self.buffer.line_len(pos.0);
+        let mut cmd = DeleteForwardCommand::new(&self.buffer, pos.0, line_len, pos);
+        let mut cursor_pos = pos;
+        cmd.execute(&mut self.buffer, &mut cursor_pos);
+        self.cursors.primary_mut().position = cursor_pos;
+        self.cursors.primary_mut().anchor = None;
+        self.history.push(Box::new(cmd));
+        self.finish_edit_operation();
+        self.scroll_to_cursor()
+    }
+
+    // =========================================================================
+    // Duplicate Line Handlers
+    // =========================================================================
+
+    /// Handles Shift+Alt+Down: duplicate current line downward.
+    fn handle_duplicate_line_down(&mut self) -> Task<Message> {
+        self.end_grouping_if_active();
+        let pos = self.cursors.primary_position();
+        let content = self.buffer.line(pos.0).to_string();
+        let insert_pos = pos.0 + 1;
+        let text = format!("{}\n", content);
+        let mut cmd = InsertTextCommand::new(insert_pos, 0, text, pos);
+        let mut cursor_pos = pos;
+        cmd.execute(&mut self.buffer, &mut cursor_pos);
+        self.cursors.primary_mut().position = (insert_pos, pos.1);
+        self.cursors.primary_mut().anchor = None;
+        self.history.push(Box::new(cmd));
+        self.finish_edit_operation();
+        self.scroll_to_cursor()
+    }
+
+    /// Handles Shift+Alt+Up: duplicate current line upward.
+    fn handle_duplicate_line_up(&mut self) -> Task<Message> {
+        self.end_grouping_if_active();
+        let pos = self.cursors.primary_position();
+        let content = self.buffer.line(pos.0).to_string();
+        let text = format!("{}\n", content);
+        let mut cmd = InsertTextCommand::new(pos.0, 0, text, pos);
+        let mut cursor_pos = pos;
+        cmd.execute(&mut self.buffer, &mut cursor_pos);
+        self.cursors.primary_mut().position = (pos.0, pos.1);
+        self.cursors.primary_mut().anchor = None;
+        self.history.push(Box::new(cmd));
+        self.finish_edit_operation();
+        self.scroll_to_cursor()
+    }
+
+    // Handle Toggle Comment: // prefix on selected lines.
+    fn handle_toggle_comment(&mut self) -> Task<Message> {
+        self.end_grouping_if_active();
+        let mut lines: Vec<usize> = Vec::new();
+        for cursor in self.cursors.as_slice() {
+            let l = cursor.position.0;
+            if !lines.contains(&l) { lines.push(l); }
+            if let Some((start, end)) = cursor.selection_range() {
+                for l in start.0..=end.0 {
+                    if !lines.contains(&l) { lines.push(l); }
+                }
+            }
+        }
+        lines.sort_by(|a, b| b.cmp(a));
+        // Check if all lines are already commented
+        let all_commented = lines.iter().all(|&l| {
+            let trimmed = self.buffer.line(l).trim_start();
+            trimmed.starts_with("//")
+        });
+        for &line in &lines {
+            if all_commented {
+                // Remove leading //
+                let line_str = self.buffer.line(line);
+                let start = line_str.find("//");
+                if let Some(pos) = start {
+                    let mut cmd = DeleteRangeCommand::new(
+                        &self.buffer, (line, pos), (line, pos + 2), (line, 0),
+                    );
+                    let mut cursor_pos = (line, 0);
+                    cmd.execute(&mut self.buffer, &mut cursor_pos);
+                    self.history.push(Box::new(cmd));
+                }
+            } else {
+                // Insert // at start of line (after leading whitespace)
+                let line_str = self.buffer.line(line);
+                let indent = line_str.len() - line_str.trim_start().len();
+                let mut cmd = InsertTextCommand::new(
+                    line, indent, "//".to_string(), (line, indent),
+                );
+                let mut cursor_pos = (line, indent);
+                cmd.execute(&mut self.buffer, &mut cursor_pos);
+                self.history.push(Box::new(cmd));
+            }
+        }
+        self.finish_edit_operation();
+        Task::none()
+    }
+
+    // =========================================================================
     // Main Update Method
     // =========================================================================
 
@@ -1624,6 +2305,8 @@ impl CodeEditor {
             // Deletion operations
             Message::Backspace => self.handle_backspace(),
             Message::Delete => self.handle_delete(),
+            Message::DeleteWordBackward => self.handle_delete_word_backward(),
+            Message::DeleteWordForward => self.handle_delete_word_forward(),
             Message::DeleteSelection => self.handle_delete_selection(),
 
             // Navigation operations
@@ -1632,6 +2315,8 @@ impl CodeEditor {
             }
             Message::Home(shift) => self.handle_home(*shift),
             Message::End(shift) => self.handle_end(*shift),
+            Message::WordLeft(shift) => self.handle_word_left(*shift),
+            Message::WordRight(shift) => self.handle_word_right(*shift),
             Message::CtrlHome => self.handle_ctrl_home(),
             Message::CtrlEnd => self.handle_ctrl_end(),
             Message::GotoPosition(line, col) => {
@@ -1720,6 +2405,8 @@ impl CodeEditor {
             Message::SelectNextOccurrence => {
                 self.handle_select_next_occurrence_msg()
             }
+            Message::MoveLineUp => self.handle_move_line_up(),
+            Message::MoveLineDown => self.handle_move_line_down(),
             Message::ToggleFold(header_line) => {
                 self.toggle_fold(*header_line);
                 Task::none()
@@ -1736,6 +2423,12 @@ impl CodeEditor {
                 self.unfold_all();
                 Task::none()
             }
+            Message::IndentLines => self.handle_indent_lines(),
+            Message::UnindentLines => self.handle_unindent_lines(),
+            Message::ToggleComment => self.handle_toggle_comment(),
+            Message::JoinLines => self.handle_join_lines(),
+            Message::DuplicateLineDown => self.handle_duplicate_line_down(),
+            Message::DuplicateLineUp => self.handle_duplicate_line_up(),
         }
     }
 }
@@ -1879,9 +2572,8 @@ mod tests {
         editor.cursors.primary_mut().position = (0, 5);
 
         let _ = editor.update(&Message::CharacterInput('X'));
-        // Current behavior: character is inserted at cursor, selection is NOT automatically deleted
-        // This is expected behavior - user must delete selection first (Backspace/Delete) or use Paste
-        assert_eq!(editor.buffer.line(0), "Xhello world");
+        // Selection "hello" is deleted, then 'X' is inserted at the selection start
+        assert_eq!(editor.buffer.line(0), "X world");
     }
 
     #[test]

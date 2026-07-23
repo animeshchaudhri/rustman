@@ -301,6 +301,8 @@ pub fn make_code_editor(content: &str, syntax: &str) -> CodeEditor {
     ed.set_theme(Palette::code_editor_style());
     ed.set_font(MONO);
     ed.set_font_size(12.0, true);
+    // Roomier than the auto 1.43x — JSON reads better with a bit of air.
+    ed.set_line_height(18.5);
     ed.set_indent_style(iced_code_editor::IndentStyle::Spaces(4));
     ed
 }

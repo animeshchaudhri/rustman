@@ -578,7 +578,7 @@ impl CodeEditor {
         start: (usize, usize),
         end: (usize, usize),
     ) {
-        let selection_color = Color { r: 0.3, g: 0.5, b: 0.8, a: 0.3 };
+        let selection_color = self.style.selection_color;
 
         if start.0 == end.0 {
             // Single line selection - need to handle wrapped segments
@@ -836,7 +836,7 @@ impl CodeEditor {
                             frame.fill_rectangle(
                                 Point::new(selection_x, cursor_y + 2.0),
                                 Size::new(selection_w, ctx.line_height - 4.0),
-                                Color { r: 0.3, g: 0.5, b: 0.8, a: 0.3 },
+                                self.style.selection_color,
                             );
                         }
                     }
@@ -1176,6 +1176,22 @@ impl CodeEditor {
             }
         }
 
+        // Handle Ctrl+/ (toggle comment) — outside folding block, always available.
+        if modifiers.command()
+            && matches!(key, keyboard::Key::Character(c) if c.as_str() == "/")
+        {
+            return Some(Action::publish(Message::ToggleComment).and_capture());
+        }
+
+        // Handle Ctrl+J (join lines) — only when folding is disabled (otherwise handled above).
+        if modifiers.command()
+            && !modifiers.shift()
+            && matches!(key, keyboard::Key::Character(c) if c.as_str() == "j")
+            && !self.folding_enabled
+        {
+            return Some(Action::publish(Message::JoinLines).and_capture());
+        }
+
         None
     }
 
@@ -1233,42 +1249,70 @@ impl CodeEditor {
         // These are only processed if text didn't contain a printable character
         let message = match key {
             keyboard::Key::Named(keyboard::key::Named::Backspace) => {
-                Some(Message::Backspace)
+                if modifiers.command() || modifiers.control() {
+                    Some(Message::DeleteWordBackward)
+                } else {
+                    Some(Message::Backspace)
+                }
             }
             keyboard::Key::Named(keyboard::key::Named::Delete) => {
-                Some(Message::Delete)
+                if modifiers.command() || modifiers.control() {
+                    Some(Message::DeleteWordForward)
+                } else {
+                    Some(Message::Delete)
+                }
             }
             keyboard::Key::Named(keyboard::key::Named::Enter) => {
                 Some(Message::Enter)
             }
             keyboard::Key::Named(keyboard::key::Named::Tab) => {
-                // Handle Tab for focus navigation or text insertion
-                // This implements focus event propagation and focus chain management
+                let has_sel = self.cursors.iter().any(|c| c.has_selection());
                 if modifiers.shift() {
-                    // Shift+Tab: focus navigation backward through widget hierarchy
-                    Some(Message::FocusNavigationShiftTab)
-                } else {
-                    // Regular Tab: check if search dialog is open
-                    if self.search_state.is_open {
-                        Some(Message::SearchDialogTab)
+                    if has_sel {
+                        Some(Message::UnindentLines)
                     } else {
-                        // Insert 4 spaces for Tab when not in search dialog
-                        Some(Message::Tab)
+                        Some(Message::FocusNavigationShiftTab)
                     }
+                } else if self.search_state.is_open {
+                    Some(Message::SearchDialogTab)
+                } else if has_sel {
+                    Some(Message::IndentLines)
+                } else {
+                    Some(Message::Tab)
                 }
             }
             keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
-                Some(Message::ArrowKey(ArrowDirection::Up, modifiers.shift()))
+                if modifiers.shift() && modifiers.alt() {
+                    Some(Message::DuplicateLineUp)
+                } else if modifiers.alt() {
+                    Some(Message::MoveLineUp)
+                } else {
+                    Some(Message::ArrowKey(ArrowDirection::Up, modifiers.shift()))
+                }
             }
             keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
-                Some(Message::ArrowKey(ArrowDirection::Down, modifiers.shift()))
+                if modifiers.shift() && modifiers.alt() {
+                    Some(Message::DuplicateLineDown)
+                } else if modifiers.alt() {
+                    Some(Message::MoveLineDown)
+                } else {
+                    Some(Message::ArrowKey(ArrowDirection::Down, modifiers.shift()))
+                }
             }
             keyboard::Key::Named(keyboard::key::Named::ArrowLeft) => {
-                Some(Message::ArrowKey(ArrowDirection::Left, modifiers.shift()))
+                if modifiers.command() || modifiers.control() {
+                    Some(Message::WordLeft(modifiers.shift()))
+                } else {
+                    Some(Message::ArrowKey(ArrowDirection::Left, modifiers.shift()))
+                }
             }
-            keyboard::Key::Named(keyboard::key::Named::ArrowRight) => Some(
-                Message::ArrowKey(ArrowDirection::Right, modifiers.shift()),
-            ),
+            keyboard::Key::Named(keyboard::key::Named::ArrowRight) => {
+                if modifiers.command() || modifiers.control() {
+                    Some(Message::WordRight(modifiers.shift()))
+                } else {
+                    Some(Message::ArrowKey(ArrowDirection::Right, modifiers.shift()))
+                }
+            }
             keyboard::Key::Named(keyboard::key::Named::PageUp) => {
                 Some(Message::PageUp)
             }
@@ -1705,9 +1749,20 @@ impl canvas::Program<Message> for CodeEditor {
                     }
                 });
                 let theme_set = THEME_SET.get_or_init(ThemeSet::load_defaults);
-                let syntax_theme = theme_set
-                    .themes
-                    .get("base16-ocean.dark")
+                // Pick a syntax theme whose tone matches the editor background:
+                // dark syntax colors on a light editor (or vice versa) are unreadable.
+                let bg = self.style.background;
+                let bg_is_dark = bg.r * 0.299 + bg.g * 0.587 + bg.b * 0.114 < 0.5;
+                let preferred: &[&str] = if let Some(name) = &self.style.syntax_theme_name {
+                    &[name]
+                } else if bg_is_dark {
+                    &["base16-mocha.dark", "base16-ocean.dark", "Solarized (dark)"]
+                } else {
+                    &["InspiredGitHub", "Solarized (light)"]
+                };
+                let syntax_theme = preferred
+                    .iter()
+                    .find_map(|name| theme_set.themes.get(*name))
                     .or_else(|| theme_set.themes.values().next());
 
                 // Normalize common language aliases/extensions used by consumers.
@@ -1718,7 +1773,7 @@ impl canvas::Program<Message> for CodeEditor {
                     "htm" => syntax_set.find_syntax_by_extension("html"),
                     "svg" => syntax_set.find_syntax_by_extension("xml"),
                     "markdown" => syntax_set.find_syntax_by_extension("md"),
-                    "text" => Some(syntax_set.find_syntax_plain_text()),
+                    "text" | "txt" => Some(syntax_set.find_syntax_plain_text()),
                     _ => syntax_set
                         .find_syntax_by_extension(self.syntax.as_str()),
                 }

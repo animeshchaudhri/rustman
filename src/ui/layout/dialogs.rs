@@ -13,7 +13,8 @@ pub(super) fn save_dialog(state: &AppState) -> Element<'_, Message> {
     let name_input = text_input("Request name", &state.save_dialog_name)
         .on_input(|s| Message::SaveDialog(SaveDialogMsg::NameChanged(s)))
         .size(13)
-        .padding([8, 10]);
+        .padding([8, 10])
+        .style(crate::ui::styles::field_input);
 
     let mut col_col = column![text("Collection").size(11).color(Palette::text_muted())].spacing(4);
 
@@ -39,6 +40,7 @@ pub(super) fn save_dialog(state: &AppState) -> Element<'_, Message> {
                 .on_input(|s| Message::SaveDialog(SaveDialogMsg::NewCollectionNameChanged(s)))
                 .size(12)
                 .padding([6, 10])
+                .style(crate::ui::styles::field_input)
                 .into(),
         )
     } else {
@@ -346,11 +348,11 @@ fn modal_overlay<'a>(inner: impl Into<Element<'a, Message>>) -> Element<'a, Mess
 fn modal_card_style(_theme: &iced::Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: Some(Background::Color(Palette::surface())),
-        border: Border { color: Palette::border(), width: 1.0, radius: 10.0.into() },
+        border: Border { color: Palette::border(), width: 1.0, radius: 14.0.into() },
         shadow: iced::Shadow {
             color: Color { r: 0.0, g: 0.0, b: 0.0, a: 0.7 },
-            offset: iced::Vector::new(0.0, 8.0),
-            blur_radius: 32.0,
+            offset: iced::Vector::new(0.0, 12.0),
+            blur_radius: 48.0,
         },
         ..Default::default()
     }
@@ -366,7 +368,12 @@ fn danger_btn_style(_t: &iced::Theme, s: iced::widget::button::Status) -> iced::
     iced::widget::button::Style {
         background: Some(Background::Color(bg)),
         text_color: Color::WHITE,
-        border: Border { radius: 6.0.into(), ..Default::default() },
+        border: Border { radius: 8.0.into(), ..Default::default() },
+        shadow: iced::Shadow {
+            color: Color { a: 0.30, ..base },
+            offset: iced::Vector::new(0.0, 2.0),
+            blur_radius: 10.0,
+        },
         ..Default::default()
     }
 }
@@ -374,14 +381,19 @@ fn danger_btn_style(_t: &iced::Theme, s: iced::widget::button::Status) -> iced::
 fn accent_btn_style(_t: &iced::Theme, s: iced::widget::button::Status) -> iced::widget::button::Style {
     let accent = Palette::accent();
     let bg = if matches!(s, iced::widget::button::Status::Hovered) {
-        Color { r: (accent.r + 0.06).min(1.0), g: (accent.g + 0.06).min(1.0), b: (accent.b + 0.04).min(1.0), a: 1.0 }
+        Palette::accent_hover()
     } else {
         accent
     };
     iced::widget::button::Style {
         background: Some(Background::Color(bg)),
         text_color: Color::WHITE,
-        border: Border { radius: 6.0.into(), ..Default::default() },
+        border: Border { radius: 8.0.into(), ..Default::default() },
+        shadow: iced::Shadow {
+            color: Color { a: 0.30, ..accent },
+            offset: iced::Vector::new(0.0, 2.0),
+            blur_radius: 10.0,
+        },
         ..Default::default()
     }
 }

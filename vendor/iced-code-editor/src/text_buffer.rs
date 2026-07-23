@@ -198,6 +198,14 @@ impl TextBuffer {
         self.lines.join("\n")
     }
 
+    /// Swaps the content of two lines.
+    pub fn swap_lines(&mut self, a: usize, b: usize) {
+        if a >= self.lines.len() || b >= self.lines.len() || a == b {
+            return;
+        }
+        self.lines.swap(a, b);
+    }
+
     /// Returns the character count of a specific line.
     ///
     /// # Arguments
