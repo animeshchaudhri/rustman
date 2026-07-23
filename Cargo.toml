@@ -1,6 +1,6 @@
 [package]
 name = "rustman"
-version = "0.3.9"
+version = "0.3.10"
 edition = "2024"
 description = "Rustman — pure-Rust native API testing tool built with iced"
 authors = ["animeshchaudhri"]

@@ -1773,7 +1773,7 @@ impl canvas::Program<Message> for CodeEditor {
                     "htm" => syntax_set.find_syntax_by_extension("html"),
                     "svg" => syntax_set.find_syntax_by_extension("xml"),
                     "markdown" => syntax_set.find_syntax_by_extension("md"),
-                    "text" => Some(syntax_set.find_syntax_plain_text()),
+                    "text" | "txt" => Some(syntax_set.find_syntax_plain_text()),
                     _ => syntax_set
                         .find_syntax_by_extension(self.syntax.as_str()),
                 }

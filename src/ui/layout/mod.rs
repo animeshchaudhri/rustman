@@ -176,13 +176,12 @@ fn main_area(state: &AppState) -> Element<'_, Message> {
         RequestTab::WebSocket => request::websocket::view(active_tab),
     };
 
-    let req_split  = state.panel_split as u16;
-    let resp_split = (10 - state.panel_split).max(1) as u16;
+    let req_split  = state.panel_split;
+    let resp_split = (100 - state.panel_split).max(1);
 
     let request_panel = container(
         column![req_tabs, req_body].spacing(0).height(Length::Fill),
     )
-    .height(Length::FillPortion(req_split))
     .style(surface_content_style)
     .width(Length::Fill);
 
@@ -203,8 +202,9 @@ fn main_area(state: &AppState) -> Element<'_, Message> {
             .height(Length::Fill),
     )
     .style(surface_style)
-    .height(Length::FillPortion(resp_split))
     .width(Length::Fill);
+
+    let splitter = |s| Message::Layout(crate::message::LayoutMsg::PanelSplitChanged(s));
 
     let middle: Element<Message> = if active_tab.is_websocket() {
         container(request::websocket::view(active_tab))
@@ -212,11 +212,28 @@ fn main_area(state: &AppState) -> Element<'_, Message> {
             .width(Length::Fill)
             .height(Length::Fill)
             .into()
+    } else if state.horizontal_layout {
+        row![
+            request_panel.width(Length::FillPortion(req_split)),
+            crate::ui::widgets::panel_splitter::panel_splitter(
+                state.panel_split,
+                crate::ui::widgets::panel_splitter::Orientation::Vertical,
+                splitter,
+            ),
+            response_panel.width(Length::FillPortion(resp_split)),
+        ]
+        .spacing(0)
+        .height(Length::Fill)
+        .into()
     } else {
         column![
-            request_panel,
-            iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider),
-            response_panel,
+            request_panel.height(Length::FillPortion(req_split)),
+            crate::ui::widgets::panel_splitter::panel_splitter(
+                state.panel_split,
+                crate::ui::widgets::panel_splitter::Orientation::Horizontal,
+                splitter,
+            ),
+            response_panel.height(Length::FillPortion(resp_split)),
         ]
         .spacing(0)
         .height(Length::Fill)

@@ -1302,7 +1302,87 @@ impl CodeEditor {
     // Search and Replace Handlers
     // =========================================================================
 
+    /// Extracts the text from the primary cursor's selection, if any.
+    fn selected_text(&self) -> Option<String> {
+        let primary = self.cursors.primary();
+        let (start, end) = primary.selection_range()?;
+        if start == end {
+            return None;
+        }
+        if start.0 == end.0 {
+            let line = self.buffer.line(start.0);
+            let chars: Vec<char> = line.chars().collect();
+            let text: String = chars[start.1..end.1.min(chars.len())].iter().collect();
+            Some(text)
+        } else {
+            let mut text = String::new();
+            let first_line = self.buffer.line(start.0);
+            let first_chars: Vec<char> = first_line.chars().collect();
+            text.extend(&first_chars[start.1..]);
+            text.push('\n');
+            for line_idx in (start.0 + 1)..end.0 {
+                text.push_str(self.buffer.line(line_idx));
+                text.push('\n');
+            }
+            let last_line = self.buffer.line(end.0);
+            let last_chars: Vec<char> = last_line.chars().collect();
+            text.extend(&last_chars[..end.1.min(last_chars.len())]);
+            Some(text)
+        }
+    }
+
+    /// Returns the word (contiguous alphanumeric / underscore chars) under
+    /// the primary cursor position, or `None` when the cursor sits on
+    /// non-word characters or whitespace.
+    fn word_at_cursor(&self) -> Option<String> {
+        let pos = self.cursors.primary_position();
+        let line = self.buffer.line(pos.0);
+        let chars: Vec<char> = line.chars().collect();
+        if chars.is_empty() || pos.1 >= chars.len() {
+            return None;
+        }
+        if !chars[pos.1].is_alphanumeric() && chars[pos.1] != '_' {
+            return None;
+        }
+        let mut start = pos.1;
+        while start > 0 {
+            let c = chars[start - 1];
+            if c.is_alphanumeric() || c == '_' {
+                start -= 1;
+            } else {
+                break;
+            }
+        }
+        let mut end = pos.1;
+        while end < chars.len() {
+            let c = chars[end];
+            if c.is_alphanumeric() || c == '_' {
+                end += 1;
+            } else {
+                break;
+            }
+        }
+        Some(chars[start..end].iter().collect())
+    }
+
+    /// Auto-fills the search query from selection or word under cursor.
+    fn fill_search_query_from_context(&mut self) {
+        let query = self
+            .selected_text()
+            .or_else(|| self.word_at_cursor())
+            .and_then(|t| {
+                let first = t.lines().next().unwrap_or("").to_string();
+                if first.is_empty() { None } else { Some(first) }
+            });
+        if let Some(q) = query {
+            self.search_state.set_query(q, &self.buffer);
+        }
+    }
+
     /// Handles opening the search dialog.
+    ///
+    /// If text is selected, auto-fills the search query with the selection.
+    /// Otherwise, uses the word under the cursor.
     ///
     /// # Returns
     ///
@@ -1310,8 +1390,8 @@ impl CodeEditor {
     fn handle_open_search_msg(&mut self) -> Task<Message> {
         self.search_state.open_search();
         self.overlay_cache.clear();
+        self.fill_search_query_from_context();
 
-        // Focus the search input and select all text if any
         Task::batch([
             focus(self.search_state.search_input_id.clone()),
             select_all(self.search_state.search_input_id.clone()),
@@ -1320,14 +1400,17 @@ impl CodeEditor {
 
     /// Handles opening the search and replace dialog.
     ///
+    /// If text is selected, auto-fills the search query with the selection.
+    /// Otherwise, uses the word under the cursor.
+    ///
     /// # Returns
     ///
     /// A `Task<Message>` that focuses and selects all in the search input
     fn handle_open_search_replace_msg(&mut self) -> Task<Message> {
         self.search_state.open_replace();
         self.overlay_cache.clear();
+        self.fill_search_query_from_context();
 
-        // Focus the search input and select all text if any
         Task::batch([
             focus(self.search_state.search_input_id.clone()),
             select_all(self.search_state.search_input_id.clone()),

@@ -162,7 +162,8 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
             .map(|i| i.email)
             .unwrap_or_default(),
         theme_idx,
-        panel_split: 5,
+        panel_split: 50,
+        horizontal_layout: false,
         ui_scale: 1.0,
         update: crate::app::UpdateState::Idle,
     };
