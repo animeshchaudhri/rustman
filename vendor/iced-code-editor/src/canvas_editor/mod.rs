@@ -371,6 +371,18 @@ pub enum Message {
     CtrlHome,
     /// Ctrl+End pressed (move to end of document)
     CtrlEnd,
+    /// Ctrl+Left pressed (move to previous word boundary, shift extends selection)
+    WordLeft(bool),
+    /// Ctrl+Right pressed (move to next word boundary, shift extends selection)
+    WordRight(bool),
+    /// Ctrl+Backspace pressed (delete word before the cursor)
+    DeleteWordBackward,
+    /// Ctrl+Delete pressed (delete word after the cursor)
+    DeleteWordForward,
+    /// Alt+Up pressed (move the current line(s) up)
+    MoveLineUp,
+    /// Alt+Down pressed (move the current line(s) down)
+    MoveLineDown,
     /// Go to an explicit logical position (line, column), both 0-based.
     GotoPosition(usize, usize),
     /// Viewport scrolled - track scroll position
@@ -441,6 +453,18 @@ pub enum Message {
     FoldAll,
     /// Unfold every collapsed block in the buffer.
     UnfoldAll,
+    /// Tab pressed with a selection — indent selected lines.
+    IndentLines,
+    /// Shift+Tab pressed with a selection — unindent selected lines.
+    UnindentLines,
+    /// Toggle line comment on current line(s) (Ctrl+/)
+    ToggleComment,
+    /// Join current line with the next line (Ctrl+J)
+    JoinLines,
+    /// Shift+Alt+Down — duplicate current line(s) downward.
+    DuplicateLineDown,
+    /// Shift+Alt+Up — duplicate current line(s) upward.
+    DuplicateLineUp,
 }
 
 /// Indentation style used when pressing the Tab key.

@@ -15,7 +15,6 @@ pub const TEXT_XS: f32 = 10.0; // timestamps, hashes, meta
 pub const TEXT_SM: f32 = 12.0; // secondary labels, buttons, table cells
 pub const TEXT_MD: f32 = 13.0; // primary body text
 pub const TEXT_LG: f32 = 15.0; // section/card headers
-pub const TEXT_XL: f32 = 19.0; // panel titles, empty-state headlines
 
 static THEME_IDX: AtomicUsize = AtomicUsize::new(0);
 
@@ -36,9 +35,30 @@ pub struct ThemeSpec {
     pub accent: Color,
     pub hover: Color,
     pub chrome: Color,
+    /// Preferred syntect syntax highlighting theme name.
+    /// If `None`, auto-selects based on background brightness.
+    pub syntax_theme: Option<&'static str>,
 }
 
 pub const THEMES: &[ThemeSpec] = &[
+    ThemeSpec {
+        name: "Violet",
+        dark: true,
+        background: Color::from_rgb(0.047, 0.051, 0.078),
+        surface: Color::from_rgb(0.082, 0.090, 0.133),
+        surface_high: Color::from_rgb(0.114, 0.125, 0.180),
+        surface_raised: Color::from_rgb(0.149, 0.161, 0.227),
+        row_odd: Color::from_rgb(0.066, 0.071, 0.106),
+        border: Color::from_rgb(0.243, 0.263, 0.353),
+        border_subtle: Color::from_rgb(0.145, 0.157, 0.227),
+        text: Color::from_rgb(0.953, 0.957, 0.984),
+        text_muted: Color::from_rgb(0.608, 0.635, 0.722),
+        text_subtle: Color::from_rgb(0.408, 0.435, 0.533),
+        accent: Color::from_rgb(0.541, 0.478, 1.000),
+        hover: Color::from_rgb(0.102, 0.110, 0.161),
+        chrome: Color::from_rgb(0.031, 0.035, 0.055),
+        syntax_theme: Some("base16-mocha.dark"),
+    },
     ThemeSpec {
         name: "Amber",
         dark: true,
@@ -55,9 +75,10 @@ pub const THEMES: &[ThemeSpec] = &[
         accent: Color::from_rgb(0.988, 0.580, 0.110),
         hover: Color::from_rgb(0.145, 0.135, 0.125),
         chrome: Color::from_rgb(0.050, 0.047, 0.043),
+        syntax_theme: Some("base16-mocha.dark"),
     },
     ThemeSpec {
-        name: "Violet",
+        name: "Midnight",
         dark: true,
         background: Color::from_rgb(0.055, 0.059, 0.072),
         surface: Color::from_rgb(0.095, 0.101, 0.123),
@@ -72,6 +93,7 @@ pub const THEMES: &[ThemeSpec] = &[
         accent: Color::from_rgb(0.557, 0.420, 0.965),
         hover: Color::from_rgb(0.125, 0.133, 0.160),
         chrome: Color::from_rgb(0.040, 0.043, 0.053),
+        syntax_theme: Some("base16-mocha.dark"),
     },
     ThemeSpec {
         name: "Nord",
@@ -89,6 +111,7 @@ pub const THEMES: &[ThemeSpec] = &[
         accent: Color::from_rgb(0.533, 0.753, 0.816),
         hover: Color::from_rgb(0.200, 0.224, 0.263),
         chrome: Color::from_rgb(0.122, 0.137, 0.163),
+        syntax_theme: Some("base16-mocha.dark"),
     },
     ThemeSpec {
         name: "Dracula",
@@ -106,6 +129,7 @@ pub const THEMES: &[ThemeSpec] = &[
         accent: Color::from_rgb(1.000, 0.475, 0.776),
         hover: Color::from_rgb(0.220, 0.230, 0.290),
         chrome: Color::from_rgb(0.125, 0.133, 0.173),
+        syntax_theme: Some("base16-mocha.dark"),
     },
     ThemeSpec {
         name: "Solarized",
@@ -123,6 +147,7 @@ pub const THEMES: &[ThemeSpec] = &[
         accent: Color::from_rgb(0.149, 0.545, 0.824),
         hover: Color::from_rgb(0.055, 0.230, 0.275),
         chrome: Color::from_rgb(0.000, 0.130, 0.165),
+        syntax_theme: Some("Solarized (dark)"),
     },
     ThemeSpec {
         name: "Light",
@@ -140,10 +165,9 @@ pub const THEMES: &[ThemeSpec] = &[
         accent: Color::from_rgb(0.557, 0.420, 0.965),
         hover: Color::from_rgb(0.939, 0.950, 0.969),
         chrome: Color::from_rgb(0.925, 0.940, 0.963),
+        syntax_theme: Some("InspiredGitHub"),
     },
 ];
-
-pub const SHADOW_LIGHT: Color = Color { r: 0.0, g: 0.0, b: 0.0, a: 0.14 };
 
 pub fn thin_scrollbar(
     _theme: &iced::Theme,
@@ -262,15 +286,21 @@ impl Palette {
     pub fn text_muted() -> Color { Self::current().text_muted }
     pub fn text_subtle() -> Color { Self::current().text_subtle }
     pub fn accent() -> Color { Self::current().accent }
+    /// Accent lightened for hover states on filled buttons.
+    pub fn accent_hover() -> Color {
+        let a = Self::accent();
+        Color {
+            r: (a.r + (1.0 - a.r) * 0.14).min(1.0),
+            g: (a.g + (1.0 - a.g) * 0.14).min(1.0),
+            b: a.b,
+            a: 1.0,
+        }
+    }
     pub fn hover() -> Color { Self::current().hover }
     /// Recessed chrome (icon rail, tab strip) — deliberately a step darker
     /// than `background` so it reads as a distinct bar, not the same void.
     pub fn chrome() -> Color { Self::current().chrome }
 
-    pub fn accent_dim() -> Color {
-        let a = Self::accent();
-        Color { r: a.r * 0.62, g: a.g * 0.62, b: a.b * 0.63, a: 1.0 }
-    }
     pub fn accent_soft() -> Color {
         let a = Self::accent();
         Self::soft(a)
@@ -305,15 +335,18 @@ impl Palette {
     /// Code-editor style from Palette — makes editor bg match all other panels.
     pub fn code_editor_style() -> iced_code_editor::Style {
         let accent = Self::accent();
+        let t = Self::current();
         iced_code_editor::Style {
             background: Self::surface(),
             text_color: Self::text(),
-            gutter_background: Self::background(),
+            gutter_background: Self::surface(),
             gutter_border: Self::border_subtle(),
             line_number_color: Self::text_subtle(),
             scrollbar_background: Color::TRANSPARENT,
-            scroller_color: Color { r: Self::text_subtle().r, g: Self::text_subtle().g, b: Self::text_subtle().b, a: 0.4 },
-            current_line_highlight: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.08 },
+            scroller_color: Color { r: Self::text_subtle().r, g: Self::text_subtle().g, b: Self::text_subtle().b, a: 0.5 },
+            current_line_highlight: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.10 },
+            selection_color: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.28 },
+            syntax_theme_name: t.syntax_theme,
         }
     }
 }

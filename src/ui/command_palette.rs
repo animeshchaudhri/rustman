@@ -10,10 +10,25 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         .id("palette-search")
         .on_input(|s| Message::Palette(PaletteMsg::QueryChanged(s)))
         .size(14)
-        .padding([10, 14])
-        .width(Length::Fill);
+        .padding([12, 10])
+        .width(Length::Fill)
+        .style(|_t, _s| iced::widget::text_input::Style {
+            background: Background::Color(Color::TRANSPARENT),
+            border: Border { color: Color::TRANSPARENT, width: 0.0, radius: 0.0.into() },
+            icon: Palette::text_muted(),
+            placeholder: Palette::text_subtle(),
+            value: Palette::text(),
+            selection: Color { a: 0.3, ..Palette::accent() },
+        });
 
-    let mut list = column![].spacing(0);
+    let search_row = row![
+        container(crate::ui::icons::search().size(15).color(Palette::text_subtle()))
+            .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 14.0 }),
+        search_input,
+    ]
+    .align_y(iced::Alignment::Center);
+
+    let mut list = column![].spacing(2);
     for (i, item) in items(state).into_iter().enumerate() {
         let selected = i == state.palette_selected;
         let method_color = method_color(&item.method);
@@ -33,7 +48,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             ]
             .spacing(8)
             .align_y(iced::Alignment::Center)
-            .padding([6u16, 12u16]),
+            .padding([7u16, 12u16]),
         )
         .on_press(Message::Palette(PaletteMsg::ConfirmAt(i)))
         .style(move |t, s| palette_row_style(t, s, selected))
@@ -42,9 +57,9 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     }
 
     let inner = column![
-        search_input,
+        container(search_row).padding([4, 0]),
         container(iced::widget::rule::horizontal(1.0).style(crate::ui::styles::divider)).padding([0, 0]),
-        scrollable(list).height(Length::Shrink),
+        container(scrollable(list).height(Length::Shrink)).padding(6),
     ]
     .spacing(0)
     .width(620);
@@ -162,12 +177,12 @@ fn palette_container(_theme: &iced::Theme) -> iced::widget::container::Style {
         border: Border {
             color: Palette::border(),
             width: 1.0,
-            radius: 10.0.into(),
+            radius: 12.0.into(),
         },
         shadow: iced::Shadow {
             color: Color { r: 0.0, g: 0.0, b: 0.0, a: 0.6 },
-            offset: iced::Vector::new(0.0, 8.0),
-            blur_radius: 32.0,
+            offset: iced::Vector::new(0.0, 10.0),
+            blur_radius: 40.0,
         },
         ..Default::default()
     }
@@ -178,15 +193,21 @@ fn palette_row_style(
     status: iced::widget::button::Status,
     selected: bool,
 ) -> iced::widget::button::Style {
-    let bg = if selected || matches!(status, iced::widget::button::Status::Hovered) {
-        Some(Background::Color(Palette::surface_high()))
+    let bg = if selected {
+        Some(Background::Color(Palette::accent_soft()))
+    } else if matches!(status, iced::widget::button::Status::Hovered) {
+        Some(Background::Color(Palette::hover()))
     } else {
         None
     };
     iced::widget::button::Style {
         background: bg,
         text_color: Palette::text(),
-        border: Border::default(),
+        border: Border {
+            color: if selected { Color { a: 0.30, ..Palette::accent() } } else { Color::TRANSPARENT },
+            width: if selected { 1.0 } else { 0.0 },
+            radius: 8.0.into(),
+        },
         ..Default::default()
     }
 }

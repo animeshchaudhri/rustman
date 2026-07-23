@@ -36,6 +36,11 @@ pub fn icon_btn_style(
             None
         },
         text_color: Palette::text(),
+        border: Border {
+            color: if active { Color { a: 0.30, ..Palette::accent() } } else { Color::TRANSPARENT },
+            width: if active { 1.0 } else { 0.0 },
+            radius: 10.0.into(),
+        },
         ..Default::default()
     }
 }
@@ -68,30 +73,6 @@ pub fn tab_bar_container(_theme: &iced::Theme) -> iced::widget::container::Style
             color: Palette::border_subtle(),
             width: 1.0,
             radius: 0.0.into(),
-        },
-        ..Default::default()
-    }
-}
-
-pub fn tab_container_style(_theme: &iced::Theme, active: bool, dragging: bool) -> iced::widget::container::Style {
-    iced::widget::container::Style {
-        background: if dragging {
-            Some(Background::Color(Palette::accent_soft()))
-        } else if active {
-            Some(Background::Color(Palette::surface()))
-        } else {
-            None
-        },
-        border: Border {
-            color: if dragging || active { Palette::accent() } else { Color::TRANSPARENT },
-            width: if dragging || active { 1.0 } else { 0.0 },
-            radius: 8.0.into(),
-        },
-        shadow: if active || dragging {
-            let accent = Palette::accent();
-            Shadow { color: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.3 }, offset: iced::Vector::new(0.0, 0.0), blur_radius: 10.0 }
-        } else {
-            Shadow::default()
         },
         ..Default::default()
     }

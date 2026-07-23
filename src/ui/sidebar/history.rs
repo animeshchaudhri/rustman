@@ -33,7 +33,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             .into();
     }
 
-    let mut col = column![header].spacing(0);
+    let mut col = column![header].spacing(2);
 
     for entry in &state.history {
         let method_color = method_color(&entry.method);
@@ -53,13 +53,15 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                 .spacing(6)
                 .align_y(iced::Alignment::Center),
                 row![
+                    status_dot(status_color),
                     text(status_str).size(10).color(status_color),
                     text(dur_str).size(10).color(Palette::text_muted()),
                     text(ts).size(10).color(Palette::text_muted()),
                 ]
-                .spacing(8),
+                .spacing(8)
+                .align_y(iced::Alignment::Center),
             ]
-            .spacing(2),
+            .spacing(3),
         )
         .on_press(Message::Sidebar(SidebarMsg::HistoryEntryOpened(entry.clone())))
         .style(|_t, status| {
@@ -67,18 +69,29 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             iced::widget::button::Style {
                 background: if hovered { Some(iced::Background::Color(Palette::hover())) } else { None },
                 text_color: Palette::text(),
+                border: iced::Border { radius: 6.0.into(), ..Default::default() },
                 ..Default::default()
             }
         })
         .width(Length::Fill)
         .padding([6, 8]);
 
-        col = col.push(item);
+        col = col.push(container(item).padding(iced::Padding { top: 0.0, right: 6.0, bottom: 0.0, left: 6.0 }));
     }
 
     scrollable(col)
         .height(Length::Fill)
         .style(crate::ui::theme::thin_scrollbar)
+        .into()
+}
+
+fn status_dot(color: iced::Color) -> Element<'static, Message> {
+    container(iced::widget::Space::new().width(6).height(6))
+        .style(move |_| container::Style {
+            background: Some(iced::Background::Color(color)),
+            border: iced::Border { radius: 3.0.into(), ..Default::default() },
+            ..Default::default()
+        })
         .into()
 }
 

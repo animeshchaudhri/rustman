@@ -23,7 +23,7 @@ pub fn cell_input(
                 _ => Color::TRANSPARENT,
             },
             width: 1.0,
-            radius: 4.0.into(),
+            radius: 6.0.into(),
         },
         icon: Palette::text_muted(),
         placeholder: Palette::text_subtle(),
@@ -47,12 +47,57 @@ pub fn field_input(
                 _ => Palette::border_subtle(),
             },
             width: 1.0,
-            radius: 4.0.into(),
+            radius: 8.0.into(),
         },
         icon: Palette::text_muted(),
         placeholder: Palette::text_subtle(),
         value: Palette::text(),
         selection: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.25 },
+    }
+}
+
+// ── Checkbox ────────────────────────────────────────────────────────────────────
+
+/// Accent checkbox matching the app palette (params/headers rows).
+pub fn checkbox(
+    _theme: &iced::Theme,
+    status: iced::widget::checkbox::Status,
+) -> iced::widget::checkbox::Style {
+    use iced::widget::checkbox::Status;
+    let (background, border_color) = match status {
+        Status::Active { is_checked: true } | Status::Hovered { is_checked: true } => {
+            (Background::Color(Palette::accent()), Palette::accent())
+        }
+        Status::Active { .. } => (Background::Color(Palette::surface_high()), Palette::border()),
+        Status::Hovered { .. } => (Background::Color(Palette::surface_raised()), Palette::border()),
+        Status::Disabled { is_checked: true } => (Background::Color(Palette::surface_raised()), Palette::border_subtle()),
+        Status::Disabled { .. } => (Background::Color(Palette::surface()), Palette::border_subtle()),
+    };
+    iced::widget::checkbox::Style {
+        background,
+        icon_color: Color::WHITE,
+        border: Border { color: border_color, width: 1.0, radius: 4.0.into() },
+        text_color: None,
+    }
+}
+
+// ── Pick list ───────────────────────────────────────────────────────────────────
+
+/// Matches `field_input` so dropdowns and text fields look like one family.
+pub fn pick_list(
+    _theme: &iced::Theme,
+    _status: iced::widget::pick_list::Status,
+) -> iced::widget::pick_list::Style {
+    iced::widget::pick_list::Style {
+        text_color: Palette::text(),
+        placeholder_color: Palette::text_subtle(),
+        handle_color: Palette::text_muted(),
+        background: Background::Color(Palette::surface_high()),
+        border: Border {
+            color: Palette::border_subtle(),
+            width: 1.0,
+            radius: 8.0.into(),
+        },
     }
 }
 

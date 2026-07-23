@@ -1,13 +1,13 @@
 use iced::{
     widget::{button, container, pick_list, row, text, text_input, Space},
-    Background, Border, Color, Element, Length, Shadow, Vector,
+    Alignment, Background, Border, Color, Element, Length, Shadow, Vector,
 };
 
 use crate::{
     domain::{environment::substitute, request::HttpMethod},
     message::{Message, RequestMsg},
     state::tabs::RequestTabState,
-    ui::{theme::{Palette, TEXT_MD}, icons},
+    ui::{theme::{Palette, TEXT_MD, TEXT_SM}, icons},
 };
 
 
@@ -16,6 +16,8 @@ pub fn view<'a>(tab: &'a RequestTabState, env: Option<&'a crate::domain::environ
 
     let color = method_color(&tab.method);
 
+    // The method picker lives *inside* the URL pill — no border of its own,
+    // just a divider between it and the input.
     let method_picker = pick_list(
         methods,
         Some(tab.method.as_str()),
@@ -28,11 +30,11 @@ pub fn view<'a>(tab: &'a RequestTabState, env: Option<&'a crate::domain::environ
         text_color: color,
         placeholder_color: Palette::text_subtle(),
         handle_color: Palette::text_muted(),
-        background: Background::Color(Palette::surface_high()),
-        border: Border { color: Palette::border(), width: 1.0, radius: 6.0.into() },
+        background: Background::Color(Color::TRANSPARENT),
+        border: Border { color: Color::TRANSPARENT, width: 0.0, radius: 0.0.into() },
     });
 
-    let url_bar = text_input(
+    let url_input = text_input(
         "https://api.example.com/path  —  or paste a cURL command",
         &tab.url,
     )
@@ -51,44 +53,53 @@ pub fn view<'a>(tab: &'a RequestTabState, env: Option<&'a crate::domain::environ
     .width(Length::Fill)
     .style(url_input_style);
 
+    let inner_divider = container(Space::new().width(1).height(24))
+        .style(|_| iced::widget::container::Style {
+            background: Some(Background::Color(Palette::border())),
+            ..Default::default()
+        });
+
+    // One rounded pill holding method + URL — the app's hero input.
+    let url_pill = container(
+        row![method_picker, inner_divider, url_input].align_y(Alignment::Center),
+    )
+    .style(url_pill_style)
+    .width(Length::Fill);
+
     let curl_btn = button(icons::curl().size(11).color(Palette::text_subtle()))
         .on_press(Message::Request(RequestMsg::ExportCurl))
         .style(iced::widget::button::text)
         .padding([5, 6]);
-
-  
 
     let ws_mode = tab.is_websocket();
 
     let action_btn: Element<Message> = if ws_mode {
         ws_action_button(tab)
     } else if tab.is_loading {
-        button(row![text("Abort").size(12)].align_y(iced::Alignment::Center).spacing(4))
-            .on_press(Message::Request(RequestMsg::Abort))
-            .style(abort_button)
-            .padding([8, 18])
-            .into()
+        button(
+            row![text("Abort").size(TEXT_SM)]
+                .align_y(Alignment::Center)
+                .spacing(4),
+        )
+        .on_press(Message::Request(RequestMsg::Abort))
+        .style(abort_button)
+        .padding([8, 18])
+        .into()
     } else {
-        button(row![text("Send").size(TEXT_MD)].align_y(iced::Alignment::Center).spacing(4))
+        button(text("Send").size(TEXT_MD).color(Color::WHITE))
             .on_press(Message::Request(RequestMsg::Send))
             .style(send_button)
             .padding([8, 20])
             .into()
     };
 
-    let mut bar = row![].spacing(6).align_y(iced::Alignment::Center).padding([6, 10]);
+    let mut bar = row![].spacing(6).align_y(Alignment::Center).padding([6, 10]);
     if ws_mode {
         bar = bar.push(ws_badge());
-    } else {
-        bar = bar.push(method_picker);
     }
-    bar = bar.push(url_bar).push(action_btn);
+    bar = bar.push(url_pill).push(action_btn);
     if !ws_mode {
         bar = bar.push(curl_btn);
-    }
-
-    if !ws_mode {
-        bar = bar.padding(iced::Padding { top: 8.0, right: 10.0, bottom: 8.0, left: 10.0 });
     }
 
     let expanded = (!ws_mode && env.is_some() && tab.url.contains("{{"))
@@ -124,15 +135,18 @@ pub fn view<'a>(tab: &'a RequestTabState, env: Option<&'a crate::domain::environ
 
 fn ws_action_button(tab: &RequestTabState) -> Element<'static, Message> {
     if tab.ws.connected {
-        button(text("Disconnect").size(12))
+        button(text("Disconnect").size(12).color(Color::WHITE))
             .on_press(Message::Request(RequestMsg::WsDisconnect))
             .style(abort_button)
             .padding([5, 14])
             .into()
     } else if tab.ws.connecting {
-        button(text("Connecting…").size(12)).style(send_button).padding([5, 14]).into()
+        button(text("Connecting…").size(12).color(Color::WHITE))
+            .style(send_button)
+            .padding([5, 14])
+            .into()
     } else {
-        button(text("Connect").size(12))
+        button(text("Connect").size(12).color(Color::WHITE))
             .on_press(Message::Request(RequestMsg::WsConnect))
             .style(send_button)
             .padding([5, 14])
@@ -162,26 +176,32 @@ fn method_color(method: &HttpMethod) -> Color {
     }
 }
 
+/// The URL input itself is invisible inside the pill — the pill owns the border.
 fn url_input_style(
     _theme: &iced::Theme,
-    status: iced::widget::text_input::Status,
+    _status: iced::widget::text_input::Status,
 ) -> iced::widget::text_input::Style {
     let accent = Palette::accent();
     iced::widget::text_input::Style {
-        background: Background::Color(Palette::surface_high()),
-        border: Border {
-            color: match status {
-                iced::widget::text_input::Status::Focused { .. } => accent,
-                iced::widget::text_input::Status::Hovered => Palette::border(),
-                _ => Palette::border_subtle(),
-            },
-            width: 2.0,
-            radius: 8.0.into(),
-        },
+        background: Background::Color(Color::TRANSPARENT),
+        border: Border { color: Color::TRANSPARENT, width: 0.0, radius: 0.0.into() },
         icon: Palette::text_muted(),
         placeholder: Palette::text_subtle(),
         value: Palette::text(),
         selection: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.3 },
+    }
+}
+
+fn url_pill_style(_theme: &iced::Theme) -> iced::widget::container::Style {
+    iced::widget::container::Style {
+        background: Some(Background::Color(Palette::surface_high())),
+        border: Border {
+            color: Palette::border_subtle(),
+            width: 1.0,
+            radius: 10.0.into(),
+        },
+        shadow: Shadow { color: Color { r: 0.0, g: 0.0, b: 0.0, a: 0.25 }, offset: Vector::new(0.0, 2.0), blur_radius: 8.0 },
+        ..Default::default()
     }
 }
 
@@ -193,7 +213,7 @@ fn url_bar_container(_theme: &iced::Theme) -> iced::widget::container::Style {
             width: 1.0,
             radius: 0.0.into(),
         },
-        shadow: Shadow { color: crate::ui::theme::SHADOW_LIGHT, offset: Vector::new(0.0, 1.0), blur_radius: 6.0 },
+        shadow: Shadow { color: Color { r: 0.0, g: 0.0, b: 0.0, a: 0.14 }, offset: Vector::new(0.0, 1.0), blur_radius: 6.0 },
         ..Default::default()
     }
 }
@@ -228,6 +248,7 @@ fn abort_button(_theme: &iced::Theme, status: iced::widget::button::Status) -> i
         })),
         text_color: Color::WHITE,
         border: Border { radius: 6.0.into(), ..Default::default() },
+        shadow: Shadow { color: Color { r: base_bg.r, g: base_bg.g, b: base_bg.b, a: 0.35 }, offset: Vector::new(0.0, 2.0), blur_radius: 10.0 },
         ..Default::default()
     }
 }
