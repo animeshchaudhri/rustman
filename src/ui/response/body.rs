@@ -1,12 +1,12 @@
 use iced::{
     widget::{button, column, container, row, text, Space},
-    Element, Length,
+    Alignment, Background, Border, Color, Element, Length,
 };
 
 use crate::{
     message::{Message, ResponseMsg},
     state::tabs::RequestTabState,
-    ui::theme::{Palette, MONO, TEXT_SM, TEXT_XL, TEXT_XS},
+    ui::{icons, theme::{Palette, MONO, TEXT_SM, TEXT_LG, TEXT_XS}},
 };
 
 pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
@@ -15,23 +15,7 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
     }
 
     let Some(resp) = tab.response.as_ref() else {
-        let accent = Palette::accent();
-        let shortcut = if cfg!(target_os = "macos") { "Cmd+Enter" } else { "Ctrl+Enter" };
-        let content = column![
-            text("⇧").size(32).color(accent),
-            Space::new().height(10),
-            text("Send a request").size(TEXT_XL).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
-            Space::new().height(2),
-            text(format!("Press {shortcut} or click Send")).size(TEXT_SM).color(Palette::text_subtle()),
-        ]
-        .align_x(iced::Alignment::Center);
-
-        return container(content)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .into();
+        return empty_view();
     };
 
     if let Some(err) = &resp.error {
@@ -40,19 +24,30 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
 
     let toolbar = container(
         row![
+            text(format!("{} lines", tab.response_viewer_lines)).size(TEXT_XS).color(Palette::text_subtle()),
             Space::new().width(Length::Fill),
-            if tab.viewer_processing {
-                text("Parsing…").size(TEXT_XS).color(Palette::text_subtle())
-            } else {
-                text(format!("{}L", tab.response_viewer_lines)).size(TEXT_XS).color(Palette::text_subtle())
-            },
-            button(text("Copy").size(TEXT_SM).color(Palette::text_muted()))
+            button(
+                row![
+                    icons::copy().size(11).color(Palette::text_muted()),
+                    text("Copy").size(TEXT_SM).color(Palette::text_muted()),
+                ]
+                .spacing(5)
+                .align_y(Alignment::Center),
+            )
                 .on_press(Message::Response(ResponseMsg::CopyBody))
-                .style(iced::widget::button::text)
-                .padding([2, 8]),
+                .style(|_t, status| {
+                    let hovered = matches!(status, iced::widget::button::Status::Hovered);
+                    iced::widget::button::Style {
+                        background: if hovered { Some(Background::Color(Palette::hover())) } else { None },
+                        text_color: Palette::text_muted(),
+                        border: Border { radius: 6.0.into(), ..Default::default() },
+                        ..Default::default()
+                    }
+                })
+                .padding([4, 8]),
         ]
-        .align_y(iced::Alignment::Center)
-        .padding([4, 6]),
+        .align_y(Alignment::Center)
+        .padding([2, 12]),
     )
     .width(Length::Fill);
 
@@ -74,14 +69,64 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
         .into()
 }
 
+/// A keyboard-key chip: bordered, mono font, slight bottom "keycap" shadow.
+fn kbd_chip(label: &str) -> Element<'static, Message> {
+    container(
+        text(label.to_owned())
+            .size(TEXT_XS)
+            .color(Palette::text_muted())
+            .font(MONO),
+    )
+    .padding([3, 8])
+    .style(|_| container::Style {
+        background: Some(Background::Color(Palette::surface_high())),
+        border: Border {
+            color: Palette::border(),
+            width: 1.0,
+            radius: 5.0.into(),
+        },
+        shadow: iced::Shadow {
+            color: Color { r: 0.0, g: 0.0, b: 0.0, a: 0.4 },
+            offset: iced::Vector::new(0.0, 1.5),
+            blur_radius: 0.0,
+        },
+        ..Default::default()
+    })
+    .into()
+}
+
+fn empty_view() -> Element<'static, Message> {
+    let modifier = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
+    let content = column![
+        text("Send a request").size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
+        Space::new().height(8),
+        row![
+            text("Press").size(TEXT_SM).color(Palette::text_subtle()),
+            kbd_chip(modifier),
+            kbd_chip("Enter"),
+            text("or click Send to run the request").size(TEXT_SM).color(Palette::text_subtle()),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center),
+    ]
+    .align_x(Alignment::Center);
+
+    container(content)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .into()
+}
+
 fn error_view(err: &str) -> Element<'static, Message> {
     let content = column![
-        text("Request failed").size(TEXT_XL).color(Palette::ERROR),
+        text("Request failed").size(TEXT_LG).color(Palette::ERROR).font(crate::ui::theme::UI_FONT_MEDIUM),
+        Space::new().height(4),
         text(err.to_owned()).size(TEXT_SM).color(Palette::text_muted()),
     ]
-    .spacing(8)
     .max_width(480)
-    .align_x(iced::Alignment::Center);
+    .align_x(Alignment::Center);
 
     container(content)
         .padding([24, 24])
@@ -107,7 +152,7 @@ fn loading_view<'a>(spinner_frame: u32) -> Element<'a, Message> {
             text("sending request…").size(13).color(Palette::text_muted()),
         ]
         .spacing(0)
-        .align_x(iced::Alignment::Center),
+        .align_x(Alignment::Center),
     )
     .width(Length::Fill)
     .height(Length::Fill)

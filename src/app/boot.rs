@@ -50,7 +50,10 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
 
     let mut tabs = TabManager::default();
     let mut sidebar = SidebarState::default();
+    let mut theme_idx = 0;
     if let Some(sess) = session {
+        theme_idx = sess.theme_idx;
+        crate::ui::theme::Palette::set_theme_idx(theme_idx);
         use crate::state::tabs::{body_syntax, make_code_editor, RequestTabState};
         use iced::widget::text_editor;
         let restored: Vec<RequestTabState> = sess
@@ -158,7 +161,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         git_user_email: git_identity
             .map(|i| i.email)
             .unwrap_or_default(),
-        theme_idx: 0,
+        theme_idx,
         panel_split: 5,
         ui_scale: 1.0,
         update: crate::app::UpdateState::Idle,

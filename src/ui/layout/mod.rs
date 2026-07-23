@@ -1,6 +1,6 @@
 use iced::{
-    widget::{button, column, container, row, text, tooltip, Space, Text},
-    Background, Border, Color, Element, Length,
+    widget::{button, column, container, row, Space, Text},
+    Background, Border, Element, Length,
 };
 
 use crate::{
@@ -94,6 +94,7 @@ fn icon_rail(state: &AppState) -> Element<'_, Message> {
             collapse_toggle_btn(collapsed),
             icon_btn(icons::settings(), SidebarPanel::Settings, settings_active, "Settings"),
         ]
+        .height(Length::Fill)
         .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 6.0, left: 0.0 })
         .spacing(2),
     )
@@ -105,10 +106,9 @@ fn icon_rail(state: &AppState) -> Element<'_, Message> {
 
 fn collapse_toggle_btn(collapsed: bool) -> Element<'static, Message> {
     let icon = if collapsed { icons::arrow_right() } else { icons::arrow_left() };
-    let label = if collapsed { "Expand sidebar" } else { "Collapse sidebar" };
 
     let btn = button(
-        container(icon.size(14).color(Palette::text_subtle()))
+        container(icon.size(13).color(Palette::text_subtle()))
             .center_x(Length::Fill)
             .center_y(Length::Fill),
     )
@@ -120,68 +120,44 @@ fn collapse_toggle_btn(collapsed: bool) -> Element<'static, Message> {
             None
         },
         text_color: Palette::text_subtle(),
-        border: Border { radius: 6.0.into(), ..Default::default() },
+        border: Border { radius: 8.0.into(), ..Default::default() },
         ..Default::default()
     })
-    .width(48)
-    .height(28)
+    .width(30)
+    .height(26)
     .padding(0);
 
-    tooltip(
-        btn,
-        container(text(label).size(crate::ui::theme::TEXT_SM).color(Palette::text()))
-            .padding([4, 8])
-            .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(Palette::surface_raised())),
-                border: Border { color: Palette::border(), width: 1.0, radius: 6.0.into() },
-                ..Default::default()
-            }),
-        tooltip::Position::Right,
-    )
-    .gap(8)
-    .into()
+    container(btn)
+        .width(48)
+        .height(30)
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Center)
+        .into()
 }
 
 fn icon_btn(
     icon: Text<'static>,
     panel: SidebarPanel,
     active: bool,
-    label: &'static str,
+    _label: &'static str,
 ) -> Element<'static, Message> {
-    let accent_bar = container(Space::new().width(2).height(Length::Fill))
-        .style(move |_| iced::widget::container::Style {
-            background: Some(Background::Color(if active { Palette::accent() } else { Color::TRANSPARENT })),
-            ..Default::default()
-        })
-        .height(Length::Fill);
-
-    let icon_el = container(
-        icon.size(18).color(if active { Palette::accent() } else { Palette::text_subtle() }),
+    let btn = button(
+        container(icon.size(16).color(if active { Palette::accent() } else { Palette::text_subtle() }))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
     )
-    .center_x(Length::Fill)
-    .center_y(Length::Fill)
-    .height(Length::Fill);
+    .on_press(Message::Sidebar(SidebarMsg::PanelSelected(panel)))
+    .style(move |t, s| icon_btn_style(t, s, active))
+    .width(34)
+    .height(34)
+    .padding(0);
 
-    let btn = button(row![accent_bar, icon_el].height(42))
-        .on_press(Message::Sidebar(SidebarMsg::PanelSelected(panel)))
-        .style(move |t, s| icon_btn_style(t, s, active))
+    container(btn)
         .width(48)
-        .height(42)
-        .padding(0);
-
-    tooltip(
-        btn,
-        container(text(label).size(crate::ui::theme::TEXT_SM).color(Palette::text()))
-            .padding([4, 8])
-            .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(Palette::surface_raised())),
-                border: Border { color: Palette::border(), width: 1.0, radius: 6.0.into() },
-                ..Default::default()
-            }),
-        tooltip::Position::Right,
-    )
-    .gap(8)
-    .into()
+        .height(40)
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Center)
+        .into()
 }
 
 fn main_area(state: &AppState) -> Element<'_, Message> {

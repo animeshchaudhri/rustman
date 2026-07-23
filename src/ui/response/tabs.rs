@@ -1,4 +1,7 @@
-use iced::{widget::{container, row}, Background, Border, Element, Length};
+use iced::{
+    widget::{container, row},
+    Background, Border, Element, Length,
+};
 
 use crate::{
     message::{Message, ResponseMsg, ResponseTab},
@@ -7,7 +10,7 @@ use crate::{
 };
 
 pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
-    let tabs = [
+    let tabs: Vec<(ResponseTab, &str)> = vec![
         (ResponseTab::Body, "Body"),
         (ResponseTab::Headers, "Headers"),
         (ResponseTab::Cookies, "Cookies"),
@@ -20,6 +23,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
             pill_tab(
                 label,
                 None,
+                None,
                 active,
                 Message::Response(ResponseMsg::TabSelected(t.clone())),
             )
@@ -27,17 +31,18 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         .collect();
 
     container(
-        row(btns).spacing(4).padding([6, 10]),
+        container(row(btns).spacing(2).padding(3))
+            .style(|_| iced::widget::container::Style {
+                background: Some(Background::Color(Palette::background())),
+                border: Border {
+                    color: Palette::border_subtle(),
+                    width: 1.0,
+                    radius: 9.0.into(),
+                },
+                ..Default::default()
+            }),
     )
-    .style(|_| iced::widget::container::Style {
-        background: Some(Background::Color(Palette::surface())),
-        border: Border {
-            color: Palette::border_subtle(),
-            width: 0.0,
-            radius: 0.0.into(),
-        },
-        ..Default::default()
-    })
+    .padding([8, 12])
     .width(Length::Fill)
     .into()
 }

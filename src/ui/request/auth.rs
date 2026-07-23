@@ -21,6 +21,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
             |s| Message::Request(RequestMsg::AuthTypeChanged(s.to_owned()))
         )
         .text_size(12)
+        .style(styles::pick_list)
         .width(140),
     ]
     .spacing(8)
@@ -64,6 +65,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
                     |s| Message::Request(RequestMsg::ApiKeyLocationChanged(s.to_owned()))
                 )
                 .text_size(12)
+                .style(styles::pick_list)
                 .width(120),
             ]
             .spacing(8)
@@ -97,6 +99,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
                     |s| Message::Request(RequestMsg::JwtAlgoChanged(s.to_owned()))
                 )
                 .text_size(12)
+                .style(styles::pick_list)
                 .width(100),
             ]
             .spacing(8)
