@@ -27,14 +27,15 @@ pub fn view(state: &crate::app::AppState) -> Element<'_, Message> {
         &state.git_user_email,
     ));
     let appearance = card(build_appearance(state.theme_idx));
+    let layout = card(build_layout(state.horizontal_layout));
     let updates = card(build_updates(&state.update));
     let shortcuts = card(build_shortcuts());
     let footer = build_footer();
 
     scrollable(
-        column![header, profile, git_identity, appearance, updates, shortcuts, footer]
-            .spacing(8)
-            .padding(iced::Padding { top: 0.0, right: 8.0, bottom: 20.0, left: 8.0 }),
+        column![header, profile, git_identity, appearance, layout, updates, shortcuts, footer]
+            .spacing(6)
+            .padding(iced::Padding { top: 0.0, right: 8.0, bottom: 8.0, left: 8.0 }),
     )
     .height(Length::Fill)
     .style(crate::ui::theme::hidden_scrollbar)
@@ -49,50 +50,14 @@ fn build_git_identity(name: &str, email: &str) -> Element<'static, Message> {
             .on_input(|v| Message::Settings(SettingsMsg::GitNameChanged(v)))
             .size(12)
             .padding([6, 10])
-            .style(|_theme, status| {
-                let accent = Palette::accent();
-                iced::widget::text_input::Style {
-                    background: Background::Color(Palette::surface_high()),
-                    border: Border {
-                        color: match status {
-                            iced::widget::text_input::Status::Focused { .. } => accent,
-                            iced::widget::text_input::Status::Hovered => Palette::border(),
-                            _ => Palette::border_subtle(),
-                        },
-                        width: 1.0,
-                        radius: 6.0.into(),
-                    },
-                    icon: Palette::text_muted(),
-                    placeholder: Palette::text_subtle(),
-                    value: Palette::text(),
-                    selection: iced::Color { r: accent.r, g: accent.g, b: accent.b, a: 0.25 },
-                }
-            }),
+            .style(crate::ui::styles::field_input),
         Space::new().height(6),
         field_label("Email"),
         text_input("you@example.com", email)
             .on_input(|v| Message::Settings(SettingsMsg::GitEmailChanged(v)))
             .size(12)
             .padding([6, 10])
-            .style(|_theme, status| {
-                let accent = Palette::accent();
-                iced::widget::text_input::Style {
-                    background: Background::Color(Palette::surface_high()),
-                    border: Border {
-                        color: match status {
-                            iced::widget::text_input::Status::Focused { .. } => accent,
-                            iced::widget::text_input::Status::Hovered => Palette::border(),
-                            _ => Palette::border_subtle(),
-                        },
-                        width: 1.0,
-                        radius: 6.0.into(),
-                    },
-                    icon: Palette::text_muted(),
-                    placeholder: Palette::text_subtle(),
-                    value: Palette::text(),
-                    selection: iced::Color { r: accent.r, g: accent.g, b: accent.b, a: 0.25 },
-                }
-            }),
+            .style(crate::ui::styles::field_input),
         Space::new().height(4),
         text("Used for git commits. Saves to the active repo's config.")
             .size(9).color(Palette::text_subtle()),
@@ -271,6 +236,50 @@ fn swatch(color: Color) -> Element<'static, Message> {
         .into()
 }
 
+fn build_layout(horizontal: bool) -> Element<'static, Message> {
+    let options = [("Top / Bottom", false), ("Left / Right", true)];
+
+    let mut row_el = row![section_label("LAYOUT")].spacing(6);
+    for (label, is_horizontal) in options {
+        let selected = horizontal == is_horizontal;
+        row_el = row_el.push(
+            container(
+                button(
+                    text(label).size(TEXT_SM).color(if selected {
+                        Palette::accent()
+                    } else {
+                        Palette::text_muted()
+                    }),
+                )
+                .on_press(Message::Settings(SettingsMsg::LayoutDirectionToggled))
+                .style(move |_t, s| {
+                    use iced::widget::button::Status;
+                    iced::widget::button::Style {
+                        background: Some(Background::Color(if selected {
+                            Palette::accent_soft()
+                        } else if matches!(s, Status::Hovered) {
+                            Palette::hover()
+                        } else {
+                            Palette::surface_high()
+                        })),
+                        border: Border {
+                            color: if selected { Palette::accent() } else { Palette::border_subtle() },
+                            width: 1.0,
+                            radius: 6.0.into(),
+                        },
+                        text_color: if selected { Palette::accent() } else { Palette::text_muted() },
+                        ..Default::default()
+                    }
+                })
+                .padding([6, 10])
+                .width(Length::Fill),
+            )
+            .width(Length::FillPortion(1)),
+        );
+    }
+    row_el.into()
+}
+
 fn build_updates(update: &UpdateState) -> Element<'static, Message> {
     let (status, status_color) = match update {
         UpdateState::Idle => ("Checked automatically on launch".to_owned(), Palette::text_subtle()),
@@ -315,7 +324,8 @@ fn build_shortcuts() -> Element<'static, Message> {
         (format!("{cmd}W"), "Close tab"),
         (format!("{cmd}S"), "Save"),
         (format!("{cmd}P"), "Palette"),
-        (format!("{cmd}F"), "Search"),
+        (format!("{cmd}F"), "Find"),
+        (format!("{cmd}H"), "Find & Replace"),
         (format!("{cmd}E"), "Export cURL"),
         (format!("{cmd}Enter"), "Send"),
         (format!("{alt}1-9"), "Switch tab"),

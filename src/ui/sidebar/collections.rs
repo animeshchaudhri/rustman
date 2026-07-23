@@ -73,7 +73,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
         let header = row![
             name_part,
-            hover_icon_btn(icons::plus().size(12), Message::Sidebar(SidebarMsg::NewRequestIn(col_id_add))),
+            hover_icon_btn(icons::plus().size(10), Message::Sidebar(SidebarMsg::NewRequestIn(col_id_add))),
             hover_icon_btn(
                 icons::edit().size(11),
                 Message::Sidebar(SidebarMsg::ToggleRenameCollection(col_id_ren)),
@@ -171,7 +171,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                     .on_press(Message::Sidebar(SidebarMsg::RequestOpened(req.clone())))
                     .style(move |t, s| req_item_style(t, s, is_selected))
                     .width(Length::Fill)
-                    .padding(iced::Padding { top: 4.0, right: 4.0, bottom: 4.0, left: 24.0 })
+                    .padding(iced::Padding { top: 5.0, right: 4.0, bottom: 5.0, left: 10.0 })
                     .into()
                 };
 
@@ -208,8 +208,14 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                 )
                 .style(move |_| iced::widget::container::Style {
                     background: if is_selected { Some(Background::Color(Palette::accent_soft())) } else { None },
+                    border: Border {
+                        color: if is_selected { Color { a: 0.35, ..Palette::accent() } } else { Color::TRANSPARENT },
+                        width: if is_selected { 1.0 } else { 0.0 },
+                        radius: 6.0.into(),
+                    },
                     ..Default::default()
                 })
+                .padding(iced::Padding { top: 1.0, right: 6.0, bottom: 1.0, left: 16.0 })
                 .width(Length::Fill);
 
                 col = col.push(item_row);
@@ -257,7 +263,7 @@ fn hover_icon_btn(icon: iced::widget::Text<'static>, msg: Message) -> iced::Elem
 }
 
 fn icon_btn_only(icon: iced::widget::Text<'static>, _tooltip: &str, msg: Message) -> iced::Element<'static, Message> {
-    button(icon.size(13).color(Palette::text_muted()))
+    button(icon.size(12).color(Palette::text_muted()))
         .on_press(msg)
         .style(|_t, s| iced::widget::button::Style {
             background: if matches!(s, iced::widget::button::Status::Hovered) {
@@ -268,7 +274,7 @@ fn icon_btn_only(icon: iced::widget::Text<'static>, _tooltip: &str, msg: Message
             border: Border { radius: 4.0.into(), ..Default::default() },
             ..Default::default()
         })
-        .padding([4, 6])
+        .padding([4, 5])
         .into()
 }
 

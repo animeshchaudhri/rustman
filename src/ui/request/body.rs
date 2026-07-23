@@ -11,20 +11,33 @@ use crate::{
 };
 
 pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
-    let type_tabs = row![
-        body_type_btn("None", BodyType::None, &tab.body_type),
-        body_type_btn("JSON", BodyType::Json, &tab.body_type),
-        body_type_btn("Text", BodyType::Text, &tab.body_type),
-        body_type_btn("Form", BodyType::FormData, &tab.body_type),
-    ]
-    .spacing(2)
-    .padding([6, 8]);
+    let type_tabs = container(
+        row![
+            body_type_btn("None", BodyType::None, &tab.body_type),
+            body_type_btn("JSON", BodyType::Json, &tab.body_type),
+            body_type_btn("Text", BodyType::Text, &tab.body_type),
+            body_type_btn("Form", BodyType::FormData, &tab.body_type),
+        ]
+        .spacing(2)
+        .padding(3),
+    )
+    .style(|_| iced::widget::container::Style {
+        background: Some(Background::Color(Palette::background())),
+        border: Border {
+            color: Palette::border_subtle(),
+            width: 1.0,
+            radius: 9.0.into(),
+        },
+        ..Default::default()
+    });
+
+    let type_tabs_row = container(type_tabs).padding(iced::Padding { top: 4.0, right: 12.0, bottom: 6.0, left: 12.0 });
 
     let body_panel: Element<Message> = match tab.body_type {
         BodyType::None => container(
             column![
                 Space::new().height(20),
-                text("No body").size(13).color(Palette::text_subtle()),
+                text("No body").size(13).color(Palette::text_muted()),
                 text("Select JSON, Text, or Form to add a body")
                     .size(11)
                     .color(Palette::text_subtle()),
@@ -54,10 +67,26 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
                     .style(iced::widget::button::text)
                     .padding([2, 6]),
                     if is_json {
-                        button(text("{ } Format").size(10).color(Palette::text_muted()))
+                        button(
+                            row![
+                                icons::braces().size(10).color(Palette::text_muted()),
+                                text("Format").size(10).color(Palette::text_muted()),
+                            ]
+                            .spacing(4)
+                            .align_y(iced::Alignment::Center),
+                        )
                             .on_press(Message::Request(RequestMsg::FormatBody))
-                            .style(iced::widget::button::text)
-                            .padding([2, 6])
+                            .style(|_t, s| iced::widget::button::Style {
+                                background: if matches!(s, iced::widget::button::Status::Hovered) {
+                                    Some(Background::Color(Palette::hover()))
+                                } else {
+                                    Some(Background::Color(Palette::surface_high()))
+                                },
+                                text_color: Palette::text_muted(),
+                                border: Border { color: Palette::border_subtle(), width: 1.0, radius: 6.0.into() },
+                                ..Default::default()
+                            })
+                            .padding([3, 8])
                     } else {
                         button(text("").size(10))
                             .style(iced::widget::button::text)
@@ -89,7 +118,7 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         BodyType::FormData => form_data_view(&tab.form_fields),
     };
 
-    column![type_tabs, body_panel]
+    column![type_tabs_row, body_panel]
         .spacing(0)
         .height(Length::Fill)
         .into()
@@ -106,7 +135,7 @@ fn body_type_btn<'a>(
             variant.as_str().to_owned(),
         )))
         .style(move |t, s| type_btn_style(t, s, active))
-        .padding([3, 10])
+        .padding([5, 12])
         .into()
 }
 
@@ -144,7 +173,7 @@ fn form_data_view(fields: &[FormField]) -> Element<'_, Message> {
                         border: iced::Border { color: Palette::border_subtle(), width: 1.0, radius: 6.0.into() },
                         ..Default::default()
                     })
-                    .padding([3, 8])
+                    .padding([4, 10])
                     .width(Length::Fill),
             ]
             .width(Length::Fill)
@@ -155,6 +184,7 @@ fn form_data_view(fields: &[FormField]) -> Element<'_, Message> {
                 .size(12)
                 .padding([4, 6])
                 .width(Length::Fill)
+                .style(crate::ui::styles::cell_input)
                 .into()
         };
 
@@ -165,7 +195,8 @@ fn form_data_view(fields: &[FormField]) -> Element<'_, Message> {
                     .on_input(move |s| Message::Request(RequestMsg::FormFieldKeyChanged(i, s)))
                     .size(12)
                     .padding([4, 6])
-                    .width(120),
+                    .width(120)
+                    .style(crate::ui::styles::cell_input),
                 value_widget,
                 button(icons::close().size(10).color(Palette::text_muted()))
                     .on_press(Message::Request(RequestMsg::FormFieldRemoved(i)))
@@ -208,20 +239,28 @@ fn form_data_view(fields: &[FormField]) -> Element<'_, Message> {
 
 fn type_btn_style(
     _theme: &iced::Theme,
-    _status: iced::widget::button::Status,
+    status: iced::widget::button::Status,
     active: bool,
 ) -> iced::widget::button::Style {
+    let hovered = matches!(status, iced::widget::button::Status::Hovered);
     iced::widget::button::Style {
         background: if active {
-            Some(Background::Color(Palette::accent_dim()))
+            Some(Background::Color(Palette::surface_raised()))
+        } else if hovered {
+            Some(Background::Color(Palette::hover()))
         } else {
             None
         },
         text_color: if active { Palette::accent() } else { Palette::text_muted() },
         border: Border {
-            color: if active { Palette::accent_dim() } else { Color::TRANSPARENT },
-            width: 1.0,
-            radius: 5.0.into(),
+            color: if active { Palette::border() } else { Color::TRANSPARENT },
+            width: if active { 1.0 } else { 0.0 },
+            radius: 7.0.into(),
+        },
+        shadow: if active {
+            iced::Shadow { color: Color { r: 0.0, g: 0.0, b: 0.0, a: 0.25 }, offset: iced::Vector::new(0.0, 1.0), blur_radius: 4.0 }
+        } else {
+            iced::Shadow::default()
         },
         ..Default::default()
     }

@@ -19,6 +19,12 @@ pub struct Style {
     pub scroller_color: Color,
     /// Highlight color for the current line where cursor is located
     pub current_line_highlight: Color,
+    /// Background color of selected text
+    pub selection_color: Color,
+    /// Preferred syntect syntax highlighting theme name.
+    /// If `None`, the editor auto-selects based on background brightness.
+    /// Set this to override the default (e.g. "base16-mocha.dark", "InspiredGitHub").
+    pub syntax_theme_name: Option<&'static str>,
 }
 
 /// The theme catalog of a code editor.
@@ -123,6 +129,12 @@ pub fn from_iced_theme(theme: &iced::Theme) -> Style {
         if is_dark { 0.15 } else { 0.25 },
     );
 
+    // Text selection: primary color wash
+    let selection_color = with_alpha(
+        palette.primary.weak.color,
+        if is_dark { 0.35 } else { 0.25 },
+    );
+
     Style {
         background,
         text_color,
@@ -132,6 +144,8 @@ pub fn from_iced_theme(theme: &iced::Theme) -> Style {
         scrollbar_background,
         scroller_color,
         current_line_highlight,
+        selection_color,
+        syntax_theme_name: None,
     }
 }
 

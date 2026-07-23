@@ -290,6 +290,7 @@ pub enum LayoutMsg {
     ZoomIn,
     ZoomOut,
     ZoomReset,
+    PanelSplitChanged(u16),
 }
 
 #[derive(Debug, Clone)]
@@ -332,6 +333,7 @@ pub enum SettingsMsg {
     ThemeChanged(usize),
     GitNameChanged(String),
     GitEmailChanged(String),
+    LayoutDirectionToggled,
 }
 
 // ── Auto-update ───────────────────────────────────────────────────────────────

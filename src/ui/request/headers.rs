@@ -1,6 +1,6 @@
 use iced::{
     widget::{button, checkbox, column, container, pick_list, row, scrollable, text, text_input},
-    Background, Border, Element, Length,
+    Background, Element, Length,
 };
 
 use crate::{
@@ -117,13 +117,7 @@ fn header_table(items: &[KeyValue]) -> Element<'_, Message> {
                 .text_size(TEXT_SM)
                 .padding([5, 6])
                 .width(Length::Fill)
-                .style(move |_t, _s| iced::widget::pick_list::Style {
-                    text_color: Palette::text(),
-                    placeholder_color: Palette::text_subtle(),
-                    handle_color: Palette::text_muted(),
-                    background: Background::Color(Palette::surface_high()),
-                    border: Border { color: Palette::border(), width: 1.0, radius: 4.0.into() },
-                })
+                .style(styles::pick_list)
                 .into()
             }
         } else {
@@ -141,7 +135,8 @@ fn header_table(items: &[KeyValue]) -> Element<'_, Message> {
                 checkbox(item.enabled)
                     .on_toggle(move |_| Message::Request(RequestMsg::HeaderToggled(i)))
                     .size(12)
-                    .spacing(0),
+                    .spacing(0)
+                    .style(styles::checkbox),
                 text(format!("{}", i + 1))
                     .size(TEXT_XS)
                     .color(Palette::text_subtle())
