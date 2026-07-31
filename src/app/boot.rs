@@ -6,7 +6,7 @@ use iced::Task;
 use crate::{
     domain::collection::SavedRequest,
     message::{AppMsg, Message},
-    services::{http, storage},
+    services::storage,
     state::{session::AppSession, sidebar::SidebarState, tabs::TabManager},
 };
 
@@ -117,7 +117,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         requests,
         history,
         environments,
-        http_client: http::build_client(),
+        http_client: std::cell::OnceCell::new(),
         db,
         data_dir,
         status_message: None,

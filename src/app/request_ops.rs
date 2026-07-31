@@ -81,7 +81,7 @@ pub(crate) fn send_request(state: &mut AppState) -> Task<Message> {
     };
 
     let tab_id = tab.id.clone();
-    let client = state.http_client.clone();
+    let client = state.http().clone();
     let active_env = state.active_env().cloned();
 
     Task::perform(
