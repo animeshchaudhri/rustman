@@ -1,3 +1,4 @@
+use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -27,7 +28,7 @@ pub struct AppState {
     pub requests: HashMap<String, Vec<SavedRequest>>,
     pub history: Vec<HistoryEntry>,
     pub environments: Vec<AppEnvironment>,
-    pub http_client: reqwest::Client,
+    pub http_client: OnceCell<reqwest::Client>,
     pub db: Option<Connection>,
     pub data_dir: PathBuf,
     pub status_message: Option<String>,
@@ -96,6 +97,13 @@ pub enum UpdateState {
 impl AppState {
     pub(crate) fn active_env(&self) -> Option<&AppEnvironment> {
         self.environments.iter().find(|e| e.is_active)
+    }
+
+    /// Lazily build the HTTP client on first use so that TLS cert loading does
+    /// not block the initial render.
+    pub(crate) fn http(&self) -> &reqwest::Client {
+        self.http_client
+            .get_or_init(|| crate::services::http::build_client())
     }
 }
 
