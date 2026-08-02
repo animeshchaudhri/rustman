@@ -2052,10 +2052,14 @@ impl canvas::Program<Message> for CodeEditor {
         let visual_lines: Rc<Vec<VisualLine>> =
             self.visual_lines_cached(bounds.width);
 
-        // Prefer the tracked viewport height when available, but fall back to
-        // the current bounds during initial layout when viewport metrics have
-        // not been populated yet.
-        let effective_viewport_height = if self.viewport_height > 0.0 {
+        // Prefer the tracked viewport height once a real Scrolled event has
+        // confirmed it, but fall back to the real per-frame layout bounds
+        // before that — `viewport_height` starts out as a construction-time
+        // placeholder (see its field doc) that has no relationship to this
+        // editor's actual rendered size, and trusting it here is what used
+        // to make a freshly restored/constructed editor render blank (or
+        // with a wrong line window) until the user happened to scroll it.
+        let effective_viewport_height = if self.viewport_metrics_confirmed {
             self.viewport_height
         } else {
             bounds.height
@@ -2792,6 +2796,241 @@ mod tests {
         assert!(
             !Rc::ptr_eq(&first, &third),
             "invalidation should force the line to be recomputed"
+        );
+    }
+
+    #[test]
+    fn test_select_all_delete_paste_reflects_new_content_in_highlight_cache() {
+        let mut editor = CodeEditor::new("{\"a\": 1}", "json");
+        editor.request_focus();
+        editor.has_canvas_focus = true;
+        editor.focus_locked = false;
+
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let syntax = syntax_set
+            .find_syntax_by_extension("json")
+            .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
+        let theme = syntect::highlighting::Theme::default();
+
+        // Prime the cache exactly like a real render would.
+        let _ = editor.highlighted_line_cached(0, syntax, &theme, &syntax_set);
+
+        let _ = editor.update(&Message::SelectAll);
+        let _ = editor.update(&Message::DeleteSelection);
+        let _ = editor.update(&Message::Paste("{\"b\": 2}".to_string()));
+
+        let spans = editor.highlighted_line_cached(0, syntax, &theme, &syntax_set);
+        let combined: String =
+            spans.iter().map(|(_, text)| text.as_str()).collect();
+
+        assert_eq!(editor.buffer.line(0), "{\"b\": 2}");
+        assert_eq!(combined, editor.buffer.line(0));
+        assert!(spans.len() > 1, "expected multiple syntax-highlighted spans, not a single flat fallback span");
+    }
+
+    #[test]
+    fn test_edit_resets_stale_scroll_window_so_content_stays_visible() {
+        // Build a long document and simulate having scrolled deep into it,
+        // which sets a non-trivial `cache_window_start_line..cache_window_end_line`
+        // (see `handle_scrolled_msg`). Nothing resets that window on edits —
+        // only another Scrolled message does.
+        let long_content: String =
+            (0..20).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+        let mut editor = CodeEditor::new(&long_content, "txt");
+        editor.request_focus();
+        editor.has_canvas_focus = true;
+        editor.focus_locked = false;
+
+        // Simulate a scroll deep into the 20-line document.
+        editor.cache_window_start_line = 10;
+        editor.cache_window_end_line = 18;
+
+        // Now select-all, delete, and type much shorter content (like
+        // clearing a request body and typing a new one).
+        let _ = editor.update(&Message::SelectAll);
+        let _ = editor.update(&Message::DeleteSelection);
+        let _ = editor.update(&Message::CharacterInput('x'));
+        let _ = editor.update(&Message::CharacterInput('y'));
+        let _ = editor.update(&Message::CharacterInput('z'));
+        assert_eq!(editor.buffer.line(0), "xyz");
+
+        // Replicate exactly the windowing logic `draw()` uses to pick which
+        // visual lines to actually render.
+        let visual_lines = editor.visual_lines_cached(800.0);
+        let (start_idx, end_idx) =
+            if editor.cache_window_end_line > editor.cache_window_start_line {
+                let s = editor.cache_window_start_line.min(visual_lines.len());
+                let e = editor.cache_window_end_line.min(visual_lines.len());
+                (s, e)
+            } else {
+                (0, visual_lines.len())
+            };
+
+        assert!(
+            start_idx < end_idx && end_idx <= visual_lines.len() && start_idx < visual_lines.len(),
+            "render window ({start_idx}..{end_idx}) does not cover any of the \
+             {} actual visual line(s) after the document shrank — the typed \
+             text would render as blank",
+            visual_lines.len()
+        );
+    }
+
+    #[test]
+    fn test_fresh_editor_select_all_delete_type_renders_correctly() {
+        // No manual window tampering here at all — this is a brand-new
+        // editor exactly as `make_code_editor` builds one in rustman, that
+        // has never been scrolled.
+        let mut editor = CodeEditor::new(
+            "{\n  \"a\": 1,\n  \"b\": 2\n}",
+            "json",
+        );
+        editor.set_font(iced::Font::MONOSPACE);
+        editor.set_font_size(12.0, true);
+        editor.set_line_height(18.5);
+        editor.request_focus();
+        editor.has_canvas_focus = true;
+        editor.focus_locked = false;
+
+        let _ = editor.update(&Message::SelectAll);
+        let _ = editor.update(&Message::Delete);
+        let _ = editor.update(&Message::CharacterInput('x'));
+        let _ = editor.update(&Message::CharacterInput('y'));
+        let _ = editor.update(&Message::CharacterInput('z'));
+
+        let visual_lines = editor.visual_lines_cached(800.0);
+        let (start_idx, end_idx) =
+            if editor.cache_window_end_line > editor.cache_window_start_line {
+                let s = editor.cache_window_start_line.min(visual_lines.len());
+                let e = editor.cache_window_end_line.min(visual_lines.len());
+                (s, e)
+            } else {
+                (0, visual_lines.len())
+            };
+
+        assert_eq!(editor.buffer.line(0), "xyz");
+        assert!(start_idx < end_idx, "render range is empty!");
+    }
+
+    #[test]
+    fn test_edit_clamps_stale_viewport_scroll_after_document_shrinks() {
+        // Simulate having auto-scrolled deep into a longer document (the
+        // cursor was down near line 19 of 20, so `scroll_to_cursor` would
+        // have pushed `viewport_scroll` down accordingly) before clearing it.
+        let long_content: String =
+            (0..20).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+        let mut editor = CodeEditor::new(&long_content, "txt");
+        editor.set_line_height(18.5);
+        editor.request_focus();
+        editor.has_canvas_focus = true;
+        editor.focus_locked = false;
+
+        editor.viewport_height = 200.0;
+        editor.viewport_scroll = 300.0; // deep into the 20-line document
+
+        let _ = editor.update(&Message::SelectAll);
+        let _ = editor.update(&Message::DeleteSelection);
+        let _ = editor.update(&Message::CharacterInput('x'));
+        let _ = editor.update(&Message::CharacterInput('y'));
+        let _ = editor.update(&Message::CharacterInput('z'));
+        assert_eq!(editor.buffer.line(0), "xyz");
+
+        let visual_lines = editor.visual_lines_cached(editor.viewport_width);
+        let first_visible_line =
+            (editor.viewport_scroll / editor.line_height).floor() as usize;
+
+        assert!(
+            first_visible_line < visual_lines.len(),
+            "viewport_scroll ({}) still points past the document's only \
+             {} visual line(s) after it shrank — the typed text would \
+             render as blank",
+            editor.viewport_scroll,
+            visual_lines.len()
+        );
+    }
+
+    #[test]
+    fn test_select_all_delete_type_preserves_syntax_highlighting() {
+        use crate::theme::Style;
+
+        // Mirror rustman's real setup as closely as possible: real font,
+        // real line height, real theme with a named syntax theme override.
+        let mut editor = CodeEditor::new("{\"a\": 1}", "json");
+        editor.set_font(iced::Font::MONOSPACE);
+        editor.set_font_size(12.0, true);
+        editor.set_line_height(18.5);
+        editor.request_focus();
+        editor.has_canvas_focus = true;
+        editor.focus_locked = false;
+
+        let style = Style {
+            background: Color::from_rgb(0.1, 0.1, 0.1),
+            text_color: Color::WHITE,
+            gutter_background: Color::from_rgb(0.1, 0.1, 0.1),
+            gutter_border: Color::from_rgb(0.2, 0.2, 0.2),
+            line_number_color: Color::from_rgb(0.5, 0.5, 0.5),
+            scrollbar_background: Color::TRANSPARENT,
+            scroller_color: Color::from_rgb(0.5, 0.5, 0.5),
+            current_line_highlight: Color::from_rgba(1.0, 1.0, 1.0, 0.1),
+            whitespace_color: Color::from_rgba(1.0, 1.0, 1.0, 0.4),
+            selection_color: Color::from_rgba(0.3, 0.5, 0.8, 0.3),
+            syntax_theme_name: Some("base16-mocha.dark"),
+        };
+        editor.set_theme(style);
+
+        let syntax_set = SYNTAX_SET.get_or_init(SyntaxSet::load_defaults_newlines);
+        let theme_set = THEME_SET.get_or_init(ThemeSet::load_defaults);
+        eprintln!(
+            "does 'base16-mocha.dark' exist in default theme set? {}",
+            theme_set.themes.contains_key("base16-mocha.dark")
+        );
+        let syntax = syntax_set
+            .find_syntax_by_extension("json")
+            .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
+        let bg = editor.style.background;
+        let bg_is_dark = bg.r * 0.299 + bg.g * 0.587 + bg.b * 0.114 < 0.5;
+        let preferred: &[&str] = if let Some(name) = &editor.style.syntax_theme_name {
+            std::slice::from_ref(name)
+        } else if bg_is_dark {
+            &["base16-mocha.dark", "base16-ocean.dark", "Solarized (dark)"]
+        } else {
+            &["InspiredGitHub", "Solarized (light)"]
+        };
+        let syntax_theme = preferred
+            .iter()
+            .find_map(|name| theme_set.themes.get(*name))
+            .or_else(|| theme_set.themes.values().next())
+            .unwrap();
+
+        // Prime cache like a real render.
+        let _ = editor.highlighted_line_cached(0, syntax, syntax_theme, syntax_set);
+
+        let _ = editor.update(&Message::SelectAll);
+        let _ = editor.update(&Message::Delete);
+        let _ = editor.update(&Message::CharacterInput('{'));
+        let _ = editor.update(&Message::CharacterInput('"'));
+        let _ = editor.update(&Message::CharacterInput('a'));
+        let _ = editor.update(&Message::CharacterInput('"'));
+        let _ = editor.update(&Message::CharacterInput(':'));
+        let _ = editor.update(&Message::CharacterInput('1'));
+        let _ = editor.update(&Message::CharacterInput('}'));
+
+        let spans = editor.highlighted_line_cached(0, syntax, syntax_theme, syntax_set);
+        let colors: std::collections::HashSet<_> =
+            spans.iter().map(|(c, _)| format!("{:?}", c)).collect();
+        eprintln!(
+            "buffer={:?} span_count={} distinct_colors={} spans={:?}",
+            editor.buffer.line(0),
+            spans.len(),
+            colors.len(),
+            spans
+        );
+
+        assert_eq!(editor.buffer.line(0), "{\"a\":1}");
+        assert!(
+            colors.len() > 1,
+            "expected multiple distinct colors (real syntax highlighting), got only {} distinct color(s): {:?}",
+            colors.len(),
+            spans
         );
     }
 

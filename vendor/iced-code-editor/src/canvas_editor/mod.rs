@@ -410,6 +410,13 @@ pub struct CodeEditor {
     pub(crate) viewport_height: f32,
     /// Viewport width (visible area)
     pub(crate) viewport_width: f32,
+    /// Whether `viewport_height`/`viewport_width` have ever been set from a
+    /// real `Scrolled` event. Until then they hold construction-time
+    /// placeholder values (chosen so undirected logic like Page Up/Down has
+    /// *something* sane to divide by before the first real layout), which
+    /// `draw()` must NOT trust for deciding what's actually visible — it
+    /// uses the real per-frame layout bounds instead until this is `true`.
+    pub(crate) viewport_metrics_confirmed: bool,
     /// Command history for undo/redo
     pub(crate) history: CommandHistory,
     /// Whether we're currently grouping commands (for smart undo)
@@ -938,6 +945,7 @@ impl CodeEditor {
             viewport_scroll: 0.0,
             viewport_height: 600.0, // Default, will be updated
             viewport_width: 800.0,  // Default, will be updated
+            viewport_metrics_confirmed: false,
             history: CommandHistory::new(100),
             is_grouping: false,
             wrap_enabled: true,
@@ -1561,6 +1569,26 @@ impl CodeEditor {
     /// internal canvas focus, and not focus-locked).
     pub fn has_keyboard_focus(&self) -> bool {
         self.has_focus()
+    }
+
+    /// Forces a full re-render on the next frame, discarding any cached
+    /// content/overlay geometry and the cached visible-line window. Content,
+    /// cursor, selection, and undo history are untouched — this only affects
+    /// what gets *redrawn*, not what's in the buffer.
+    ///
+    /// Call this after restoring an editor's content from persisted state
+    /// (a fresh app launch, or reading a saved session/collection off disk):
+    /// a newly-constructed editor's viewport metrics start out unset and
+    /// only ever get corrected by a real `Scrolled` event, so without ever
+    /// having been scrolled at least once, it can render blank, with a
+    /// stale line window, or with glyph-spacing artifacts until the user
+    /// happens to scroll it — this clears the stale cached state up front
+    /// instead of waiting on that.
+    pub fn invalidate_render_cache(&mut self) {
+        self.content_cache.clear();
+        self.overlay_cache.clear();
+        self.cache_window_start_line = 0;
+        self.cache_window_end_line = 0;
     }
 
     /// Resets the editor with new content.
