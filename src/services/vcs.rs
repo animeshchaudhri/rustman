@@ -23,6 +23,45 @@ struct CollectionFile {
     requests: Vec<SavedRequest>,
 }
 
+/// Filename the global script pair is stored under, at the repo root
+/// (sibling to the per-collection `{id}.json` files). Its `.json`
+/// extension means it would otherwise be picked up by `load_collections`'s
+/// blanket `*.json` scan — but that scan only keeps files that successfully
+/// deserialize as `CollectionFile`, so it's silently skipped there.
+const GLOBAL_SCRIPT_FILE: &str = "global.json";
+
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct GlobalScriptFile {
+    pre_request_script: String,
+    test_script: String,
+}
+
+/// Reads the global script pair out of a repo's current working tree.
+/// `None` if the repo has none saved (never committed, or this is a repo
+/// that predates the global script feature).
+pub fn read_global_script(data_dir: &PathBuf) -> Option<(String, String)> {
+    let repo = open_at(data_dir).ok()?;
+    let workdir = repo.workdir()?;
+    let json = std::fs::read_to_string(workdir.join(GLOBAL_SCRIPT_FILE)).ok()?;
+    let file: GlobalScriptFile = serde_json::from_str(&json).ok()?;
+    Some((file.pre_request_script, file.test_script))
+}
+
+/// Reads the global script pair as it existed at a specific past commit —
+/// the counterpart to `read_commit_collections`, used when restoring a
+/// commit rather than reading the live working tree.
+pub fn read_commit_global_script(data_dir: &PathBuf, commit_id: &str) -> Option<(String, String)> {
+    let repo = open_at(data_dir).ok()?;
+    let oid = git2::Oid::from_str(commit_id).ok()?;
+    let commit = repo.find_commit(oid).ok()?;
+    let tree = commit.tree().ok()?;
+    let entry = tree.get_path(Path::new(GLOBAL_SCRIPT_FILE)).ok()?;
+    let object = entry.to_object(&repo).ok()?;
+    let blob = object.as_blob()?;
+    let file: GlobalScriptFile = serde_json::from_slice(blob.content()).ok()?;
+    Some((file.pre_request_script, file.test_script))
+}
+
 pub fn load_collections(repo: &Repository) -> Result<Vec<(Collection, Vec<SavedRequest>)>, String> {
     let workdir = repo.workdir().unwrap();
     let mut results = Vec::new();
@@ -339,6 +378,8 @@ pub fn write_working_tree(
     data_dir: &PathBuf,
     collections: &[Collection],
     requests: &HashMap<String, Vec<SavedRequest>>,
+    global_pre_request_script: &str,
+    global_test_script: &str,
 ) -> Result<(), String> {
     let repo = open_at(data_dir)?;
     let workdir = repo
@@ -350,6 +391,9 @@ pub fn write_working_tree(
     if let Ok(entries) = std::fs::read_dir(&workdir) {
         for entry in entries.flatten() {
             let path = entry.path();
+            if path.file_name().and_then(|n| n.to_str()) == Some(GLOBAL_SCRIPT_FILE) {
+                continue;
+            }
             if path.extension().and_then(|e| e.to_str()) == Some("json") {
                 if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                     if !current.contains(stem) {
@@ -366,6 +410,18 @@ pub fn write_working_tree(
         let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
         std::fs::write(workdir.join(format!("{}.json", collection.id)), json)
             .map_err(|e| e.to_string())?;
+    }
+
+    let global_path = workdir.join(GLOBAL_SCRIPT_FILE);
+    if global_pre_request_script.is_empty() && global_test_script.is_empty() {
+        let _ = std::fs::remove_file(&global_path);
+    } else {
+        let file = GlobalScriptFile {
+            pre_request_script: global_pre_request_script.to_owned(),
+            test_script: global_test_script.to_owned(),
+        };
+        let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
+        std::fs::write(&global_path, json).map_err(|e| e.to_string())?;
     }
     Ok(())
 }

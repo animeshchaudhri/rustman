@@ -1,7 +1,7 @@
 [package]
 edition = "2024"
 name = "iced-code-editor"
-version = "0.3.9"
+version = "0.3.11"
 authors = ["LuDog71 <ludog71.trekker238@passmail.net>"]
 description = "A custom code editor widget for the Iced GUI framework with syntax highlighting, line numbers, and scrolling support."
 homepage = "https://github.com/LuDog71FR/iced-code-editor"
@@ -16,6 +16,8 @@ resolver = "2"
 [features]
 lsp-process = ["dep:serde_json"]
 two-face = ["dep:two-face"]
+# Exposes internal hot-path functions for the criterion benchmark harness.
+bench = []
 
 [lib]
 name = "iced_code_editor"
@@ -52,6 +54,14 @@ version = "0.2.2"
 
 [dependencies.web-time]
 version = "1"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "editor_benchmarks"
+harness = false
+required-features = ["bench"]
 
 [lints.rust]
 unsafe_code = "forbid"

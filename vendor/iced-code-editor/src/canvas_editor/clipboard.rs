@@ -96,12 +96,6 @@ impl CodeEditor {
     /// // cursor 0 selects "foo", cursor 1 selects "bar"
     /// // → clipboard contains "foo\nbar"
     /// ```
-    pub(crate) fn cut_selection(&mut self) -> Task<Message> {
-        let task = self.copy_selection();
-        self.delete_selection();
-        task
-    }
-
     pub(crate) fn copy_selection(&self) -> Task<Message> {
         let texts: Vec<String> = self
             .cursors
@@ -190,6 +184,11 @@ impl CodeEditor {
         // Remove all selections before inserting.
         if self.cursors.iter().any(|c| c.has_selection()) {
             self.delete_selection();
+        } else {
+            // A plain click leaves a zero-length anchor in place (see
+            // `handle_enter` in update.rs); clear it so it isn't mistaken for
+            // a real selection by a later edit.
+            self.clear_selection();
         }
 
         let cursor_count = self.cursors.len();
