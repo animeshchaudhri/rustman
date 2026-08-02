@@ -7,6 +7,7 @@
 use crate::text_buffer::TextBuffer;
 use std::cmp::Ordering;
 use std::collections::HashSet;
+use std::ops::Range;
 
 use super::compare_floats;
 
@@ -119,9 +120,33 @@ impl WrappingCalculator {
         gutter_width: f32,
         hidden: &HashSet<usize>,
     ) -> Vec<VisualLine> {
+        self.calculate_visual_lines_range(
+            text_buffer,
+            viewport_width,
+            gutter_width,
+            hidden,
+            0..text_buffer.line_count(),
+        )
+    }
+
+    /// Calculates visual lines for a contiguous logical-line range.
+    ///
+    /// This is used by the editor's incremental layout cache after localized
+    /// edits, avoiding a full-file rewrap on every keystroke.
+    pub(crate) fn calculate_visual_lines_range(
+        &self,
+        text_buffer: &TextBuffer,
+        viewport_width: f32,
+        gutter_width: f32,
+        hidden: &HashSet<usize>,
+        logical_range: Range<usize>,
+    ) -> Vec<VisualLine> {
+        let logical_range = logical_range.start.min(text_buffer.line_count())
+            ..logical_range.end.min(text_buffer.line_count());
+
         if !self.wrap_enabled {
             // No wrapping: one visual line per (visible) logical line
-            return (0..text_buffer.line_count())
+            return logical_range
                 .filter(|line| !hidden.contains(line))
                 .map(|line| {
                     VisualLine::new(line, 0, 0, text_buffer.line_len(line))
@@ -140,7 +165,7 @@ impl WrappingCalculator {
 
         let mut visual_lines = Vec::new();
 
-        for logical_line in 0..text_buffer.line_count() {
+        for logical_line in logical_range {
             if hidden.contains(&logical_line) {
                 continue; // Hidden by a collapsed fold: emit no visual lines.
             }
@@ -216,27 +241,29 @@ impl WrappingCalculator {
         line: usize,
         col: usize,
     ) -> Option<usize> {
-        visual_lines
-            .iter()
-            .position(|vl| {
-                vl.logical_line == line
-                    && col >= vl.start_col
-                    && col < vl.end_col
-            })
-            .or_else(|| {
-                // Handle cursor at end of line (col == end_col)
-                visual_lines.iter().position(|vl| {
-                    vl.logical_line == line && col == vl.end_col && {
-                        // Check if this is the last segment for this line
-                        visual_lines
-                            .iter()
-                            .filter(|v| v.logical_line == line)
-                            .max_by_key(|v| v.segment_index)
-                            .map(|v| v.segment_index == vl.segment_index)
-                            .unwrap_or(false)
-                    }
-                })
-            })
+        // Visual lines are ordered by logical line, then by segment. Locate the
+        // small slice for the requested logical line with binary partitioning
+        // instead of scanning from the start of a potentially huge file.
+        let start =
+            visual_lines.partition_point(|visual| visual.logical_line < line);
+        let end =
+            visual_lines.partition_point(|visual| visual.logical_line <= line);
+        let line_segments = visual_lines.get(start..end)?;
+
+        // At a wrap boundary the cursor belongs to the following segment. At
+        // the logical end of line it belongs to the final segment.
+        let segment =
+            line_segments.partition_point(|visual| visual.end_col <= col);
+        if let Some(visual) = line_segments.get(segment)
+            && col >= visual.start_col
+        {
+            return Some(start + segment);
+        }
+
+        line_segments
+            .last()
+            .filter(|visual| col == visual.end_col)
+            .map(|_| end.saturating_sub(1))
     }
 }
 
@@ -337,6 +364,35 @@ mod tests {
         assert_eq!(
             WrappingCalculator::logical_to_visual(&visual_lines, 1, 30),
             Some(3)
+        );
+        assert_eq!(
+            WrappingCalculator::logical_to_visual(&visual_lines, 1, 35),
+            Some(3)
+        );
+        assert_eq!(
+            WrappingCalculator::logical_to_visual(&visual_lines, 99, 0),
+            None
+        );
+    }
+
+    #[test]
+    fn test_calculate_visual_lines_range_keeps_logical_indices() {
+        let buffer = TextBuffer::new("zero\none\ntwo\nthree");
+        let calc = WrappingCalculator::new(false, None, FONT_SIZE, CHAR_WIDTH);
+        let visual_lines = calc.calculate_visual_lines_range(
+            &buffer,
+            800.0,
+            60.0,
+            &HashSet::new(),
+            1..3,
+        );
+
+        assert_eq!(
+            visual_lines
+                .iter()
+                .map(|visual| visual.logical_line)
+                .collect::<Vec<_>>(),
+            vec![1, 2]
         );
     }
 

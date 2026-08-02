@@ -12,3 +12,14 @@ replace:
 
 settings:
   case_sensitive_label: "Diferenciar maiúsculas"
+
+context_menu:
+  undo: "Anular"
+  redo: "Refazer"
+  cut: "Cortar"
+  copy: "Copiar"
+  paste: "Colar"
+  select_all: "Selecionar tudo"
+  reveal_in_finder: "Mostrar no Finder"
+  reveal_in_file_explorer: "Mostrar no Explorador de Ficheiros"
+  open_containing_folder: "Abrir pasta contentora"

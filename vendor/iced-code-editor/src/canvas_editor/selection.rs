@@ -1,6 +1,7 @@
 //! Text selection logic.
 
 use super::CodeEditor;
+use crate::text_utils::{char_range_to_byte_range, char_to_byte_index};
 
 impl CodeEditor {
     /// Clears the current selection on all cursors.
@@ -40,23 +41,16 @@ impl CodeEditor {
         if start.0 == end.0 {
             // Single line selection
             let line = self.buffer.line(start.0);
-            if let Some((start_byte, _)) = line.char_indices().nth(start.1) {
-                let end_byte = line
-                    .char_indices()
-                    .nth(end.1)
-                    .map_or(line.len(), |(idx, _)| idx);
-                result.push_str(&line[start_byte..end_byte]);
-            }
+            let (start_byte, end_byte) =
+                char_range_to_byte_range(line, start.1, end.1);
+            result.push_str(&line[start_byte..end_byte]);
         } else {
             // Multi-line selection
             // First line
             let first_line = self.buffer.line(start.0);
-            if let Some((start_byte, _)) =
-                first_line.char_indices().nth(start.1)
-            {
-                result.push_str(&first_line[start_byte..]);
-                result.push('\n');
-            }
+            let start_byte = char_to_byte_index(first_line, start.1);
+            result.push_str(&first_line[start_byte..]);
+            result.push('\n');
 
             // Middle lines
             for line_idx in (start.0 + 1)..end.0 {
@@ -66,10 +60,7 @@ impl CodeEditor {
 
             // Last line
             let last_line = self.buffer.line(end.0);
-            let end_byte = last_line
-                .char_indices()
-                .nth(end.1)
-                .map_or(last_line.len(), |(idx, _)| idx);
+            let end_byte = char_to_byte_index(last_line, end.1);
             result.push_str(&last_line[..end_byte]);
         }
 
@@ -144,7 +135,10 @@ mod tests {
         editor.cursors.primary_mut().position = (2, 3);
 
         let text = editor.get_selected_text();
-        assert_eq!(text, Some("line2\nlin".to_string()));
+        // An out-of-bounds start column is clamped to the end of the first
+        // line, so the selection starts there and includes the newline that
+        // separates it from the next line.
+        assert_eq!(text, Some("\nline2\nlin".to_string()));
 
         // Now test end out of bounds
         editor.cursors.primary_mut().anchor = Some((0, 2));

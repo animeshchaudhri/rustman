@@ -3,9 +3,14 @@
 use iced::Size;
 use iced::advanced::input_method;
 use iced::widget::canvas::Canvas;
-use iced::widget::{Column, Row, Scrollable, Space, container, scrollable};
+use iced::widget::{
+    Column, Row, Scrollable, Space, container, scrollable, text,
+};
 use iced::{Background, Border, Color, Element, Length, Rectangle, Shadow};
+use iced_aw::ContextMenu;
 
+use super::context_menu;
+use super::goto_line_dialog;
 use super::ime_requester::ImeRequester;
 use super::search_dialog;
 use super::wrapping::{self, WrappingCalculator};
@@ -237,6 +242,36 @@ impl CodeEditor {
             })
     }
 
+    /// Creates the fixed Vim status and command line shown below the editor.
+    fn create_vim_status_bar(&self) -> Element<'_, Message> {
+        let (left_text, right_text) = self.vim_state.status_line_text();
+        let background = self.style.gutter_background;
+        let text_color = self.style.text_color;
+
+        container(
+            Row::new()
+                .push(
+                    text(left_text).size(self.font_size).style(move |_| {
+                        text::Style { color: Some(text_color) }
+                    }),
+                )
+                .push(Space::new().width(Length::Fill))
+                .push(
+                    text(right_text).size(self.font_size).style(move |_| {
+                        text::Style { color: Some(text_color) }
+                    }),
+                ),
+        )
+        .padding([2, 8])
+        .width(Length::Fill)
+        .height(Length::Fixed(self.line_height.max(20.0)))
+        .style(move |_| container::Style {
+            background: Some(Background::Color(background)),
+            ..container::Style::default()
+        })
+        .into()
+    }
+
     /// Creates the background layer combining gutter and code backgrounds.
     ///
     /// # Returns
@@ -379,20 +414,88 @@ impl CodeEditor {
             editor_stack = editor_stack.push(positioned_dialog);
         }
 
+        // Add the compact go-to-line dialog in the top center.
+        if self.goto_line_state.is_open {
+            let goto_line_dialog = goto_line_dialog::view(
+                &self.goto_line_state,
+                self.buffer.line_count(),
+            );
+            let positioned_dialog = container(
+                Row::new()
+                    .push(Space::new().width(Length::Fill))
+                    .push(goto_line_dialog)
+                    .push(Space::new().width(Length::Fill)),
+            )
+            .padding(20)
+            .width(Length::Fill)
+            .height(Length::Shrink);
+
+            editor_stack = editor_stack.push(positioned_dialog);
+        }
+
         // Wrap the editor stack in a container with clip
         let editor_container = container(editor_stack)
             .width(Length::Fill)
             .height(Length::Fill)
             .clip(true);
 
-        // When wrap is disabled, add a horizontal scrollbar below the editor
-        let max_content_width = self.max_content_width();
-        if let Some(h_scrollbar) =
-            self.create_horizontal_scrollbar(max_content_width)
-        {
-            Column::new().push(editor_container).push(h_scrollbar).into()
-        } else {
+        // The context menu owns its transient open/close state and positions
+        // itself at the right-click location. The canvas still receives the
+        // right-click event so it can preserve or reposition the selection.
+        let can_undo = self.history.can_undo();
+        let can_redo = self.history.can_redo();
+        let has_selection =
+            self.cursors.iter().any(|cursor| cursor.has_selection());
+        let has_content =
+            self.buffer.line_count() > 1 || self.buffer.line_len(0) > 0;
+        let custom_context_menu_entries =
+            self.custom_context_menu_entries().to_vec();
+        let default_context_menu_enabled = self.default_context_menu_enabled();
+        let reveal_in_file_manager_enabled =
+            self.reveal_in_file_manager_enabled();
+        let translations = self.translations;
+        let editor_container = ContextMenu::new(editor_container, move || {
+            context_menu::view(
+                &custom_context_menu_entries,
+                default_context_menu_enabled,
+                context_menu::MenuState {
+                    can_undo,
+                    can_redo,
+                    has_selection,
+                    has_content,
+                    reveal_in_file_manager_enabled,
+                },
+                translations,
+            )
+        });
+
+        // When wrap is disabled, add a horizontal scrollbar below the editor.
+        let editor_body: Element<'_, Message> = if self.wrap_enabled {
             editor_container.into()
+        } else {
+            // Measuring the widest line scans the entire buffer. It is only
+            // needed for the horizontal scrollbar, so never do that work while
+            // wrapping is enabled (the default), especially after every edit in
+            // a large file.
+            let max_content_width = self.max_content_width();
+            if let Some(h_scrollbar) =
+                self.create_horizontal_scrollbar(max_content_width)
+            {
+                Column::new().push(editor_container).push(h_scrollbar).into()
+            } else {
+                editor_container.into()
+            }
+        };
+
+        if self.vim_enabled {
+            Column::new()
+                .push(editor_body)
+                .push(self.create_vim_status_bar())
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
+        } else {
+            editor_body
         }
     }
 }
