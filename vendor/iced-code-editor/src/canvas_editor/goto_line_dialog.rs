@@ -64,7 +64,7 @@ pub(crate) fn view(
         .padding(6)
         .width(Length::Fixed(110.0));
 
-    let close_button = button(fa_icon_solid("xmark").size(10.0))
+    let close_button = button(fa_icon_solid("xmark").size(10.0_f32))
         .on_press(Message::CloseGotoLine)
         .padding(4);
 
