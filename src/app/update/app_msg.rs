@@ -49,9 +49,8 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                         jwt_secret: tab.jwt_secret.clone(),
                         jwt_subject: tab.jwt_subject.clone(),
                         jwt_algo: tab.jwt_algo.clone(),
-                        pre_request_script: tab.pre_request_editor.text(),
-                        test_script: tab.test_editor.text(),
-                        timeout_ms: tab.timeout_ms,
+                        pre_request_script: tab.pre_request_editor.content(),
+                        test_script: tab.test_editor.content(),
                     },
                 };
 
@@ -67,6 +66,126 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                     state.history.truncate(100);
                 }
                 persist_session(state);
+
+                // Run the global test script, then this tab's own test
+                // script, against this response — results/logs from both
+                // accumulate; whichever phase fails (if any) reports its
+                // own error without discarding a phase that already passed.
+                let global_test_script = state.global_test_editor.text();
+                let request_test_script = state
+                    .tabs
+                    .tabs
+                    .iter()
+                    .find(|t| t.id == tab_id)
+                    .map(|t| t.test_editor.content())
+                    .unwrap_or_default();
+
+                let mut test_results = Vec::new();
+                let mut test_logs = Vec::new();
+                let mut test_error = None;
+
+                for (label, script) in
+                    [("Global test script", &global_test_script), ("Test script", &request_test_script)]
+                {
+                    if script.trim().is_empty() {
+                        continue;
+                    }
+                    let active_env = state.active_env().cloned();
+                    let host_input = state
+                        .tabs
+                        .tabs
+                        .iter()
+                        .find(|t| t.id == tab_id)
+                        .map(|t| crate::app::scripting::test_host_input(t, active_env.as_ref(), &result.response));
+                    let Some(host_input) = host_input else { continue };
+                    match crate::app::scripting::run_and_apply(state, script, host_input) {
+                        Ok(applied) => {
+                            test_results.extend(applied.test_results);
+                            test_logs.extend(applied.logs);
+                        }
+                        Err(err) => {
+                            test_error = Some(format!("{label} error: {err}"));
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(t) = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id) {
+                    t.test_results = test_results;
+                    t.script_error = test_error;
+                    t.extend_script_logs(test_logs);
+                }
+
+                if result.response.is_binary {
+                    if let Some(t) = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id) {
+                        t.response_preview = crate::state::tabs::ResponsePreview::None;
+                        t.viewer_processing = false;
+                    }
+                    let kind = result.response.binary_preview_kind();
+                    let Some(bytes) = result.response.binary_data.clone() else {
+                        return Task::none();
+                    };
+                    let (generation, cancel) = {
+                        let t = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id);
+                        match t {
+                            Some(t) => t.jobs.start(JobKind::Parse),
+                            None => return Task::none(),
+                        }
+                    };
+                    match kind {
+                        crate::domain::response::BinaryPreviewKind::Spreadsheet => {
+                            return Task::perform(
+                                async move {
+                                    tokio::select! {
+                                        biased;
+                                        _ = cancel.cancelled() => AppMsg::Noop,
+                                        parsed = tokio::task::spawn_blocking(move || {
+                                            crate::services::spreadsheet::parse_first_sheet(&bytes)
+                                        }) => match parsed {
+                                            Ok(result) => AppMsg::SpreadsheetPreviewReady {
+                                                generation,
+                                                tab_id,
+                                                result,
+                                            },
+                                            Err(_) => AppMsg::Noop,
+                                        },
+                                    }
+                                },
+                                Message::App,
+                            );
+                        }
+                        crate::domain::response::BinaryPreviewKind::Pdf => {
+                            return Task::perform(
+                                async move {
+                                    tokio::select! {
+                                        biased;
+                                        _ = cancel.cancelled() => AppMsg::Noop,
+                                        rendered = tokio::task::spawn_blocking(move || {
+                                            let page_count =
+                                                crate::services::pdf::page_count(&bytes).unwrap_or(0);
+                                            let page = crate::services::pdf::render_page(&bytes, 0, 700);
+                                            (page_count, page)
+                                        }) => match rendered {
+                                            Ok((page_count, page)) => AppMsg::PdfPagePreviewReady {
+                                                generation,
+                                                tab_id,
+                                                page_index: 0,
+                                                page_count,
+                                                result: page.map(|p| (p.width, p.height, p.rgba)),
+                                            },
+                                            Err(_) => AppMsg::Noop,
+                                        },
+                                    }
+                                },
+                                Message::App,
+                            );
+                        }
+                        crate::domain::response::BinaryPreviewKind::Other => {
+                            return Task::none();
+                        }
+                    }
+                }
+
                 if state.parsed_cache.inner_get_by_hash(body_hash).is_some() {
                     let cached_clone = state.parsed_cache.inner_get_by_hash(body_hash).unwrap().clone();
                     let use_tabs = state
@@ -143,6 +262,59 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 }
             }
         }
+        AppMsg::SpreadsheetPreviewReady { generation, tab_id, result } => {
+            if let Some(tab) = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id)
+                && tab.jobs.is_current(JobKind::Parse, generation)
+            {
+                tab.response_preview = crate::state::tabs::ResponsePreview::Spreadsheet(result);
+            }
+        }
+        AppMsg::PdfPagePreviewReady { generation, tab_id, page_index, page_count, result } => {
+            if let Some(tab) = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id)
+                && tab.jobs.is_current(JobKind::Parse, generation)
+            {
+                let current_image = match result {
+                    Ok((width, height, rgba)) => {
+                        Some(iced::widget::image::Handle::from_rgba(width, height, rgba))
+                    }
+                    Err(_) => None,
+                };
+                tab.response_preview = crate::state::tabs::ResponsePreview::Pdf(
+                    crate::state::tabs::PdfPreviewState {
+                        page_count,
+                        current_page: page_index,
+                        current_image,
+                    },
+                );
+            }
+        }
+        AppMsg::HtmlPreviewTick => {
+            let tab = state.tabs.active_tab();
+            let is_html_now = tab.active_response_tab == crate::message::ResponseTab::Body
+                && tab.response.as_ref().is_some_and(|r| r.is_html());
+
+            if !is_html_now {
+                crate::services::webview::set_visible(false);
+                return Task::none();
+            }
+
+            let html = tab.response.as_ref().map(|r| r.body.clone()).unwrap_or_default();
+            return crate::ui::widgets::bounds_probe::find(crate::ui::response::body::HTML_PANEL_ID)
+                .map(move |bounds| {
+                    Message::App(AppMsg::HtmlPanelBounds { bounds, html: html.clone() })
+                });
+        }
+        AppMsg::HtmlPanelBounds { bounds, html } => {
+            if crate::services::webview::exists() {
+                crate::services::webview::set_bounds(bounds);
+                crate::services::webview::set_visible(true);
+                crate::services::webview::load_html_if_changed(&html);
+                return Task::none();
+            }
+            return iced::window::latest().and_then(move |id| {
+                crate::services::webview::ensure_created(id, bounds, html.clone())
+            });
+        }
         AppMsg::Formatted { generation, tab_id, target, text } => {
             if let Some(tab) = state.tabs.tabs.iter_mut().find(|t| t.id == tab_id) {
                 if tab.jobs.is_current(JobKind::Format, generation) {
@@ -164,13 +336,18 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
             let _ = open::that(url);
         }
         AppMsg::AutoSaveSession => {
-            if state.tabs.tabs.iter().any(|t| t.modified) {
-                persist_session(state);
-            }
+            // Unconditional: this used to only run when a tab was dirty,
+            // which meant settings-only changes (global scripts, default
+            // timeout, theme) had no reliable save path if no tab happened
+            // to be modified at the same time. persist_session is a single
+            // cheap SQLite upsert, so there's no real cost to always doing it.
+            persist_session(state);
         }
         AppMsg::SpinnerTick => {
             state.spinner_frame = state.spinner_frame.wrapping_add(1);
         }
+        AppMsg::FocusNextField => return crate::ui::widgets::focus_nav::focus_next(),
+        AppMsg::FocusPreviousField => return crate::ui::widgets::focus_nav::focus_previous(),
         AppMsg::Noop => {}
     }
     Task::none()

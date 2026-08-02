@@ -6,7 +6,7 @@ use iced::Task;
 use crate::{
     domain::collection::SavedRequest,
     message::{AppMsg, Message},
-    services::{http, storage},
+    services::storage,
     state::{session::AppSession, sidebar::SidebarState, tabs::TabManager},
 };
 
@@ -51,11 +51,16 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
     let mut tabs = TabManager::default();
     let mut sidebar = SidebarState::default();
     let mut theme_idx = 0;
+    let mut default_timeout_ms = 30_000u64;
+    let mut global_pre_request_script = String::new();
+    let mut global_test_script = String::new();
     if let Some(sess) = session {
         theme_idx = sess.theme_idx;
+        default_timeout_ms = sess.default_timeout_ms;
+        global_pre_request_script = sess.global_pre_request_script.clone();
+        global_test_script = sess.global_test_script.clone();
         crate::ui::theme::Palette::set_theme_idx(theme_idx);
         use crate::state::tabs::{body_syntax, make_code_editor, RequestTabState};
-        use iced::widget::text_editor;
         let restored: Vec<RequestTabState> = sess
             .tabs
             .into_iter()
@@ -84,13 +89,22 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
                 t.jwt_secret = snap.jwt_secret;
                 t.jwt_subject = snap.jwt_subject;
                 t.jwt_algo = snap.jwt_algo;
-                t.pre_request_editor = text_editor::Content::with_text(&snap.pre_request_script);
-                t.test_editor = text_editor::Content::with_text(&snap.test_script);
-                t.timeout_ms = snap.timeout_ms;
-                t.timeout_text = snap.timeout_ms.to_string();
+                t.pre_request_editor = crate::state::tabs::make_code_editor(&snap.pre_request_script, "txt");
+                t.test_editor = crate::state::tabs::make_code_editor(&snap.test_script, "txt");
                 t.saved_as = snap.saved_as;
                 t.active_request_tab = snap.active_request_tab;
                 t.active_response_tab = snap.active_response_tab;
+                // A freshly restored editor's viewport metrics start unset
+                // and only ever get corrected by a real Scrolled event — on
+                // an app relaunch (as opposed to a same-session paste/import,
+                // which the editor gets to render at least once with a real
+                // viewport before restoring more content into it) that can
+                // mean it renders blank or with stale geometry until the
+                // user happens to scroll it. Force a clean first render.
+                t.body_editor.invalidate_render_cache();
+                t.response_editor.invalidate_render_cache();
+                t.pre_request_editor.invalidate_render_cache();
+                t.test_editor.invalidate_render_cache();
                 t
             })
             .collect();
@@ -117,7 +131,7 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         requests,
         history,
         environments,
-        http_client: http::build_client(),
+        http_client: std::cell::OnceCell::new(),
         db,
         data_dir,
         status_message: None,
@@ -166,6 +180,11 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         horizontal_layout: false,
         ui_scale: 1.0,
         update: crate::app::UpdateState::Idle,
+        default_timeout_text: default_timeout_ms.to_string(),
+        default_timeout_ms,
+        global_pre_request_editor: iced::widget::text_editor::Content::with_text(&global_pre_request_script),
+        global_test_editor: iced::widget::text_editor::Content::with_text(&global_test_script),
+        global_scripts_modal_open: false,
     };
 
     let avatar_task = Task::perform(

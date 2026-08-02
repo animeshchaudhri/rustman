@@ -28,6 +28,22 @@ pub(super) fn handle(state: &mut AppState, msg: SettingsMsg) -> Task<Message> {
         SettingsMsg::LayoutDirectionToggled => {
             state.horizontal_layout = !state.horizontal_layout;
         }
+        SettingsMsg::DefaultTimeoutChanged(v) => {
+            state.default_timeout_ms = v.trim().parse().unwrap_or(0);
+            state.default_timeout_text = v;
+        }
+        SettingsMsg::GlobalPreRequestScriptEdited(action) => {
+            state.global_pre_request_editor.perform(action);
+        }
+        SettingsMsg::GlobalTestScriptEdited(action) => {
+            state.global_test_editor.perform(action);
+        }
+        SettingsMsg::OpenGlobalScriptsModal => {
+            state.global_scripts_modal_open = true;
+        }
+        SettingsMsg::CloseGlobalScriptsModal => {
+            state.global_scripts_modal_open = false;
+        }
     }
     Task::none()
 }

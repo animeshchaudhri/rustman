@@ -55,6 +55,8 @@ pub struct SearchState {
     pub replace_input_id: Id,
     /// Which field currently has focus (for Tab navigation)
     pub focused_field: SearchFocusedField,
+    /// Buffer line count represented by `matches`.
+    buffer_line_count: usize,
 }
 
 impl Default for SearchState {
@@ -70,6 +72,7 @@ impl Default for SearchState {
             search_input_id: Id::unique(),
             replace_input_id: Id::unique(),
             focused_field: SearchFocusedField::Search,
+            buffer_line_count: 0,
         }
     }
 }
@@ -147,6 +150,7 @@ impl SearchState {
             self.case_sensitive,
             Some(MAX_MATCHES),
         );
+        self.buffer_line_count = buffer.line_count();
 
         // Update current match index
         if self.matches.is_empty() {
@@ -159,6 +163,69 @@ impl SearchState {
                 self.current_match_index =
                     Some(self.matches.len().saturating_sub(1));
             }
+        }
+    }
+
+    /// Refreshes only the logical-line range affected by an editor operation.
+    ///
+    /// Search queries are matched independently within each line, so unchanged
+    /// lines retain their results. Matches after inserted or removed lines only
+    /// need their logical line number shifted.
+    pub(crate) fn update_matches_after_edit(
+        &mut self,
+        buffer: &TextBuffer,
+        start_line: usize,
+        old_end_exclusive: usize,
+    ) {
+        if self.query.is_empty() || self.buffer_line_count == 0 {
+            self.update_matches(buffer);
+            return;
+        }
+
+        let old_line_count = self.buffer_line_count;
+        let new_line_count = buffer.line_count();
+        let start_line = start_line.min(old_line_count).min(new_line_count);
+        let old_end_exclusive =
+            old_end_exclusive.min(old_line_count).max(start_line);
+        let new_end_exclusive = if new_line_count >= old_line_count {
+            old_end_exclusive
+                .saturating_add(new_line_count - old_line_count)
+                .min(new_line_count)
+        } else {
+            old_end_exclusive
+                .saturating_sub(old_line_count - new_line_count)
+                .max(start_line)
+                .min(new_line_count)
+        };
+
+        let replace_start =
+            self.matches.partition_point(|item| item.line < start_line);
+        let replace_end =
+            self.matches.partition_point(|item| item.line < old_end_exclusive);
+        let replacement = find_matches_in_range(
+            buffer,
+            &self.query,
+            self.case_sensitive,
+            start_line,
+            new_end_exclusive,
+            Some(MAX_MATCHES),
+        );
+        let replacement_len = replacement.len();
+
+        self.matches.splice(replace_start..replace_end, replacement);
+        let shifted_suffix_start = replace_start + replacement_len;
+        for item in &mut self.matches[shifted_suffix_start..] {
+            item.line = if new_line_count >= old_line_count {
+                item.line.saturating_add(new_line_count - old_line_count)
+            } else {
+                item.line.saturating_sub(old_line_count - new_line_count)
+            };
+        }
+        self.matches.truncate(MAX_MATCHES);
+        self.buffer_line_count = new_line_count;
+
+        if self.matches.is_empty() {
+            self.current_match_index = None;
         }
     }
 
@@ -210,6 +277,78 @@ impl SearchState {
         self.matches.len()
     }
 
+    /// Selects the search match identified by a manually positioned cursor or
+    /// selection.
+    ///
+    /// An exact single-line selection takes precedence over the active cursor
+    /// endpoint. A cursor on either boundary of a match counts as being on that
+    /// match so a selection ending immediately after the query is recognised.
+    /// Otherwise, the closest match on the cursor's logical line is selected.
+    /// If that line has no matches, the current match remains unchanged.
+    ///
+    /// Returns `true` when the current match index changed.
+    pub fn select_match_at_cursor(
+        &mut self,
+        cursor: (usize, usize),
+        selection: Option<((usize, usize), (usize, usize))>,
+    ) -> bool {
+        if self.matches.is_empty() || self.query.is_empty() {
+            return false;
+        }
+
+        let query_len = self.query.chars().count();
+        let exact_selection_index = selection.and_then(|(start, end)| {
+            if start.0 != end.0 {
+                return None;
+            }
+
+            self.matches_on_line(start.0).find(|&index| {
+                let match_item = self.matches[index];
+                match_item.col == start.1
+                    && match_item.col.saturating_add(query_len) == end.1
+            })
+        });
+        let cursor_index = exact_selection_index.or_else(|| {
+            let line_matches = self.matches_on_line(cursor.0);
+            line_matches
+                .clone()
+                .find(|&index| {
+                    let match_item = self.matches[index];
+                    (match_item.col..=match_item.col.saturating_add(query_len))
+                        .contains(&cursor.1)
+                })
+                .or_else(|| {
+                    line_matches.min_by_key(|&index| {
+                        let match_item = self.matches[index];
+                        let match_end =
+                            match_item.col.saturating_add(query_len);
+                        if cursor.1 < match_item.col {
+                            match_item.col - cursor.1
+                        } else {
+                            cursor.1.saturating_sub(match_end)
+                        }
+                    })
+                })
+        });
+
+        let Some(index) = cursor_index else {
+            return false;
+        };
+        if self.current_match_index == Some(index) {
+            return false;
+        }
+
+        self.current_match_index = Some(index);
+        true
+    }
+
+    /// Returns the indices of matches on one logical line.
+    fn matches_on_line(&self, line: usize) -> std::ops::Range<usize> {
+        let start = self.matches.partition_point(|item| item.line < line);
+        let end = self.matches.partition_point(|item| item.line <= line);
+        start..end
+    }
+
     /// Selects the match closest to the given cursor position.
     ///
     /// This is useful after buffer modifications to maintain context.
@@ -221,23 +360,66 @@ impl SearchState {
         }
 
         let (cursor_line, cursor_col) = cursor;
+        let insertion = self.matches.partition_point(|item| {
+            (item.line, item.col) < (cursor_line, cursor_col)
+        });
+        let mut left = insertion.checked_sub(1);
+        let mut right = (insertion < self.matches.len()).then_some(insertion);
+        let mut closest_index = insertion.min(self.matches.len() - 1);
+        let mut closest_distance = usize::MAX;
 
-        // Find the match with minimum distance to cursor
-        let closest_index = self
-            .matches
-            .iter()
-            .enumerate()
-            .min_by_key(|(_, m)| {
-                // Calculate Manhattan distance, weighing lines more than columns
-                let line_dist =
-                    (m.line as isize - cursor_line as isize).unsigned_abs();
-                let col_dist =
-                    (m.col as isize - cursor_col as isize).unsigned_abs();
-                line_dist * 1000 + col_dist
-            })
-            .map(|(i, _)| i);
+        while left.is_some() || right.is_some() {
+            let left_line_distance = left.map_or(usize::MAX, |index| {
+                self.matches[index]
+                    .line
+                    .abs_diff(cursor_line)
+                    .saturating_mul(1000)
+            });
+            let right_line_distance = right.map_or(usize::MAX, |index| {
+                self.matches[index]
+                    .line
+                    .abs_diff(cursor_line)
+                    .saturating_mul(1000)
+            });
 
-        self.current_match_index = closest_index;
+            if left_line_distance.min(right_line_distance) > closest_distance {
+                break;
+            }
+
+            let index = match (left, right) {
+                (Some(index), Some(_))
+                    if left_line_distance <= right_line_distance =>
+                {
+                    left = index.checked_sub(1);
+                    index
+                }
+                (_, Some(index)) => {
+                    right =
+                        (index + 1 < self.matches.len()).then_some(index + 1);
+                    index
+                }
+                (Some(index), None) => {
+                    left = index.checked_sub(1);
+                    index
+                }
+                (None, None) => break,
+            };
+            let item = self.matches[index];
+            let distance = item
+                .line
+                .abs_diff(cursor_line)
+                .saturating_mul(1000)
+                .saturating_add(item.col.abs_diff(cursor_col));
+            if distance < closest_distance {
+                closest_distance = distance;
+                closest_index = index;
+                if distance == 0 {
+                    break;
+                }
+            }
+        }
+
+        self.current_match_index = Some(closest_index);
     }
 }
 
@@ -507,6 +689,26 @@ mod tests {
     }
 
     #[test]
+    fn test_select_match_near_cursor_uses_sorted_candidates() {
+        let buffer = TextBuffer::new("foo\nnone\nfoo bar foo\nnone\nfoo");
+        let mut state = SearchState::new();
+        state.set_query("foo".to_string(), &buffer);
+
+        state.select_match_near_cursor((2, 7));
+        assert_eq!(state.current_match_index, Some(2));
+        assert_eq!(
+            state.current_match(),
+            Some(SearchMatch { line: 2, col: 8 })
+        );
+
+        state.select_match_near_cursor((4, 0));
+        assert_eq!(
+            state.current_match(),
+            Some(SearchMatch { line: 4, col: 0 })
+        );
+    }
+
+    #[test]
     fn test_search_state_toggle_case() {
         let buffer = TextBuffer::new("Hello hello");
         let mut state = SearchState::new();
@@ -519,6 +721,42 @@ mod tests {
 
         state.toggle_case_sensitive(&buffer);
         assert_eq!(state.match_count(), 2);
+    }
+
+    #[test]
+    fn test_incremental_match_update_replaces_only_affected_lines() {
+        let mut buffer = TextBuffer::new("foo\nfoo\nfoo");
+        let mut state = SearchState::new();
+        state.set_query("foo".to_string(), &buffer);
+
+        buffer.insert_char(1, 1, 'x');
+        state.update_matches_after_edit(&buffer, 1, 2);
+
+        assert_eq!(
+            state.matches,
+            vec![
+                SearchMatch { line: 0, col: 0 },
+                SearchMatch { line: 2, col: 0 },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_incremental_match_update_shifts_suffix_after_newline() {
+        let mut buffer = TextBuffer::new("foo\nbar\nfoo");
+        let mut state = SearchState::new();
+        state.set_query("foo".to_string(), &buffer);
+
+        buffer.insert_newline(0, 0);
+        state.update_matches_after_edit(&buffer, 0, 2);
+
+        assert_eq!(
+            state.matches,
+            vec![
+                SearchMatch { line: 1, col: 0 },
+                SearchMatch { line: 3, col: 0 },
+            ]
+        );
     }
 
     #[test]

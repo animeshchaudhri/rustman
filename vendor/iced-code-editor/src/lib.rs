@@ -13,6 +13,7 @@
 //! - **Focus management** for multiple editors
 //! - **Dark & light themes** support with customizable colors
 //! - **Undo/Redo** with command history
+//! - **Optional Vim mode** with Normal, Insert, Visual, and Visual Line modes
 //!
 //! # Example
 //!
@@ -77,6 +78,38 @@
 //! editor.set_theme(theme::from_iced_theme(&iced::Theme::CatppuccinMocha));
 //! editor.set_theme(theme::from_iced_theme(&iced::Theme::Nord));
 //! ```
+//!
+//! # Vim Mode
+//!
+//! Vim behavior is disabled by default and configured per editor instance:
+//!
+//! ```no_run
+//! use iced_code_editor::{CodeEditor, VimMode};
+//!
+//! let mut editor =
+//!     CodeEditor::new("fn main() {}", "rs").with_vim_enabled(true);
+//! assert!(editor.vim_enabled());
+//! assert_eq!(editor.vim_mode(), Some(VimMode::Normal));
+//!
+//! editor.set_vim_enabled(false);
+//! assert_eq!(editor.vim_mode(), None);
+//! ```
+//!
+//! A focused editor can toggle Vim behavior with `Ctrl+Alt+V`, or
+//! `Command+Alt+V` on macOS. Regular `Ctrl`/`Command+V` system paste is
+//! unchanged. Counts support both target lines (`5G`/`5gg` jump to logical
+//! line 5) and line operators (`5yy`, `5dd`, and `5cc` affect five lines).
+//! A fixed bottom status line shows the current mode, pending keys, and active
+//! `/pattern` or `:N` input. Submit with Enter, edit with Backspace, or cancel
+//! with Escape. `n` and `N` repeat the last search forward or backward.
+//!
+//! The Vim MVP provides Normal, Insert, Visual, and Visual Line modes; counts;
+//! `h/j/k/l`, word and line motions; `d/c/y`, `x`, `p/P`, and `u`/`Ctrl+R`;
+//! `/` search with `n`/`N`, `:N` line jumps; and a per-editor unnamed register.
+//! It is single-cursor and does not include general Ex commands, regex/search
+//! history, text objects, macros, named registers, marks, `.` repeat, or
+//! configurable mappings. Platform clipboard shortcuts continue to use the
+//! system clipboard instead of the Vim register.
 //!
 //! # Keyboard Shortcuts
 //!
@@ -201,17 +234,25 @@ rust_i18n::i18n!("locales", fallback = "en");
 
 mod canvas_editor;
 mod text_buffer;
+mod text_utils;
 
 pub mod i18n;
 pub mod theme;
 
+/// Hidden re-exports for the `criterion` benchmark harness (`benches/`).
+///
+/// Compiled only with the `bench` feature; not part of the public API.
+#[doc(hidden)]
+#[cfg(feature = "bench")]
+pub use canvas_editor::bench_support;
 pub use canvas_editor::folding::FoldRegion;
 /// LSP integration types and traits for editor clients.
 pub use canvas_editor::lsp::{
     LspClient, LspDocument, LspPosition, LspRange, LspTextChange,
 };
 pub use canvas_editor::{
-    ArrowDirection, CodeEditor, CommandHistory, IndentStyle, Message,
+    ArrowDirection, CodeEditor, CommandHistory, ContextMenuEntry,
+    ContextMenuItem, IndentStyle, Message, VimMode,
 };
 pub use i18n::{Language, Translations};
 pub use theme::{Catalog, Style, StyleFn, from_iced_theme};
