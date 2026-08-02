@@ -17,16 +17,6 @@ pub(crate) fn subscription(state: &AppState) -> Subscription<Message> {
         global
     };
 
-    // Plain iced::widget::text_input has no built-in Tab-to-next-field
-    // handling in this version, so it's wired here as a global listener —
-    // except while a code editor has focus, where Tab must stay a code
-    // editor's own indent/Tab handling instead of hopping focus away.
-    // `event::listen_with` takes a plain fn pointer (no captured state), so
-    // that exclusion is done by only including the subscription at all.
-    // See `AppState::any_visible_code_editor_focused` for why this checks
-    // only the currently-visible editor(s), not every editor unconditionally.
-    let code_editor_focused = state.any_visible_code_editor_focused();
-
     let ws_subs: Vec<_> = state
         .tabs
         .tabs
@@ -39,26 +29,10 @@ pub(crate) fn subscription(state: &AppState) -> Subscription<Message> {
         .map(|_| Message::App(crate::message::AppMsg::AutoSaveSession));
 
     let mut all = vec![kbd, autosave];
-    if !code_editor_focused {
-        all.push(event::listen_with(tab_key));
-    }
     if state.tabs.tabs.iter().any(|t| t.is_loading) {
         all.push(
             iced::time::every(std::time::Duration::from_millis(33))
                 .map(|_| Message::App(crate::message::AppMsg::SpinnerTick)),
-        );
-    }
-    // Keeps the embedded HTML-preview webview's position/visibility in sync
-    // with the response panel — re-probed on a timer rather than hooked into
-    // every resize/tab-switch/panel-split message, so it can't drift out of
-    // sync if some layout-changing path is missed.
-    let active_is_html =
-        state.tabs.active_tab().response.as_ref().is_some_and(|r| r.is_html());
-    let webview_usable = !crate::services::webview::creation_failed();
-    if webview_usable && (active_is_html || crate::services::webview::exists()) {
-        all.push(
-            iced::time::every(std::time::Duration::from_millis(150))
-                .map(|_| Message::App(crate::message::AppMsg::HtmlPreviewTick)),
         );
     }
     all.extend(ws_subs);
@@ -112,21 +86,6 @@ fn ws_stream(conn: &WsConn) -> impl iced::futures::Stream<Item = Message> + use<
             }
         }
     })
-}
-
-fn tab_key(event: Event, _status: event::Status, _window_id: window::Id) -> Option<Message> {
-    let Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event else {
-        return None;
-    };
-    if key != keyboard::Key::Named(keyboard::key::Named::Tab) || modifiers.command() || modifiers.alt() {
-        return None;
-    }
-    let msg = if modifiers.shift() {
-        crate::message::AppMsg::FocusPreviousField
-    } else {
-        crate::message::AppMsg::FocusNextField
-    };
-    Some(Message::App(msg))
 }
 
 fn global_keys(event: Event, _status: event::Status, window_id: window::Id) -> Option<Message> {

@@ -1,5 +1,5 @@
 use iced::{
-    widget::{button, column, container, row, scrollable, text, text_editor, text_input, Space},
+    widget::{button, column, container, row, scrollable, text, text_input, Space},
     Background, Border, Color, Element, Length,
 };
 
@@ -280,81 +280,6 @@ pub(super) fn curl_modal(state: &AppState) -> Element<'_, Message> {
     .style(modal_card_style)
     .padding([20, 24])
     .width(560);
-
-    modal_overlay(inner)
-}
-
-fn editor_box<'a>(label: &'static str, editor: Element<'a, Message>) -> Element<'a, Message> {
-    column![
-        text(label).size(11).color(Palette::text_muted()).font(crate::ui::theme::UI_FONT_MEDIUM),
-        Space::new().height(4),
-        container(editor)
-            .style(|_| iced::widget::container::Style {
-                background: Some(Background::Color(Palette::background())),
-                border: Border { color: Palette::border(), width: 1.0, radius: 6.0.into() },
-                ..Default::default()
-            })
-            .height(Length::FillPortion(1))
-            .width(Length::Fill),
-    ]
-    .spacing(0)
-    .height(Length::FillPortion(1))
-    .into()
-}
-
-pub(super) fn global_scripts_modal(state: &AppState) -> Element<'_, Message> {
-    use crate::message::SettingsMsg;
-
-    let title = row![
-        text("Global Scripts").size(TEXT_LG).color(Palette::text()).font(crate::ui::theme::UI_FONT_MEDIUM),
-        Space::new().width(Length::Fill),
-        button(icons::close().size(16).color(Palette::text_muted()))
-            .on_press(Message::Settings(SettingsMsg::CloseGlobalScriptsModal))
-            .style(iced::widget::button::text)
-            .padding([2, 6]),
-    ]
-    .align_y(iced::Alignment::Center);
-
-    let pre_request: Element<Message> = text_editor(&state.global_pre_request_editor)
-        .on_action(|a| Message::Settings(SettingsMsg::GlobalPreRequestScriptEdited(a)))
-        .font(MONO)
-        .size(12)
-        .into();
-    let test: Element<Message> = text_editor(&state.global_test_editor)
-        .on_action(|a| Message::Settings(SettingsMsg::GlobalTestScriptEdited(a)))
-        .font(MONO)
-        .size(12)
-        .into();
-
-    let inner = container(
-        column![
-            title,
-            Space::new().height(6),
-            text("Runs before every request's own pre-request/test script — for setup you'd \
-                  otherwise copy-paste into each request.")
-                .size(11)
-                .color(Palette::text_subtle()),
-            Space::new().height(14),
-            editor_box("Pre-request", pre_request),
-            Space::new().height(12),
-            editor_box("Test", test),
-            Space::new().height(14),
-            row![
-                Space::new().width(Length::Fill),
-                button(text("Done").size(12).color(Color::WHITE))
-                    .on_press(Message::Settings(SettingsMsg::CloseGlobalScriptsModal))
-                    .style(accent_btn_style)
-                    .padding([7, 18]),
-            ],
-        ]
-        .spacing(0)
-        .width(720)
-        .height(600),
-    )
-    .style(modal_card_style)
-    .padding([20, 24])
-    .width(720)
-    .height(640);
 
     modal_overlay(inner)
 }

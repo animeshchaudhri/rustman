@@ -26,5 +26,3 @@ target
 *.sln
 *.sw?
 /target
-
-scripts/uploads/

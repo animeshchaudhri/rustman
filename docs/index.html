@@ -853,13 +853,12 @@
   <a href="#" class="logo">
     <div class="logo-mark"><img src="rustman-logo.svg" alt="Rustman" /></div>
     RUSTMAN
-    <span class="logo-ver" id="logoVer">v0.3.10</span>
+    <span class="logo-ver">v0.3.8</span>
   </a>
   <div class="nav-sp"></div>
   <div class="nav-links">
     <a href="#features" class="nav-a">Features</a>
     <a href="#compare" class="nav-a">Compare</a>
-    <a href="scripting.html" class="nav-a">Docs</a>
     <a href="https://discord.gg/vfa8rKYzKG" class="nav-a" target="_blank" rel="noopener">Discord</a>
   </div>
   <a href="https://github.com/animeshchaudhri/rustman" class="nav-gh" target="_blank" rel="noopener">
@@ -882,10 +881,6 @@
     <a href="https://github.com/animeshchaudhri/rustman" class="btn-gh" target="_blank" rel="noopener">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
       View Source
-    </a>
-    <a href="scripting.html" class="btn-gh">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
-      Docs
     </a>
     <a href="https://discord.gg/vfa8rKYzKG" class="btn-gh" target="_blank" rel="noopener">
       Join Discord
@@ -1149,28 +1144,40 @@
 
 <!-- SCRIPTS -->
 <section class="scripts-section" id="scripts">
-  <div class="sec-label">Scripting</div>
-  <h2 style="font-size:clamp(1.6rem,3vw,2.2rem);font-weight:800;letter-spacing:-0.03em;margin-bottom:.75rem">A scripting language built in Rust, not borrowed from Node.</h2>
-  <p style="font-size:.95rem;color:var(--dim);max-width:560px;line-height:1.75;margin-bottom:2rem">Pre-request and test scripts run on <strong style="color:var(--text)">rustman-engine</strong>, a small interpreted language written from scratch in Rust — no embedded JS runtime, no <code style="font-family:'JetBrains Mono',monospace;font-size:.85em;background:var(--bg3);padding:.1em .35em;border-radius:4px;color:var(--accent);border:1px solid var(--bord2)">pm.*</code> API to memorize. It is small on purpose: env vars, headers, cookies, JWT decoding, base64, and JSON assertions, in a syntax simple enough for an AI to generate correctly from a plain-English request. Full grammar and built-ins are on the <a href="scripting.html">scripting docs page</a>.</p>
+  <div class="sec-label">Scripting (on the way)</div>
+  <h2 style="font-size:clamp(1.6rem,3vw,2.2rem);font-weight:800;letter-spacing:-0.03em;margin-bottom:.75rem">Scripting is coming.</h2>
+  <p style="font-size:.95rem;color:var(--dim);max-width:520px;line-height:1.75;margin-bottom:2rem">Being straight with you, the script editors are already in the app but nothing runs them yet. The runner is next on my list. Here is what writing a <code style="font-family:'JetBrains Mono',monospace;font-size:.85em;background:var(--bg3);padding:.1em .35em;border-radius:4px;color:var(--accent);border:1px solid var(--bord2)">pm.*</code> script will look like once it lands.</p>
   <div class="scripts-grid">
     <div class="script-card">
       <div class="sc-head"><div class="scdot sd-pre"></div><span>Pre-Request Script</span></div>
-      <pre><span class="pc">// inject a bearer token, only if one is set</span>
-<span class="pk">let</span> token = <span class="pf">env</span>(<span class="ps">"access_token"</span>)
-<span class="pk">if</span> token != <span class="ps">""</span> {
-    <span class="pf">set_header</span>(<span class="ps">"Authorization"</span>, <span class="ps">"Bearer "</span> + token)
-}</pre>
+      <pre><span class="pc">// stamp + encrypt before each call</span>
+pm.environment.<span class="pf">set</span>(
+  <span class="ps">"timestamp"</span>, Date.<span class="pf">now</span>().<span class="pf">toString</span>()
+);
+
+<span class="pc">// async and await supported</span>
+<span class="pk">const</span> key = <span class="pk">await</span> crypto.subtle.<span class="pf">importKey</span>(
+  <span class="ps">"raw"</span>, secretBytes,
+  <span class="ps">"AES-GCM"</span>, <span class="pk">false</span>, [<span class="ps">"encrypt"</span>]
+);
+pm.environment.<span class="pf">set</span>(<span class="ps">"enc"</span>, encrypted);</pre>
     </div>
     <div class="script-card">
       <div class="sc-head"><div class="scdot sd-test"></div><span>Test Script, post-response</span></div>
-      <pre><span class="pc">// decode the response's JWT and stash claims</span>
-<span class="pk">let</span> claims = <span class="pf">jwt_decode</span>(<span class="pf">header</span>(<span class="ps">"Authorization"</span>))
-<span class="pf">set_env</span>(<span class="ps">"user_id"</span>, claims.payload.sub)
+      <pre>pm.<span class="pf">test</span>(<span class="ps">"Status is 200"</span>, () => {
+  pm.response.to.have.<span class="pf">status</span>(<span class="pn">200</span>);
+});
 
-<span class="pf">test</span>(<span class="ps">"status is 200"</span>, response.status == <span class="pn">200</span>)
+pm.<span class="pf">test</span>(<span class="ps">"Returns a token"</span>, () => {
+  <span class="pk">const</span> json = pm.response.<span class="pf">json</span>();
+  pm.<span class="pf">expect</span>(json).to.have.<span class="pf">property</span>(<span class="ps">"token"</span>);
+  pm.environment.<span class="pf">set</span>(<span class="ps">"authToken"</span>, json.token);
+});
 
-<span class="pk">let</span> body = response.<span class="pf">json</span>()
-<span class="pf">test</span>(<span class="ps">"has a token"</span>, body.token != <span class="pk">null</span>)</pre>
+pm.<span class="pf">test</span>(<span class="ps">"Fast response"</span>, () => {
+  pm.<span class="pf">expect</span>(pm.response.responseTime)
+    .to.be.<span class="pf">below</span>(<span class="pn">500</span>);
+});</pre>
     </div>
   </div>
 </section>
@@ -1222,7 +1229,7 @@
       <tr><td class="fname">Postman collection import</td><td class="cu"><span class="cv">✓ v2.1</span></td><td><span class="cv">✓</span></td><td><span class="cv">✓</span></td></tr>
       <tr><td class="fname">Multi-tab editing</td><td class="cu"><span class="cv">✓</span></td><td><span class="cv">✓</span></td><td><span class="cp">Limited</span></td></tr>
       <tr><td class="fname">Session restore</td><td class="cu"><span class="cv">✓</span></td><td><span class="cv">✓</span></td><td><span class="cx">✗</span></td></tr>
-      <tr><td class="fname">Pre/post scripts</td><td class="cu"><span class="cv">✓ Rust-native</span></td><td><span class="cv">✓</span></td><td><span class="cv">✓</span></td></tr>
+      <tr><td class="fname">Pre/post scripts</td><td class="cu"><span class="cp">Planned</span></td><td><span class="cv">✓</span></td><td><span class="cv">✓</span></td></tr>
     </tbody>
   </table>
   </div>
@@ -1239,7 +1246,7 @@
       <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
       Download Latest Release
     </a><br>
-    <span class="dl-ver"><span id="dlVer">v0.3.10</span> · macOS · Windows · Linux · MIT License</span>
+    <span class="dl-ver">v0.3.8 · macOS · Windows · Linux · MIT License</span>
     <div class="dl-plats">
       <a class="dl-plat" href="https://github.com/animeshchaudhri/rustman/releases/latest" target="_blank" rel="noopener">
         <div class="dl-plat-name">macOS</div>
@@ -1287,25 +1294,6 @@
     <a href="https://github.com/animeshchaudhri/rustman/issues" target="_blank" rel="noopener">Report a bug</a>
   </p>
 </footer>
-
-<script>
-  // Pull the live version straight from Cargo.toml on GitHub, so this page
-  // never drifts out of sync with an actual release the way a hand-edited
-  // badge does. Falls back to the hardcoded text already in the markup
-  // (kept roughly current) if the fetch fails for any reason.
-  fetch("https://raw.githubusercontent.com/animeshchaudhri/rustman/master/Cargo.toml")
-    .then((res) => (res.ok ? res.text() : Promise.reject(res.status)))
-    .then((text) => {
-      const match = text.match(/^version\s*=\s*"([^"]+)"/m);
-      if (!match) return;
-      const label = "v" + match[1];
-      const logoVer = document.getElementById("logoVer");
-      const dlVer = document.getElementById("dlVer");
-      if (logoVer) logoVer.textContent = label;
-      if (dlVer) dlVer.textContent = label;
-    })
-    .catch(() => {});
-</script>
 
 </body>
 </html>
