@@ -104,8 +104,8 @@ pub enum RequestMsg {
     FormFieldPickFile(usize),                   // open file dialog for row index
     FormFieldFilePicked(usize, String, String), // index, filename, base64_data
     // Scripts
-    PreRequestScriptEdited(iced::widget::text_editor::Action),
-    TestScriptEdited(iced::widget::text_editor::Action),
+    PreRequestScriptEdited(iced_code_editor::Message),
+    TestScriptEdited(iced_code_editor::Message),
     // WebSocket
     WsConnect,
     WsDisconnect,
@@ -121,7 +121,6 @@ pub enum RequestMsg {
     TabDragStart(usize),
     TabDragOver(usize),
     TabDragEnd,
-    TimeoutChanged(String),
     // Actions
     Send,
     Abort,
@@ -157,6 +156,8 @@ pub enum ResponseMsg {
     TabSelected(ResponseTab),
     CopyBody,
     ViewerEdited(iced_code_editor::Message),
+    PdfPageRequested(usize),
+    ConsoleEdited(iced::widget::text_editor::Action),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
@@ -165,6 +166,7 @@ pub enum ResponseTab {
     Body,
     Headers,
     Cookies,
+    Tests,
 }
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
@@ -235,6 +237,7 @@ pub struct RepoAddPayload {
     pub path: std::path::PathBuf,
     pub remote_url: Option<String>,
     pub collections: Vec<(crate::domain::collection::Collection, Vec<crate::domain::collection::SavedRequest>)>,
+    pub global_script: Option<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -242,6 +245,7 @@ pub struct SyncPayload {
     pub repo_id: String,
     pub collections: Vec<(crate::domain::collection::Collection, Vec<crate::domain::collection::SavedRequest>)>,
     pub label: String,
+    pub global_script: Option<(String, String)>,
 }
 
 // ── Save dialog ───────────────────────────────────────────────────────────────
@@ -313,6 +317,25 @@ pub enum AppMsg {
         target: FormatTarget,
         text: String,
     },
+
+    SpreadsheetPreviewReady {
+        generation: u64,
+        tab_id: String,
+        result: Result<crate::services::spreadsheet::ParsedSheet, String>,
+    },
+
+    HtmlPreviewTick,
+    HtmlPanelBounds { bounds: iced::Rectangle, html: String },
+    PdfPagePreviewReady {
+        generation: u64,
+        tab_id: String,
+        page_index: usize,
+        page_count: usize,
+        result: Result<(u32, u32, Vec<u8>), String>,
+    },
+
+    FocusNextField,
+    FocusPreviousField,
     /// Window is closing — persist session before the process exits.
     WindowCloseRequested(iced::window::Id),
     AutoSaveSession,
@@ -334,6 +357,11 @@ pub enum SettingsMsg {
     GitNameChanged(String),
     GitEmailChanged(String),
     LayoutDirectionToggled,
+    DefaultTimeoutChanged(String),
+    GlobalPreRequestScriptEdited(iced::widget::text_editor::Action),
+    GlobalTestScriptEdited(iced::widget::text_editor::Action),
+    OpenGlobalScriptsModal,
+    CloseGlobalScriptsModal,
 }
 
 // ── Auto-update ───────────────────────────────────────────────────────────────

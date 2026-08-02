@@ -7,11 +7,20 @@ pub struct KvPair {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct FormFieldInput {
+    pub key: String,
+    pub value: String,
+    pub is_file: bool,
+    pub file_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct GenerateCurlInput {
     pub method: String,
     pub url: String,
     pub headers: Vec<KvPair>,
     pub body: Option<String>,
+    pub form_fields: Vec<FormFieldInput>,
     pub cookies: Vec<KvPair>,
     pub auth_type: String,
     pub bearer_token: Option<String>,
@@ -92,7 +101,36 @@ pub fn generate(input: &GenerateCurlInput) -> String {
         parts.push(format!("--cookie {}", shell_escape(&cookie_str)));
     }
 
-    if let Some(body) = &input.body {
+    if !input.form_fields.is_empty() {
+        let has_file = input.form_fields.iter().any(|f| f.is_file);
+        for field in &input.form_fields {
+            if field.key.is_empty() {
+                continue;
+            }
+            if has_file {
+                // Uploaded file data lives in memory as base64, not on disk,
+                // so there's no real path to point curl at. Reference the
+                // filename instead (the same convention Postman/Insomnia
+                // use) — the user fills in the path.
+                let value = if field.is_file {
+                    format!("@{}", field.file_name.as_deref().unwrap_or("file"))
+                } else {
+                    field.value.clone()
+                };
+                parts.push(format!(
+                    "--form {}",
+                    shell_escape(&format!("{}={}", field.key, value))
+                ));
+            } else {
+                // No file fields: matches rustman's own behavior of sending
+                // this as application/x-www-form-urlencoded.
+                parts.push(format!(
+                    "--data-urlencode {}",
+                    shell_escape(&format!("{}={}", field.key, field.value))
+                ));
+            }
+        }
+    } else if let Some(body) = &input.body {
         if !body.is_empty() {
             parts.push(format!("--data-raw {}", shell_escape(body)));
         }
@@ -149,4 +187,126 @@ fn shell_escape(s: &str) -> String {
     }
 
     format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_input() -> GenerateCurlInput {
+        GenerateCurlInput {
+            method: "POST".to_owned(),
+            url: "https://example.com/upload".to_owned(),
+            headers: vec![],
+            body: None,
+            form_fields: vec![],
+            cookies: vec![],
+            auth_type: "none".to_owned(),
+            bearer_token: None,
+            basic_user: None,
+            basic_pass: None,
+            api_key_name: None,
+            api_key_value: None,
+            api_key_location: None,
+        }
+    }
+
+    #[test]
+    fn form_data_fields_produce_form_flags() {
+        let mut input = base_input();
+        input.form_fields = vec![
+            FormFieldInput {
+                key: "name".to_owned(),
+                value: "rustman".to_owned(),
+                is_file: false,
+                file_name: None,
+            },
+            FormFieldInput {
+                key: "avatar".to_owned(),
+                value: String::new(),
+                is_file: true,
+                file_name: Some("avatar.png".to_owned()),
+            },
+        ];
+
+        let cmd = generate(&input);
+
+        assert!(cmd.contains("--form name=rustman"), "cmd was: {cmd}");
+        assert!(cmd.contains("--form avatar=@avatar.png"), "cmd was: {cmd}");
+        assert!(!cmd.contains("--data-raw"));
+    }
+
+    #[test]
+    fn text_only_form_fields_produce_urlencoded_flags() {
+        // No file field present: rustman sends this as
+        // application/x-www-form-urlencoded, not multipart — the curl
+        // command should match.
+        let mut input = base_input();
+        input.form_fields = vec![
+            FormFieldInput {
+                key: "conta".to_owned(),
+                value: "sync_dep_1".to_owned(),
+                is_file: false,
+                file_name: None,
+            },
+            FormFieldInput {
+                key: "modulo".to_owned(),
+                value: "SYNC".to_owned(),
+                is_file: false,
+                file_name: None,
+            },
+        ];
+
+        let cmd = generate(&input);
+
+        assert!(cmd.contains("--data-urlencode conta=sync_dep_1"), "cmd was: {cmd}");
+        assert!(cmd.contains("--data-urlencode modulo=SYNC"), "cmd was: {cmd}");
+        assert!(!cmd.contains("--form"));
+        assert!(!cmd.contains("--data-raw"));
+    }
+
+    #[test]
+    fn form_data_takes_priority_over_stale_body_text() {
+        // A body-editor leftover shouldn't leak into a form-data command.
+        let mut input = base_input();
+        input.body = Some("{\"leftover\":true}".to_owned());
+        input.form_fields = vec![FormFieldInput {
+            key: "key".to_owned(),
+            value: "value".to_owned(),
+            is_file: false,
+            file_name: None,
+        }];
+
+        let cmd = generate(&input);
+
+        assert!(cmd.contains("--data-urlencode key=value"));
+        assert!(!cmd.contains("--data-raw"));
+        assert!(!cmd.contains("leftover"));
+    }
+
+    #[test]
+    fn empty_form_fields_fall_back_to_raw_body() {
+        let mut input = base_input();
+        input.body = Some("{\"a\":1}".to_owned());
+
+        let cmd = generate(&input);
+
+        assert!(cmd.contains("--data-raw"));
+        assert!(!cmd.contains("--form"));
+    }
+
+    #[test]
+    fn disabled_and_empty_key_form_fields_are_skipped() {
+        let mut input = base_input();
+        input.form_fields = vec![FormFieldInput {
+            key: String::new(),
+            value: "ignored".to_owned(),
+            is_file: false,
+            file_name: None,
+        }];
+
+        let cmd = generate(&input);
+
+        assert!(!cmd.contains("ignored"));
+    }
 }

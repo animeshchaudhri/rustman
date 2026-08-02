@@ -1,6 +1,6 @@
 [package]
 name = "rustman"
-version = "0.3.10"
+version = "0.3.11"
 edition = "2024"
 description = "Rustman — pure-Rust native API testing tool built with iced"
 authors = ["animeshchaudhri"]
@@ -20,6 +20,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 reqwest = { version = "0.13", default-features = false, features = [
     "json",
     "query",
+    "form",
     "cookies",
     "multipart",
     "stream",
@@ -48,7 +49,7 @@ rusqlite = { version = "0.39", features = ["bundled"] }
 git2 = { version = "0.21", features = ["vendored-libgit2", "vendored-openssl"] }
 
 # Crypto (for JWT auth helper)
-base64 = "0.22"
+base64 = "0.23"
 sha2 = "0.11"
 hmac = "0.13"
 
@@ -68,6 +69,16 @@ chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
 open = "5"
 rfd = "0.17"
+
+# Response preview: spreadsheet (pure Rust), PDF (native pdfium, auto-fetched
+# binary), and HTML (native OS webview embedded as a child window)
+calamine = "0.36"
+wry = "0.55"
+pdfium-render = { version = "0.9", features = ["thread_safe"] }
+pdfium-bundled = "0.1"
+
+# Pre-request/test scripting language (see vendor/rustman-engine)
+rustman-engine = { path = "vendor/rustman-engine" }
 
 [patch.crates-io]
 iced-code-editor = { path = "vendor/iced-code-editor" }

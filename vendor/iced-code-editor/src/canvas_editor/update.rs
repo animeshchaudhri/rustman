@@ -141,6 +141,29 @@ impl CodeEditor {
         self.invalidate_highlight_from(self.pre_edit_line.saturating_sub(1));
         self.content_cache.clear();
         self.overlay_cache.clear();
+        // An edit can shrink or grow the document out from under a scroll
+        // render-window cached by `handle_scrolled_msg` — nothing else
+        // invalidates it. A stale window can end up disjoint from the new
+        // content's visual-line range, so `draw()` would render nothing at
+        // all for it. Reset it so `draw()` falls back to computing the
+        // actual visible range fresh this frame; the content cache is being
+        // fully rebuilt on this edit anyway, so this costs nothing extra.
+        // The next scroll re-establishes the padded window as usual.
+        self.cache_window_start_line = 0;
+        self.cache_window_end_line = 0;
+        // `viewport_scroll` is likewise only ever updated by a real Scrolled
+        // event. An edit that drastically shrinks the document (e.g.
+        // select-all + delete) can leave it pointing past the end of the new,
+        // shorter content, which would make `draw()`'s visible-line
+        // calculation start beyond the last real line and render nothing —
+        // until the next scroll event happens to correct it. Clamp it here
+        // so the very next frame is already correct.
+        let visual_lines = self.visual_lines_cached(self.viewport_width);
+        let content_height = visual_lines.len() as f32 * self.line_height;
+        let max_scroll = (content_height - self.viewport_height).max(0.0);
+        if self.viewport_scroll > max_scroll {
+            self.viewport_scroll = max_scroll;
+        }
         self.enqueue_incremental_lsp_change();
     }
 
@@ -2536,6 +2559,7 @@ impl CodeEditor {
         self.viewport_scroll = new_scroll;
         self.viewport_height = new_height;
         self.viewport_width = new_width;
+        self.viewport_metrics_confirmed = true;
         Task::none()
     }
 
@@ -4215,6 +4239,38 @@ mod tests {
 
         assert!(editor.has_canvas_focus);
         assert!(editor.show_cursor);
+    }
+
+    #[test]
+    fn test_select_all_delete_then_type_updates_buffer_and_layout() {
+        let mut editor = CodeEditor::new(
+            "{\n  \"a\": 1,\n  \"b\": 2\n}",
+            "json",
+        );
+        editor.request_focus();
+        editor.has_canvas_focus = true;
+        editor.focus_locked = false;
+
+        let _ = editor.update(&Message::SelectAll);
+        assert_eq!(
+            editor.cursors.primary().selection_range(),
+            Some(((0, 0), (3, 1)))
+        );
+
+        let _ = editor.update(&Message::DeleteSelection);
+        assert_eq!(editor.buffer.line_count(), 1);
+        assert_eq!(editor.buffer.line(0), "");
+
+        let _ = editor.update(&Message::CharacterInput('x'));
+        let _ = editor.update(&Message::CharacterInput('y'));
+        let _ = editor.update(&Message::CharacterInput('z'));
+        assert_eq!(editor.buffer.line(0), "xyz");
+        assert_eq!(editor.cursors.primary_position(), (0, 3));
+
+        let visual_lines =
+            editor.visual_lines_cached(editor.viewport_width);
+        assert_eq!(visual_lines.len(), 1);
+        assert_eq!(visual_lines[0].end_col, 3);
     }
 
     #[test]
