@@ -8,7 +8,7 @@ use crate::{
     state::tabs::RequestTabState,
 };
 
-use super::AppState;
+use super::{scripting, AppState};
 
 
 pub(crate) fn format_body(tab: &mut RequestTabState, text: String, target: FormatTarget) -> Task<Message> {
@@ -32,10 +32,80 @@ pub(crate) fn format_body(tab: &mut RequestTabState, text: String, target: Forma
     )
 }
 
+/// Marks the active tab's pre-request send as failed because a script
+/// (global or per-request) didn't run — a synthetic error response, same
+/// shape either script slot's failure produces, just labeled so the user
+/// can tell which one broke.
+fn fail_pre_request(state: &mut AppState, label: &str, err: String) {
+    let tab = state.tabs.active_tab_mut();
+    tab.script_error = Some(format!("{label} error: {err}"));
+    tab.response = Some(crate::domain::response::HttpResponse {
+        error: Some(format!("{label} error: {err}")),
+        ..Default::default()
+    });
+}
+
 pub(crate) fn send_request(state: &mut AppState) -> Task<Message> {
+    let active_env = state.active_env().cloned();
+
+    let global_script = state.global_pre_request_editor.text();
+    let request_script = state.tabs.active_tab().pre_request_editor.content();
+
+    let mut extra_headers = Vec::new();
+    let mut body_override = None;
+    let mut pre_request_logs = Vec::new();
+
+    // The global script runs first, establishing a baseline (e.g. a common
+    // auth header) that the per-request script below can see and, if it
+    // wants, override.
+    if !global_script.trim().is_empty() {
+        let host_input =
+            scripting::pre_request_host_input(state.tabs.active_tab(), active_env.as_ref());
+        match scripting::run_and_apply(state, &global_script, host_input) {
+            Ok(applied) => {
+                extra_headers.extend(applied.extra_headers);
+                body_override = applied.body_override;
+                pre_request_logs.extend(applied.logs);
+            }
+            Err(err) => {
+                fail_pre_request(state, "Global pre-request script", err);
+                return Task::none();
+            }
+        }
+    }
+
+    if !request_script.trim().is_empty() {
+        // Re-fetch the environment (the global script may have changed it
+        // via set_env) and layer the global script's header/body changes
+        // into this run's input, so header()/body() see them too.
+        let active_env = state.active_env().cloned();
+        let mut host_input =
+            scripting::pre_request_host_input(state.tabs.active_tab(), active_env.as_ref());
+        host_input.headers.extend(extra_headers.iter().cloned());
+        if let Some(body) = &body_override {
+            host_input.body = body.clone();
+        }
+        match scripting::run_and_apply(state, &request_script, host_input) {
+            Ok(applied) => {
+                extra_headers.extend(applied.extra_headers);
+                if applied.body_override.is_some() {
+                    body_override = applied.body_override;
+                }
+                pre_request_logs.extend(applied.logs);
+            }
+            Err(err) => {
+                fail_pre_request(state, "Pre-request script", err);
+                return Task::none();
+            }
+        }
+    }
+
     let tab = state.tabs.active_tab_mut();
     tab.is_loading = true;
     tab.response = None;
+    tab.set_script_logs(pre_request_logs);
+    tab.script_error = None;
+    tab.test_results.clear();
     let (generation, cancel) = tab.jobs.start(JobKind::Request);
 
     // Local addresses (loopback/RFC-1918) get http://; everything else https://.
@@ -52,15 +122,25 @@ pub(crate) fn send_request(state: &mut AppState) -> Task<Message> {
         raw_url
     };
 
+    let mut headers = tab.headers.clone();
+    for (key, value) in extra_headers {
+        headers.push(crate::domain::request::KeyValue {
+            id: uuid::Uuid::new_v4().to_string(),
+            key,
+            value,
+            enabled: true,
+        });
+    }
+
     let req = SavedRequest {
         id: tab.id.clone(),
         collection_id: String::new(),
         name: tab.title.clone(),
         method: tab.method.clone(),
         url: url_with_scheme,
-        headers: tab.headers.clone(),
+        headers,
         params: tab.params.clone(),
-        body: tab.body_editor.content(),
+        body: body_override.unwrap_or_else(|| tab.body_editor.content()),
         body_type: tab.body_type.clone(),
         auth_type: tab.auth_type.clone(),
         bearer_token: tab.bearer_token.clone(),
@@ -75,21 +155,20 @@ pub(crate) fn send_request(state: &mut AppState) -> Task<Message> {
         jwt_secret: tab.jwt_secret.clone(),
         jwt_subject: tab.jwt_subject.clone(),
         jwt_algo: tab.jwt_algo.clone(),
-        pre_request_script: tab.pre_request_editor.text(),
-        test_script: tab.test_editor.text(),
-        timeout_ms: tab.timeout_ms,
+        pre_request_script: tab.pre_request_editor.content(),
+        test_script: tab.test_editor.content(),
     };
 
     let tab_id = tab.id.clone();
-    let client = state.http_client.clone();
-    let active_env = state.active_env().cloned();
+    let client = state.http().clone();
+    let default_timeout_ms = state.default_timeout_ms;
 
     Task::perform(
         async move {
             tokio::select! {
                 biased;
                 _ = cancel.cancelled() => None,
-                result = http::send(&client, tab_id, &req, active_env.as_ref()) => Some(result),
+                result = http::send(&client, tab_id, &req, active_env.as_ref(), default_timeout_ms) => Some(result),
             }
         },
         move |outcome| match outcome {
@@ -127,9 +206,8 @@ pub(crate) fn save_request(state: &mut AppState) -> Task<Message> {
         jwt_secret: tab.jwt_secret.clone(),
         jwt_subject: tab.jwt_subject.clone(),
         jwt_algo: tab.jwt_algo.clone(),
-        pre_request_script: tab.pre_request_editor.text(),
-        test_script: tab.test_editor.text(),
-        timeout_ms: tab.timeout_ms,
+        pre_request_script: tab.pre_request_editor.content(),
+        test_script: tab.test_editor.content(),
     };
 
     if req.collection_id.is_empty() {
@@ -209,9 +287,8 @@ pub(crate) fn saved_request_from_tab(
         jwt_secret: tab.jwt_secret.clone(),
         jwt_subject: tab.jwt_subject.clone(),
         jwt_algo: tab.jwt_algo.clone(),
-        pre_request_script: tab.pre_request_editor.text(),
-        test_script: tab.test_editor.text(),
-        timeout_ms: tab.timeout_ms,
+        pre_request_script: tab.pre_request_editor.content(),
+        test_script: tab.test_editor.content(),
     }
 }
 

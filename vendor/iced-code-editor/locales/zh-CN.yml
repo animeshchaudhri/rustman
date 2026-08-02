@@ -11,3 +11,14 @@ replace:
 
 settings:
   case_sensitive_label: "区分大小写"
+
+context_menu:
+  undo: "撤消"
+  redo: "恢复"
+  cut: "剪切"
+  copy: "复制"
+  paste: "粘贴"
+  select_all: "选择全部"
+  reveal_in_finder: "在访达中显示"
+  reveal_in_file_explorer: "在文件资源管理器中显示"
+  open_containing_folder: "打开所在的文件夹"

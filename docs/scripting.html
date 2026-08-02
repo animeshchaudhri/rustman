@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scripting · Rustman docs</title>
+  <meta name="description" content="Rustman's pre-request and test scripting language: a small, Rust-native interpreter — not JavaScript." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900;1,14..32,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:     #08080f;
+      --bg1:    #0c0c18;
+      --bg2:    #10101e;
+      --bg3:    #161628;
+      --border: #1e1e36;
+      --bord2:  #252540;
+      --text:   #e8e8f2;
+      --dim:    #9090b0;
+      --muted:  #52527a;
+      --accent: #f97316;
+      --adim:   rgba(249,115,22,0.10);
+      --alow:   rgba(249,115,22,0.05);
+      --green:  #34d399;
+      --blue:   #60a5fa;
+      --purple: #a78bfa;
+      --red:    #f87171;
+      --r:  12px;
+      --rs: 8px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── NAV (matches the landing page) ── */
+    nav {
+      position: sticky; top: 0; z-index: 200;
+      display: flex; align-items: center; gap: 0.25rem;
+      padding: 0 2rem; height: 52px;
+      background: rgba(8,8,15,0.8);
+      backdrop-filter: blur(16px) saturate(160%);
+      border-bottom: 1px solid var(--border);
+    }
+    .logo {
+      display: flex; align-items: center; gap: 0.45rem;
+      font-weight: 800; font-size: 0.88rem;
+      letter-spacing: 0.08em; color: var(--text);
+      margin-right: 0.75rem;
+    }
+    .logo-mark {
+      width: 24px; height: 24px; border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; flex-shrink: 0;
+    }
+    .logo-mark img { width: 24px; height: 24px; display: block; }
+    .nav-sp { flex: 1; }
+    .nav-a {
+      padding: 0.35rem 0.75rem; font-size: 0.82rem; font-weight: 500;
+      color: var(--dim); border-radius: var(--rs);
+      transition: color .15s, background .15s;
+    }
+    .nav-a:hover { color: var(--text); background: var(--bg3); text-decoration: none; }
+    .nav-a.active { color: var(--accent); }
+    .nav-gh {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      padding: 0.35rem 0.9rem; font-size: 0.82rem; font-weight: 600;
+      color: var(--dim); border: 1px solid var(--bord2);
+      border-radius: var(--rs); transition: all .15s;
+    }
+    .nav-gh:hover { color: var(--text); border-color: var(--dim); background: var(--bg3); text-decoration: none; }
+    .nav-links { display: flex; align-items: center; gap: 0.1rem; }
+
+    @media (max-width: 680px) {
+      nav { padding: 0 1rem; gap: 0.2rem; }
+      .nav-links { display: none; }
+    }
+
+    /* ── DOCS LAYOUT ── */
+    .docs-shell {
+      display: grid; grid-template-columns: 220px minmax(0, 760px); gap: 3rem;
+      max-width: 1080px; margin: 0 auto; padding: 3rem 2rem 6rem;
+    }
+    @media (max-width: 860px) {
+      .docs-shell { grid-template-columns: 1fr; padding: 2rem 1.25rem 4rem; }
+      .toc { display: none; }
+    }
+
+    .toc {
+      position: sticky; top: 76px; align-self: start;
+      font-size: 0.8rem; max-height: calc(100vh - 100px); overflow-y: auto;
+    }
+    .toc-label {
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem;
+    }
+    .toc a {
+      display: block; padding: 0.3rem 0; color: var(--dim);
+      border-left: 2px solid transparent; padding-left: 0.75rem;
+      margin-left: -0.75rem;
+    }
+    .toc a:hover { color: var(--text); text-decoration: none; }
+
+    .docs-banner {
+      display: block; width: 100%; max-width: 640px; height: auto;
+      border-radius: var(--r); border: 1px solid var(--border);
+      margin-bottom: 1.75rem;
+    }
+    .docs-content h1 {
+      font-size: clamp(1.9rem, 4vw, 2.5rem); font-weight: 900;
+      letter-spacing: -0.03em; margin-bottom: 0.5rem;
+    }
+    .docs-kicker {
+      font-size: 0.78rem; font-weight: 600; color: var(--muted); margin-bottom: 1rem;
+    }
+    .docs-lede {
+      font-size: 1rem; color: var(--dim); line-height: 1.75; margin-bottom: 2.5rem;
+      max-width: 640px;
+    }
+    .docs-content h2 {
+      font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em;
+      margin: 2.75rem 0 1rem; padding-top: 0.5rem; border-top: 1px solid var(--border);
+    }
+    .docs-content h2:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+    .docs-content h3 {
+      font-size: 1rem; font-weight: 700; margin: 1.75rem 0 0.6rem; color: var(--text);
+    }
+    .docs-content p {
+      font-size: 0.92rem; color: var(--dim); line-height: 1.75; margin-bottom: 1rem;
+    }
+    .docs-content p code, .docs-content li code, .docs-content td code {
+      font-family: "JetBrains Mono", monospace; font-size: 0.85em;
+      background: var(--bg3); padding: 0.15em 0.4em; border-radius: 4px;
+      color: var(--accent); border: 1px solid var(--bord2);
+    }
+    .docs-content ul { margin: 0 0 1.25rem 1.25rem; }
+    .docs-content li { font-size: 0.9rem; color: var(--dim); line-height: 1.7; margin-bottom: 0.35rem; }
+    .docs-content strong { color: var(--text); }
+
+    .docs-content pre {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 1rem 1.15rem; overflow-x: auto;
+      font-family: "JetBrains Mono", monospace; font-size: 0.82rem;
+      line-height: 1.75; margin-bottom: 1.5rem; color: #c8c8d8;
+    }
+    .kw { color: #c084fc; } .fn { color: #60a5fa; } .st { color: #86efac; }
+    .nm { color: #fb923c; } .cm { color: #5a5a7a; font-style: italic; }
+
+    .docs-table-wrap { overflow-x: auto; margin-bottom: 1.75rem; }
+    table.docs-table {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      border: 1px solid var(--bord2); border-radius: var(--rs);
+      overflow: hidden; font-size: 0.82rem; min-width: 520px;
+    }
+    table.docs-table th {
+      background: var(--bg3); text-align: left; padding: 0.6rem 0.85rem;
+      font-size: 0.68rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--bord2);
+    }
+    table.docs-table td {
+      padding: 0.6rem 0.85rem; border-bottom: 1px solid var(--border);
+      color: var(--dim); vertical-align: top;
+    }
+    table.docs-table tr:last-child td { border-bottom: none; }
+    table.docs-table td:first-child { color: var(--text); font-weight: 600; white-space: nowrap; }
+
+    .callout {
+      border: 1px solid var(--bord2); border-left: 3px solid var(--accent);
+      background: var(--bg2); border-radius: 0 var(--rs) var(--rs) 0;
+      padding: 0.9rem 1.1rem; margin-bottom: 1.5rem; font-size: 0.87rem;
+      color: var(--dim); line-height: 1.7;
+    }
+    .callout strong { color: var(--text); }
+
+    .prompt-block { position: relative; }
+    .prompt-block pre {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 1.1rem 1.15rem 1.1rem 1.15rem;
+      overflow-x: auto; font-family: "JetBrains Mono", monospace;
+      font-size: 0.78rem; line-height: 1.65; color: #c8c8d8;
+      white-space: pre; margin-bottom: 1.5rem;
+    }
+    .prompt-copy {
+      position: absolute; top: 0.7rem; right: 0.9rem;
+      font-family: "Inter", system-ui, sans-serif; font-size: 0.72rem; font-weight: 600;
+      color: var(--dim); background: var(--bg3); border: 1px solid var(--bord2);
+      border-radius: 6px; padding: 0.3rem 0.7rem; cursor: pointer;
+      transition: color .15s, border-color .15s, background .15s;
+    }
+    .prompt-copy:hover { color: var(--text); border-color: var(--dim); background: var(--bg1); }
+    .prompt-copy.copied { color: var(--green); border-color: var(--green); }
+
+    footer {
+      border-top: 1px solid var(--border); padding: 1.75rem 2rem;
+      text-align: center; font-size: 0.78rem; color: var(--muted);
+    }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--dim); text-decoration: none; }
+  </style>
+  <script defer src="https://analytics.animesh.us/script.js" data-website-id="b1397736-939c-4843-bf24-384fb2289df3"></script>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="logo">
+    <div class="logo-mark"><img src="rustman-logo.svg" alt="Rustman" /></div>
+    RUSTMAN
+  </a>
+  <div class="nav-sp"></div>
+  <div class="nav-links">
+    <a href="index.html#features" class="nav-a">Features</a>
+    <a href="index.html#compare" class="nav-a">Compare</a>
+    <a href="scripting.html" class="nav-a active">Docs</a>
+    <a href="https://discord.gg/vfa8rKYzKG" class="nav-a" target="_blank" rel="noopener">Discord</a>
+  </div>
+  <a href="https://github.com/animeshchaudhri/rustman" class="nav-gh" target="_blank" rel="noopener">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+    GitHub
+  </a>
+</nav>
+
+<div class="docs-shell">
+  <aside class="toc">
+    <div class="toc-label">On this page</div>
+    <a href="#global">Global scripts</a>
+    <a href="#where">Where scripts run</a>
+    <a href="#syntax">Syntax</a>
+    <a href="#response">The response object</a>
+    <a href="#builtins">Built-in functions</a>
+    <a href="#examples">Worked examples</a>
+    <a href="#missing">What's not here</a>
+    <a href="#ai">Prompt for an LLM</a>
+  </aside>
+
+  <main class="docs-content">
+    <img class="docs-banner" src="rustman-scripting.png" alt="Rustman Scripting" />
+    <div class="docs-kicker">Docs · Scripting</div>
+    <h1>Rustman scripting language</h1>
+    <p class="docs-lede">
+      Pre-request and test scripts run on <strong>rustman-engine</strong>, a small interpreted
+      language written from scratch in Rust — not JavaScript. There is no <code>pm.*</code> API,
+      no Node builtins, no <code>require</code>/<code>import</code>. It's deliberately tiny: the
+      target audience for actually typing this syntax is an AI generating a script from a
+      plain-English request, not a person memorizing a grammar. This page is a complete
+      reference — every construct that exists is listed below, and nothing else exists at
+      runtime.
+    </p>
+
+    <h2 id="global">Global scripts</h2>
+    <p>
+      The Settings panel has a <strong>Global Scripts</strong> section — a pre-request/test
+      script pair that runs for <em>every</em> request, so common setup (an auth header every
+      request needs, environment bootstrapping) doesn't need copy-pasting into each request's
+      own Scripts tab.
+    </p>
+    <p>
+      The global script always runs first, then the request's own script runs second and can see
+      (and override) anything the global script already did — its <code>set_header</code>/<code>set_body</code>
+      effects are folded into what <code>header()</code>/<code>body()</code> return inside the
+      per-request script. Test results and <code>print(...)</code> logs from both accumulate in
+      that order. If either script fails, that phase's error is labeled so it's clear which one
+      broke; a pre-request failure stops the request from sending at all.
+    </p>
+
+    <h2 id="where">Where a script runs and what it can see</h2>
+    <div class="docs-table-wrap">
+      <table class="docs-table">
+        <tr><th></th><th>Pre-request script</th><th>Test script</th></tr>
+        <tr><td>Runs</td><td>Before the request is sent</td><td>After the response is received</td></tr>
+        <tr><td>env(...)</td><td colspan="2">Active environment's variables</td></tr>
+        <tr><td>header(...)</td><td>The request's own headers</td><td>The <strong>response's</strong> headers</td></tr>
+        <tr><td>cookie(...)</td><td colspan="2">The request's cookie jar</td></tr>
+        <tr><td>response</td><td>Not available — doesn't exist yet</td><td>Available — status + body</td></tr>
+        <tr><td>body(), url()</td><td>The request's own body/URL</td><td>Same — what was actually sent (not the response)</td></tr>
+        <tr><td>headers()</td><td>All of the request's own headers</td><td>All of the <strong>response's</strong> headers</td></tr>
+        <tr><td>Effects that matter</td><td><code>set_header</code>, <code>set_body</code>, <code>set_env</code></td><td><code>test</code>, <code>set_env</code></td></tr>
+      </table>
+    </div>
+    <p>
+      A pre-request script's <code>set_header</code> calls are merged into the outgoing
+      request's headers, and a <code>set_body</code> call replaces the outgoing body.
+      Neither touches what's saved in the request editor — only the one outgoing
+      request is affected. A test script's <code>test</code> calls populate the response's
+      <strong>Tests</strong> tab. <code>set_env</code> works in either script and writes to the
+      active environment, persisted immediately — same as editing it by hand.
+    </p>
+    <div class="callout">
+      If a script errors, nothing partial happens: the request still runs (or the response
+      still displays), the error is shown instead of any effects, and none of that run's
+      earlier <code>set_header</code>/<code>test</code> calls are applied.
+    </div>
+
+    <h2 id="syntax">Syntax</h2>
+
+    <h3>Statements</h3>
+    <pre><span class="kw">let</span> name = &lt;expr&gt;
+<span class="kw">if</span> &lt;expr&gt; { &lt;statements&gt; }
+<span class="kw">if</span> &lt;expr&gt; { &lt;statements&gt; } <span class="kw">else</span> { &lt;statements&gt; }
+&lt;expr&gt;</pre>
+    <p>
+      A trailing <code>;</code> is allowed but optional. There are no loops
+      (<code>for</code>/<code>while</code>) and no user-defined functions — scripts are a short,
+      flat (plus <code>if</code>/<code>else</code>) sequence of statements.
+    </p>
+
+    <h3>Comments &amp; literals</h3>
+    <ul>
+      <li><code>// rest of line</code> — no block comments.</li>
+      <li>Numbers: <code>42</code>, <code>3.14</code> — always floating point. <code>-5</code> is
+        <strong>not</strong> valid syntax (no unary minus for numbers); write <code>0 - 5</code>.</li>
+      <li>Strings: <code>"double-quoted"</code>, escapes <code>\n</code> <code>\t</code> <code>\"</code> <code>\\</code>.</li>
+      <li>Booleans: <code>true</code>, <code>false</code>. And <code>null</code>.</li>
+    </ul>
+
+    <h3>Variables</h3>
+    <p>
+      <code>let x = &lt;expr&gt;</code> binds <code>x</code> for the rest of the script. There's
+      no block scoping — everything is one flat scope, including names bound inside an
+      <code>if</code>/<code>else</code> branch.
+    </p>
+
+    <h3>Operators, highest to lowest precedence</h3>
+    <div class="docs-table-wrap">
+      <table class="docs-table">
+        <tr><th>#</th><th>Operators</th><th>Notes</th></tr>
+        <tr><td>1</td><td><code>.field</code> / <code>.method()</code> / <code>fn(args)</code></td><td>Field access and calls</td></tr>
+        <tr><td>2</td><td><code>!</code></td><td>Logical not (prefix)</td></tr>
+        <tr><td>3</td><td><code>+</code> <code>-</code></td><td>Add/subtract, see string concatenation below</td></tr>
+        <tr><td>4</td><td><code>&lt; &gt; &lt;= &gt;=</code></td><td>Numeric comparison only — runtime error on non-numbers</td></tr>
+        <tr><td>5</td><td><code>== !=</code></td><td>Equality — different types are always unequal, never coerced</td></tr>
+        <tr><td>6</td><td><code>&amp;&amp;</code></td><td>Logical and, short-circuits</td></tr>
+        <tr><td>7</td><td><code>||</code></td><td>Logical or, short-circuits</td></tr>
+      </table>
+    </div>
+    <p>Parentheses <code>( &lt;expr&gt; )</code> group as usual.</p>
+
+    <h3>String concatenation</h3>
+    <p>
+      <code>+</code> on two numbers adds them. If <strong>either</strong> side isn't a number,
+      it falls back to string concatenation, so <code>"Bearer " + token</code> and
+      <code>"count: " + 3</code> both just work — there's no separate concat operator.
+    </p>
+
+    <h3>Field access</h3>
+    <p>
+      <code>value.field</code> reads a field off an object (from <code>jwt_decode(...)</code>,
+      <code>json_parse(...)</code>, or <code>response.json()</code>). A missing field, or a
+      field access on a non-object, evaluates to <code>null</code> — not an error. This is a
+      <strong>different convention</strong> from <code>env()</code>/<code>header()</code>/<code>cookie()</code>
+      below: JSON payload shape is expected to vary, so a missing field is a normal, silent
+      <code>null</code>; a missing env var or header instead comes back as <code>""</code>,
+      because scripts commonly branch on it with <code>!= ""</code>.
+    </p>
+
+    <h2 id="response">The response object (test scripts only)</h2>
+    <ul>
+      <li><code>response.status</code> — a number, the HTTP status code.</li>
+      <li><code>response.json()</code> — parses the body as JSON into a value tree you can
+        field-access into; <code>null</code> if the body isn't valid JSON.</li>
+      <li><code>response.text()</code> — the raw response body as a string.</li>
+    </ul>
+    <p>
+      There's no <code>response.headers</code> field — read response headers with the
+      <code>header(...)</code> builtin, which is fed response headers specifically in test
+      scripts so the same name works in both script slots.
+    </p>
+
+    <h2 id="builtins">Built-in functions</h2>
+    <div class="docs-table-wrap">
+      <table class="docs-table">
+        <tr><th>Function</th><th>Signature</th><th>Notes</th></tr>
+        <tr><td>env(name)</td><td>(string) → string</td><td>Active environment variable. <strong>"" if unset</strong>, not null.</td></tr>
+        <tr><td>set_env(name, value)</td><td>(string, any) → null</td><td>Writes the active environment variable (effect, persisted). value can be any type — objects/arrays are JSON-stringified, everything else uses its display form.</td></tr>
+        <tr><td>header(name)</td><td>(string) → string</td><td>Case-insensitive. Request headers pre-request, response headers in a test script. <strong>"" if absent.</strong></td></tr>
+        <tr><td>headers()</td><td>() → object</td><td>Every header at once, same request-vs-response split as header(name) — for dumping everything instead of naming each one.</td></tr>
+        <tr><td>set_header(name, value)</td><td>(string, any) → null</td><td>Adds/overrides a request header. value can be any type, same auto-conversion as set_env — set_header("X-User-Detail", claims.payload) works directly.</td></tr>
+        <tr><td>cookie(name)</td><td>(string) → string</td><td>Case-insensitive lookup on the request's cookie jar. <strong>"" if absent.</strong></td></tr>
+        <tr><td>body()</td><td>() → string</td><td>The request's own body — available in <strong>both</strong> script slots (debugging what was actually sent). Use response.text()/response.json() for what came back.</td></tr>
+        <tr><td>set_body(value)</td><td>(any) → null</td><td>Replaces the outgoing request body (pre-request scripts only). Same auto-conversion as set_env/set_header.</td></tr>
+        <tr><td>url()</td><td>() → string</td><td>The request's own URL — available in both script slots.</td></tr>
+        <tr><td>test(name, condition)</td><td>(string, bool) → null</td><td>Records a pass/fail on the response's Tests tab.</td></tr>
+        <tr><td>print(value)</td><td>(any) → null</td><td>Logs value (auto-converted like set_env) to the Tests tab's console section — for debugging without an assertion.</td></tr>
+        <tr><td>base64_encode(s)</td><td>(string) → string</td><td>Standard base64 (not URL-safe).</td></tr>
+        <tr><td>base64_decode(s)</td><td>(string) → string</td><td>Accepts standard or URL-safe-no-pad base64. Null if invalid or not UTF-8 once decoded.</td></tr>
+        <tr><td>jwt_decode(token)</td><td>(string) → object</td><td>No signature verification — claims only. Accepts a bare token or one prefixed with "Bearer ". Returns <code>{ header, payload }</code>, or null if malformed.</td></tr>
+        <tr><td>json_parse(s)</td><td>(string) → value</td><td>Parses arbitrary JSON text. Null on invalid JSON.</td></tr>
+        <tr><td>json_stringify(value)</td><td>(value) → string</td><td>Serializes any value back into real, properly-quoted JSON — the inverse of json_parse/jwt_decode's output.</td></tr>
+        <tr><td>aes_encrypt(text, key)</td><td>(string, string) → string</td><td>AES-256-GCM, keyed by the SHA-256 hash of key (any string works, any length). Returns base64(nonce || ciphertext).</td></tr>
+        <tr><td>aes_decrypt(text, key)</td><td>(string, string) → string</td><td>Reverses aes_encrypt with the same key. Null if the key is wrong or input is malformed — fails closed, not open.</td></tr>
+      </table>
+    </div>
+    <p>
+      Truthiness (used by <code>if</code>, <code>!</code>, <code>&amp;&amp;</code>,
+      <code>||</code>, and <code>test</code>'s second argument): <code>null</code> and
+      <code>false</code> are falsy; <code>0</code> is falsy, any other number truthy;
+      <code>""</code> is falsy, any other string truthy; an empty array is falsy; objects are
+      always truthy.
+    </p>
+    <div class="callout">
+      <code>aes_encrypt</code>/<code>aes_decrypt</code> round-trip with each other, but the exact
+      framing (SHA-256 key derivation, <code>nonce || ciphertext</code> layout) is this engine's
+      own convention — it's <strong>not guaranteed to match another system's AES-GCM
+      implementation</strong>. If an external API dictates its own key derivation or nonce
+      handling, treat these as a starting point, not a drop-in match.
+    </div>
+
+    <h2 id="examples">Worked examples</h2>
+
+    <h3>Inject a bearer token, only if one is set</h3>
+    <pre><span class="kw">let</span> token = <span class="fn">env</span>(<span class="st">"access_token"</span>)
+<span class="kw">if</span> token != <span class="st">""</span> {
+    <span class="fn">set_header</span>(<span class="st">"Authorization"</span>, <span class="st">"Bearer "</span> + token)
+}</pre>
+
+    <h3>Decode a JWT from the response and stash claims</h3>
+    <pre><span class="kw">let</span> claims = <span class="fn">jwt_decode</span>(<span class="fn">header</span>(<span class="st">"Authorization"</span>))
+<span class="fn">set_env</span>(<span class="st">"user_id"</span>, claims.payload.sub)
+<span class="fn">set_env</span>(<span class="st">"access_token"</span>, claims.payload.access_token)
+<span class="fn">test</span>(<span class="st">"status is 200"</span>, response.status == <span class="nm">200</span>)
+<span class="fn">test</span>(<span class="st">"has user id"</span>, claims.payload.sub != <span class="kw">null</span>)</pre>
+
+    <h3>Assert on the JSON response body</h3>
+    <pre><span class="kw">let</span> body = response.<span class="fn">json</span>()
+<span class="fn">test</span>(<span class="st">"id is 7"</span>, body.id == <span class="nm">7</span>)
+<span class="fn">test</span>(<span class="st">"name matches"</span>, body.name == <span class="st">"ferris"</span>)</pre>
+
+    <h3>Range check with if/else</h3>
+    <pre><span class="kw">let</span> status = response.status
+<span class="kw">if</span> status &gt;= <span class="nm">200</span> &amp;&amp; status &lt; <span class="nm">300</span> {
+    <span class="fn">test</span>(<span class="st">"ok range"</span>, <span class="kw">true</span>)
+} <span class="kw">else</span> {
+    <span class="fn">test</span>(<span class="st">"ok range"</span>, <span class="kw">false</span>)
+}</pre>
+
+    <h3>Check a cookie was set</h3>
+    <pre><span class="fn">test</span>(<span class="st">"has session"</span>, <span class="fn">cookie</span>(<span class="st">"session_id"</span>) != <span class="st">""</span>)</pre>
+
+    <h3>Forward a decoded JWT cookie's claims as a header</h3>
+    <p>
+      A common gateway/BFF pattern: a session JWT lives in a cookie, and the backend wants the
+      decoded user details forwarded as a single header rather than re-decoding the JWT itself.
+    </p>
+    <pre><span class="kw">let</span> claims = <span class="fn">jwt_decode</span>(<span class="fn">cookie</span>(<span class="st">"accessToken"</span>))
+<span class="fn">set_header</span>(<span class="st">"X-User-Detail"</span>, claims.payload)</pre>
+    <p>
+      <code>set_header</code> auto-converts a non-string value, so passing the object directly
+      JSON-stringifies it the same as calling <code>json_stringify(claims.payload)</code> by hand.
+      If only one field is actually needed, send just that field — it's already a string:
+    </p>
+    <pre><span class="kw">let</span> claims = <span class="fn">jwt_decode</span>(<span class="fn">cookie</span>(<span class="st">"accessToken"</span>))
+<span class="fn">set_header</span>(<span class="st">"X-User-Detail"</span>, claims.payload.masterPhrId)</pre>
+
+    <h3>Debug what a request actually sent, from its own test script</h3>
+    <pre><span class="fn">print</span>(<span class="fn">url</span>())
+<span class="fn">print</span>(<span class="fn">headers</span>())
+<span class="fn">print</span>(<span class="fn">body</span>())</pre>
+
+    <h3>Encrypt the outgoing body, decrypt the response to assert on it</h3>
+    <pre><span class="cm">// pre-request script</span>
+<span class="kw">let</span> plaintext = <span class="fn">body</span>()
+<span class="fn">set_body</span>(<span class="fn">aes_encrypt</span>(plaintext, <span class="fn">env</span>(<span class="st">"body_key"</span>)))</pre>
+    <pre><span class="cm">// test script</span>
+<span class="kw">let</span> plaintext = <span class="fn">aes_decrypt</span>(response.<span class="fn">text</span>(), <span class="fn">env</span>(<span class="st">"body_key"</span>))
+<span class="kw">let</span> parsed = <span class="fn">json_parse</span>(plaintext)
+<span class="fn">test</span>(<span class="st">"status is 200"</span>, response.status == <span class="nm">200</span>)
+<span class="fn">test</span>(<span class="st">"order id present"</span>, parsed.order_id != <span class="kw">null</span>)</pre>
+
+    <h2 id="missing">What this language deliberately does not have</h2>
+    <p>
+      No loops, no user-defined functions, no array/object literals (you can only
+      <strong>receive</strong> arrays/objects from <code>jwt_decode</code>/<code>json_parse</code>/<code>response.json()</code>,
+      not construct them), no <code>try</code>/<code>catch</code> (a runtime error just aborts
+      the script), no string indexing/slicing, no regex. If a task needs any of these, it's out
+      of scope for a script — solve it with headers/env vars/assertions in the shapes above
+      instead of reaching for a workaround.
+    </p>
+
+    <h2 id="ai">Prompt for an LLM</h2>
+    <p>
+      Don't hand-write these scripts — copy the block below into ChatGPT, Claude, or any other
+      LLM, add your own request at the end, and let it write the script for you.
+    </p>
+    <div class="prompt-block">
+      <button class="prompt-copy" id="promptCopyBtn" type="button">Copy</button>
+      <pre id="promptText">You write scripts in Rustman's scripting language: a small custom language
+(not JavaScript, no pm.* API). Only use what's listed below — nothing else
+exists at runtime, and inventing syntax or functions will just fail.
+
+STATEMENTS: `let x = &lt;expr&gt;`, `if &lt;expr&gt; { ... }`, `if &lt;expr&gt; { ... } else { ... }`,
+or a bare expression. Trailing `;` optional. No loops, no user-defined functions.
+
+LITERALS: numbers (no negative literals — write `0 - 5`, not `-5`), "double-quoted
+strings" (\n \t \" \\ escapes), true, false, null.
+
+OPERATORS, low to high precedence: || , &amp;&amp; , == != , &lt; &gt; &lt;= &gt;= (numbers only) ,
++ - (numbers add; if either side isn't a number, + concatenates as text) ,
+! (prefix not) , .field / .method() / call(...).
+
+COMMENTS: `// rest of line`.
+
+BUILT-IN FUNCTIONS:
+  env(name) -&gt; string                    ("" if unset)
+  set_env(name, value)
+  header(name) -&gt; string                 ("" if absent; request headers pre-request,
+                                           response headers in a test script)
+  headers() -&gt; object                    (every header at once, same split as header())
+  set_header(name, value)
+  cookie(name) -&gt; string                 ("" if absent)
+  body() -&gt; string                       (the request's own body; works in both script slots)
+  set_body(value)                        (pre-request scripts only, replaces the
+                                           outgoing body)
+  url() -&gt; string                        (the request's own URL; works in both script slots)
+  test(name, condition)                  (records a pass/fail)
+  print(value)                           (debug log, no assertion)
+  base64_encode(s) / base64_decode(s)
+  jwt_decode(token) -&gt; {header, payload}  (no signature check; accepts a bare
+                                           token or "Bearer &lt;token&gt;")
+  json_parse(s) -&gt; value
+  json_stringify(value) -&gt; string
+  aes_encrypt(text, key) / aes_decrypt(text, key)   (AES-256-GCM, key is any
+                                           string, SHA-256 derived, base64(nonce||ciphertext))
+  response.status (test scripts only, number) / response.json() / response.text()
+
+set_env/set_header/set_body accept ANY value type — objects/arrays are
+auto-JSON-stringified, everything else uses its plain text form. So
+`set_header("X-User-Detail", claims.payload)` is valid directly.
+
+CONVENTIONS: env()/header()/cookie() return "" for a missing value — check with
+`!= ""`. Field access on an object from json_parse/jwt_decode/response.json()
+returns null for a missing field — check that with `!= null`, not `!= ""`.
+
+There's a GLOBAL pre-request/test script pair that runs before every
+request's own script and can be overridden by it — mention this only if the
+user's request is clearly about something that should apply to every
+request, not just one.
+
+Output ONLY the script itself — no explanation, no markdown code fences, no
+JS syntax, no pm.* API.
+
+My request: &lt;describe what you want the script to do&gt;</pre>
+    </div>
+  </main>
+</div>
+
+<footer>
+  <p>
+    Made with ❤️ by <a href="https://animesh.us" target="_blank" rel="noopener">Animesh Chaudhri</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/animeshchaudhri/rustman" target="_blank" rel="noopener">GitHub</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/animeshchaudhri/rustman/blob/master/docs/scripting.md" target="_blank" rel="noopener">Raw source (scripting.md)</a>
+  </p>
+</footer>
+
+<script>
+  const promptCopyBtn = document.getElementById("promptCopyBtn");
+  const promptText = document.getElementById("promptText");
+  if (promptCopyBtn && promptText) {
+    promptCopyBtn.addEventListener("click", () => {
+      navigator.clipboard.writeText(promptText.textContent).then(() => {
+        promptCopyBtn.textContent = "Copied!";
+        promptCopyBtn.classList.add("copied");
+        setTimeout(() => {
+          promptCopyBtn.textContent = "Copy";
+          promptCopyBtn.classList.remove("copied");
+        }, 1500);
+      });
+    });
+  }
+</script>
+
+</body>
+</html>
