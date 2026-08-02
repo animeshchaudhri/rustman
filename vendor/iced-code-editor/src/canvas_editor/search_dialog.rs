@@ -62,7 +62,7 @@ pub fn view<'a>(
 
     // Navigation buttons - compact with Font Awesome icons and tooltips
     let prev_button = Tooltip::new(
-        button(fa_icon_solid("chevron-left").size(11.0))
+        button(fa_icon_solid("chevron-left").size(11.0_f32))
             .on_press(Message::FindPrevious)
             .padding(2),
         text(translations.previous_match_tooltip()),
@@ -71,7 +71,7 @@ pub fn view<'a>(
     .style(container::rounded_box);
 
     let next_button = Tooltip::new(
-        button(fa_icon_solid("chevron-right").size(11.0))
+        button(fa_icon_solid("chevron-right").size(11.0_f32))
             .on_press(Message::FindNext)
             .padding(2),
         text(translations.next_match_tooltip()),
@@ -83,7 +83,7 @@ pub fn view<'a>(
     let case_checkbox = checkbox(search_state.case_sensitive)
         .on_toggle(|_| Message::ToggleCaseSensitive);
 
-    let case_icon = fa_icon_solid("font").size(11.0);
+    let case_icon = fa_icon_solid("font").size(11.0_f32);
     let case_label_text = text(translations.case_sensitive_label()).size(11);
 
     // Combined navigation + counter + case sensitivity row (all on one line)
@@ -116,7 +116,7 @@ pub fn view<'a>(
         .width(Length::Fixed(180.0));
 
         let replace_btn = Tooltip::new(
-            button(fa_icon_solid("arrow-right-arrow-left").size(11.0))
+            button(fa_icon_solid("arrow-right-arrow-left").size(11.0_f32))
                 .on_press(Message::ReplaceNext)
                 .padding(2),
             text(translations.replace_current_tooltip()),
@@ -125,7 +125,7 @@ pub fn view<'a>(
         .style(container::rounded_box);
 
         let replace_all_btn = Tooltip::new(
-            button(fa_icon_solid("arrows-rotate").size(11.0))
+            button(fa_icon_solid("arrows-rotate").size(11.0_f32))
                 .on_press(Message::ReplaceAll)
                 .padding(2),
             text(translations.replace_all_tooltip()),
@@ -140,7 +140,7 @@ pub fn view<'a>(
 
     // Close button - small with Font Awesome icon and tooltip
     let close_button = Tooltip::new(
-        button(fa_icon_solid("xmark").size(10.0))
+        button(fa_icon_solid("xmark").size(10.0_f32))
             .on_press(Message::CloseSearch)
             .padding(2),
         text(translations.close_search_tooltip()),
@@ -150,7 +150,7 @@ pub fn view<'a>(
 
     // Title bar with close button - compact with magnifying glass icon
     let title_row = row![
-        fa_icon_solid("magnifying-glass").size(12.0),
+        fa_icon_solid("magnifying-glass").size(12.0_f32),
         Space::new().width(Length::Fill),
         close_button
     ]
