@@ -1,7 +1,7 @@
 mod generator;
 mod parser;
 
-pub use generator::{FormFieldInput, GenerateCurlInput, KvPair};
+pub use generator::{GenerateCurlInput, KvPair};
 pub use parser::{CurlForm, ParsedCurl};
 
 pub fn parse(cmd: &str) -> ParsedCurl {

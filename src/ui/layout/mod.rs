@@ -35,8 +35,6 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         iced::widget::stack![root, dialogs::save_dialog(state)].into()
     } else if state.curl_modal_open {
         iced::widget::stack![root, dialogs::curl_modal(state)].into()
-    } else if state.global_scripts_modal_open {
-        iced::widget::stack![root, dialogs::global_scripts_modal(state)].into()
     } else {
         root
     }
@@ -174,9 +172,7 @@ fn main_area(state: &AppState) -> Element<'_, Message> {
         RequestTab::Body      => request::body::view(active_tab),
         RequestTab::Auth      => request::auth::view(active_tab),
         RequestTab::Scripts   => request::scripts::view(active_tab),
-        // No longer a real tab (timeout moved to global Settings) — only
-        // reachable via an old persisted session; fall back to Params.
-        RequestTab::Settings  => request::params::view(active_tab, active_env),
+        RequestTab::Settings  => request::settings::view(active_tab),
         RequestTab::WebSocket => request::websocket::view(active_tab),
     };
 
@@ -198,7 +194,6 @@ fn main_area(state: &AppState) -> Element<'_, Message> {
         ResponseTab::Body    => response::body::view(active_tab, state.spinner_frame),
         ResponseTab::Headers => response::headers::view(active_tab),
         ResponseTab::Cookies => response::cookies::view(active_tab),
-        ResponseTab::Tests   => response::tests::view(active_tab),
     };
 
     let response_panel = container(
@@ -245,13 +240,8 @@ fn main_area(state: &AppState) -> Element<'_, Message> {
         .into()
     };
 
-    // Any *currently visible* code editor having focus means Cmd+Z/Cmd+Shift+Z
-    // should stay scoped to that editor's own undo/redo, not the app-level
-    // request undo stack. See `AppState::any_visible_code_editor_focused` for
-    // why this can't just OR every editor's has_keyboard_focus() together
-    // regardless of which tab is showing — a hidden editor's focus flag goes
-    // stale and never clears once you've typed in it.
-    let editors_focused = state.any_visible_code_editor_focused();
+    let editors_focused = active_tab.body_editor.has_keyboard_focus()
+        || active_tab.response_editor.has_keyboard_focus();
 
     container(
         crate::ui::widgets::key_guard::key_guard(

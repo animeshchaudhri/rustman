@@ -42,30 +42,16 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             tab.modified = true;
         }
         RequestMsg::MethodChanged(v) => {
-            if let Ok(m) = v.parse() { if tab.method != m { tab.method = m; tab.modified = true; } }
+            if let Ok(m) = v.parse() { tab.method = m; tab.modified = true; }
         }
         RequestMsg::TabSelected(t) => tab.active_request_tab = t,
         RequestMsg::BodyEdited(msg) => {
-            if is_body_edit(&msg) {
-                tab.modified = true;
-            }
+            tab.modified = true;
             return tab.body_editor.update(&msg)
                 .map(|m| Message::Request(RequestMsg::BodyEdited(m)));
         }
-        RequestMsg::PreRequestScriptEdited(msg) => {
-            if is_body_edit(&msg) {
-                tab.modified = true;
-            }
-            return tab.pre_request_editor.update(&msg)
-                .map(|m| Message::Request(RequestMsg::PreRequestScriptEdited(m)));
-        }
-        RequestMsg::TestScriptEdited(msg) => {
-            if is_body_edit(&msg) {
-                tab.modified = true;
-            }
-            return tab.test_editor.update(&msg)
-                .map(|m| Message::Request(RequestMsg::TestScriptEdited(m)));
-        }
+        RequestMsg::PreRequestScriptEdited(action) => { tab.pre_request_editor.perform(action); tab.modified = true; }
+        RequestMsg::TestScriptEdited(action) => { tab.test_editor.perform(action); tab.modified = true; }
         RequestMsg::NewTab => { state.tabs.new_tab(); persist_session(state); return Task::none(); }
         RequestMsg::CloseTab(i) => {
             if state.tabs.tabs.get(i).map_or(false, |t| t.modified) {
@@ -94,6 +80,11 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             return Task::none();
         }
         RequestMsg::CancelCloseTab => { state.close_confirm_tab = None; return Task::none(); }
+        RequestMsg::TimeoutChanged(v) => {
+            tab.timeout_ms = v.trim().parse().unwrap_or(0);
+            tab.timeout_text = v;
+            tab.modified = true;
+        }
         RequestMsg::SwitchTab(i) => { state.tabs.switch_to(i); persist_session(state); return Task::none(); }
         RequestMsg::TabDragStart(i) => {
             state.tabs.switch_to(i);
@@ -170,7 +161,7 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         RequestMsg::ApiKeyNameChanged(v) => { tab.api_key_name = v; tab.modified = true; }
         RequestMsg::ApiKeyValueChanged(v) => { tab.api_key_value = v; tab.modified = true; }
         RequestMsg::AuthTypeChanged(v) => {
-            if let Ok(a) = v.parse() { if tab.auth_type != a { tab.auth_type = a; tab.modified = true; } }
+            if let Ok(a) = v.parse() { tab.auth_type = a; tab.modified = true; }
         }
         RequestMsg::CookieStringChanged(v) => { tab.cookie_string = v; tab.modified = true; }
         RequestMsg::JwtSecretChanged(v) => { tab.jwt_secret = v; tab.modified = true; }
@@ -270,27 +261,13 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             tab.body_editor.set_indent_style(style);
         }
         RequestMsg::ExportCurl => {
-            use crate::domain::request::{BodyType, FormFieldType};
-            use crate::services::curl::{generate, FormFieldInput, GenerateCurlInput, KvPair};
+            use crate::services::curl::{generate, GenerateCurlInput, KvPair};
             let body_text = tab.body_editor.content();
             let body = if body_text.trim().is_empty() { None } else { Some(body_text) };
             let headers: Vec<KvPair> = tab.headers.iter()
                 .filter(|h| h.enabled && !h.key.is_empty())
                 .map(|h| KvPair { key: h.key.clone(), value: h.value.clone() })
                 .collect();
-            let form_fields: Vec<FormFieldInput> = if tab.body_type == BodyType::FormData {
-                tab.form_fields.iter()
-                    .filter(|f| f.enabled && !f.key.is_empty())
-                    .map(|f| FormFieldInput {
-                        key: f.key.clone(),
-                        value: f.value.clone(),
-                        is_file: f.field_type == FormFieldType::File,
-                        file_name: f.file_name.clone(),
-                    })
-                    .collect()
-            } else {
-                vec![]
-            };
             let api_loc = match tab.api_key_location {
                 crate::domain::request::ApiKeyLocation::Header => None,
                 crate::domain::request::ApiKeyLocation::Query => Some("query".to_owned()),
@@ -300,7 +277,6 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
                 url: tab.url.clone(),
                 headers,
                 body,
-                form_fields,
                 cookies: vec![],
                 auth_type: tab.auth_type.as_str().to_owned(),
                 bearer_token: if tab.bearer_token.is_empty() { None } else { Some(tab.bearer_token.clone()) },
@@ -324,10 +300,8 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         }
         RequestMsg::BodyTypeChanged(v) => {
             if let Ok(b) = v.parse() {
-                if tab.body_type != b {
-                    tab.body_type = b;
-                    tab.modified = true;
-                }
+                tab.body_type = b;
+                tab.modified = true;
             }
         }
         RequestMsg::FormFieldAdded => {
@@ -364,10 +338,8 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         }
         RequestMsg::ApiKeyLocationChanged(v) => {
             if let Ok(loc) = v.parse() {
-                if tab.api_key_location != loc {
-                    tab.api_key_location = loc;
-                    tab.modified = true;
-                }
+                tab.api_key_location = loc;
+                tab.modified = true;
             }
         }
         RequestMsg::Abort => {
@@ -378,18 +350,8 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             use crate::message::RequestTab;
             match tab.active_request_tab {
                 RequestTab::Scripts => {
-                    if tab.test_editor.has_keyboard_focus() {
-                        let toggled = toggle_js_comments(&tab.test_editor.content());
-                        tab.modified = true;
-                        let _ = tab.test_editor.update(&iced_code_editor::Message::SelectAll);
-                        return tab.test_editor.update(&iced_code_editor::Message::Paste(toggled))
-                            .map(|m| Message::Request(RequestMsg::TestScriptEdited(m)));
-                    }
-                    let toggled = toggle_js_comments(&tab.pre_request_editor.content());
-                    tab.modified = true;
-                    let _ = tab.pre_request_editor.update(&iced_code_editor::Message::SelectAll);
-                    return tab.pre_request_editor.update(&iced_code_editor::Message::Paste(toggled))
-                        .map(|m| Message::Request(RequestMsg::PreRequestScriptEdited(m)));
+                    let toggled = toggle_js_comments(&tab.pre_request_editor.text());
+                    tab.pre_request_editor = iced::widget::text_editor::Content::with_text(&toggled);
                 }
                 RequestTab::Body => {
                     let toggled = toggle_js_comments(&tab.body_editor.content());
@@ -529,34 +491,6 @@ fn serialize_bulk_kv(items: &[crate::domain::request::KeyValue]) -> String {
         .join("\n")
 }
 
-/// Returns `true` when the CodeEditor message changes buffer content (insert,
-/// delete, paste, undo/redo, etc.).  Navigation, scrolling, focus, and search
-/// messages do NOT count — they shouldn't mark the request as modified.
-fn is_body_edit(msg: &iced_code_editor::Message) -> bool {
-    use iced_code_editor::Message as M;
-    matches!(
-        msg,
-        M::CharacterInput(_)
-            | M::Backspace
-            | M::Delete
-            | M::Enter
-            | M::Tab
-            | M::Paste(_)
-            | M::Cut
-            | M::DeleteSelection
-            | M::Undo
-            | M::Redo
-            | M::MoveLineUp
-            | M::MoveLineDown
-            | M::ToggleComment
-            | M::DuplicateLineDown
-            | M::DuplicateLineUp
-            | M::ReplaceNext
-            | M::ReplaceAll
-            | M::ImeCommit(_)
-    )
-}
-
 #[cfg(test)]
 mod undo_tests {
     use super::*;
@@ -567,25 +501,6 @@ mod undo_tests {
         assert_eq!(guess_mime("archive.tar.gz").as_deref(), Some("application/gzip"));
         assert_eq!(guess_mime("noext").as_deref(), None); // falls back to octet-stream
         assert_eq!(guess_mime("weird.xyz").as_deref(), None);
-    }
-
-    #[test]
-    fn mime_guessed_for_office_documents() {
-        assert_eq!(
-            guess_mime("report.xlsx").as_deref(),
-            Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        );
-        assert_eq!(guess_mime("legacy.xls").as_deref(), Some("application/vnd.ms-excel"));
-        assert_eq!(
-            guess_mime("doc.docx").as_deref(),
-            Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-        );
-        assert_eq!(guess_mime("legacy.doc").as_deref(), Some("application/msword"));
-        assert_eq!(
-            guess_mime("slides.pptx").as_deref(),
-            Some("application/vnd.openxmlformats-officedocument.presentationml.presentation")
-        );
-        assert_eq!(guess_mime("legacy.ppt").as_deref(), Some("application/vnd.ms-powerpoint"));
     }
 
     #[test]
@@ -756,12 +671,6 @@ fn guess_mime(name: &str) -> Option<String> {
         "gz" => "application/gzip",
         "mp4" => "video/mp4",
         "mp3" => "audio/mpeg",
-        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "xls" => "application/vnd.ms-excel",
-        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "doc" => "application/msword",
-        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "ppt" => "application/vnd.ms-powerpoint",
         _ => return None,
     };
     Some(m.to_owned())
