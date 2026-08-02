@@ -3,7 +3,6 @@
 //! This module provides a custom Canvas widget that handles all text rendering
 //! and input directly, bypassing Iced's higher-level widgets for optimal speed.
 
-use iced::Color;
 use iced::advanced::text::{
     Alignment, Paragraph, Renderer as TextRenderer, Text,
 };
@@ -11,14 +10,12 @@ use iced::widget::operation::{RelativeOffset, snap_to};
 use iced::widget::{Id, canvas};
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering as CmpOrdering;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
-use syntect::highlighting::HighlightState;
-use syntect::parsing::ParseState;
 use unicode_width::UnicodeWidthChar;
 
 use crate::i18n::Translations;
@@ -39,12 +36,9 @@ static FOCUSED_EDITOR_ID: AtomicU64 = AtomicU64::new(0);
 mod canvas_impl;
 mod clipboard;
 pub mod command;
-mod context_menu;
 mod cursor;
 pub(crate) mod cursor_set;
 pub mod folding;
-mod goto_line;
-mod goto_line_dialog;
 pub mod history;
 pub mod ime_requester;
 pub mod lsp;
@@ -55,187 +49,7 @@ mod search_dialog;
 mod selection;
 mod update;
 mod view;
-mod vim;
 mod wrapping;
-
-pub use context_menu::{ContextMenuEntry, ContextMenuItem};
-pub use vim::VimMode;
-
-/// Hidden re-exports for the benchmark harness in `benches/`.
-///
-/// This module is compiled only with the `bench` feature and is **not** part
-/// of the public API. It exposes internal hot-path functions so the
-/// `criterion` benchmarks (which run as a separate crate) can measure them.
-#[doc(hidden)]
-#[cfg(feature = "bench")]
-pub mod bench_support {
-    pub use super::canvas_impl::highlight_line_spans;
-    pub use super::folding::compute_foldable_regions;
-    pub use super::search::find_matches;
-    pub use super::wrapping::WrappingCalculator;
-    pub use crate::text_buffer::TextBuffer;
-
-    /// Stateful harness for measuring the normal localized typing path.
-    pub struct IncrementalEditBenchmark {
-        editor: super::CodeEditor,
-    }
-
-    impl IncrementalEditBenchmark {
-        /// Creates an editor, primes its visual-line cache, and places the
-        /// cursor at `line`/`column`.
-        pub fn new(content: &str, line: usize, column: usize) -> Self {
-            let mut editor = super::CodeEditor::new(content, "rs")
-                .with_wrap_column(Some(80));
-            editor.request_focus();
-            editor.has_canvas_focus = true;
-            editor.focus_locked = false;
-            editor.cursors.primary_mut().position = (line, column);
-            let _ = editor.visual_lines_cached(800.0);
-            Self { editor }
-        }
-
-        /// Inserts and removes one character, leaving content size stable for
-        /// repeated Criterion iterations.
-        pub fn insert_and_backspace(&mut self) -> u64 {
-            let _ = self.editor.update(&super::Message::CharacterInput('x'));
-            let _ = self.editor.update(&super::Message::Backspace);
-            if self.editor.is_grouping {
-                self.editor.history.end_group();
-                self.editor.is_grouping = false;
-            }
-            self.editor.buffer_revision
-        }
-    }
-
-    struct NoopLspClient;
-
-    impl super::lsp::LspClient for NoopLspClient {}
-
-    /// Stateful harness for the incremental LSP synchronization path.
-    pub struct IncrementalLspEditBenchmark {
-        editor: super::CodeEditor,
-    }
-
-    impl IncrementalLspEditBenchmark {
-        /// Creates and primes a focused editor with a no-op LSP client.
-        pub fn new(content: &str, line: usize, column: usize) -> Self {
-            let mut editor = super::CodeEditor::new(content, "rs")
-                .with_wrap_column(Some(80));
-            editor.attach_lsp(
-                Box::new(NoopLspClient),
-                super::lsp::LspDocument::new("file:///benchmark.rs", "rust"),
-            );
-            editor.request_focus();
-            editor.has_canvas_focus = true;
-            editor.focus_locked = false;
-            editor.cursors.primary_mut().position = (line, column);
-            let _ = editor.visual_lines_cached(800.0);
-            Self { editor }
-        }
-
-        /// Inserts and removes one character while sending incremental LSP
-        /// changes for both edits.
-        pub fn insert_and_backspace(&mut self) -> u64 {
-            let _ = self.editor.update(&super::Message::CharacterInput('x'));
-            let _ = self.editor.update(&super::Message::Backspace);
-            if self.editor.is_grouping {
-                self.editor.history.end_group();
-                self.editor.is_grouping = false;
-            }
-            self.editor.buffer_revision
-        }
-    }
-
-    /// Stateful harness for typing with wrapping disabled.
-    pub struct IncrementalNoWrapEditBenchmark {
-        editor: super::CodeEditor,
-    }
-
-    impl IncrementalNoWrapEditBenchmark {
-        /// Creates an editor and primes both layout and horizontal-width caches.
-        pub fn new(content: &str, line: usize, column: usize) -> Self {
-            let mut editor = super::CodeEditor::new(content, "rs");
-            editor.set_wrap_enabled(false);
-            editor.request_focus();
-            editor.has_canvas_focus = true;
-            editor.focus_locked = false;
-            editor.cursors.primary_mut().position = (line, column);
-            let _ = editor.visual_lines_cached(800.0);
-            let _ = editor.max_content_width();
-            Self { editor }
-        }
-
-        /// Inserts and removes one character without triggering a whole-file
-        /// maximum-width scan.
-        pub fn insert_and_backspace(&mut self) -> u64 {
-            let _ = self.editor.update(&super::Message::CharacterInput('x'));
-            let _ = self.editor.update(&super::Message::Backspace);
-            if self.editor.is_grouping {
-                self.editor.history.end_group();
-                self.editor.is_grouping = false;
-            }
-            self.editor.buffer_revision
-        }
-    }
-
-    /// Stateful harness for typing while a large-file search is open.
-    pub struct IncrementalSearchEditBenchmark {
-        editor: super::CodeEditor,
-    }
-
-    impl IncrementalSearchEditBenchmark {
-        /// Creates an editor with populated search results and a warm layout.
-        pub fn new(
-            content: &str,
-            query: &str,
-            line: usize,
-            column: usize,
-        ) -> Self {
-            let mut editor = super::CodeEditor::new(content, "rs")
-                .with_wrap_column(Some(80));
-            editor.search_state.open_search();
-            editor.search_state.set_query(query.to_owned(), &editor.buffer);
-            editor.request_focus();
-            editor.has_canvas_focus = true;
-            editor.focus_locked = false;
-            editor.cursors.primary_mut().position = (line, column);
-            let _ = editor.visual_lines_cached(800.0);
-            Self { editor }
-        }
-
-        /// Inserts and removes one character while maintaining search matches.
-        pub fn insert_and_backspace(&mut self) -> u64 {
-            let _ = self.editor.update(&super::Message::CharacterInput('x'));
-            let _ = self.editor.update(&super::Message::Backspace);
-            if self.editor.is_grouping {
-                self.editor.history.end_group();
-                self.editor.is_grouping = false;
-            }
-            self.editor.buffer_revision
-        }
-    }
-
-    /// Measures the incremental wrapping path without exposing internal visual
-    /// line types as public editor API.
-    pub fn calculate_visual_line_range_len(
-        calculator: &WrappingCalculator,
-        buffer: &TextBuffer,
-        viewport_width: f32,
-        gutter_width: f32,
-        start_line: usize,
-        end_line: usize,
-    ) -> usize {
-        calculator
-            .calculate_visual_lines_range(
-                buffer,
-                viewport_width,
-                gutter_width,
-                &std::collections::HashSet::new(),
-                start_line..end_line,
-            )
-            .len()
-    }
-}
 
 /// Canvas-based text editor constants
 pub(crate) const FONT_SIZE: f32 = 14.0;
@@ -309,14 +123,6 @@ pub(crate) const EPSILON: f32 = 0.001;
 /// scrolling, improving performance on very large files while still ensuring
 /// correct initial rendering during the first scroll.
 pub(crate) const CACHE_WINDOW_MARGIN_MULTIPLIER: usize = 2;
-/// Maximum number of previously unseen logical lines syntect may parse while
-/// rebuilding one content frame.
-///
-/// Syntax state is sequential, so jumping far into a large file can otherwise
-/// parse every line from the start in one blocking draw call. Lines beyond this
-/// budget temporarily use the editor's plain text color and will be highlighted
-/// as later content redraws advance the cached parser state.
-pub(crate) const HIGHLIGHT_LINES_PER_FRAME: usize = 2_000;
 
 /// Compares two floating point numbers with a small epsilon tolerance.
 ///
@@ -344,17 +150,6 @@ pub(crate) fn compare_floats(a: f32, b: f32) -> CmpOrdering {
 pub(crate) struct ImePreedit {
     pub(crate) content: String,
     pub(crate) selection: Option<Range<usize>>,
-}
-
-/// Conservative logical-line range captured immediately before an edit.
-///
-/// It lets LSP synchronization send one incremental range replacement without
-/// serializing and diffing the entire document after every keystroke.
-pub(crate) struct LspEditSnapshot {
-    pub(crate) start_line: usize,
-    pub(crate) old_end_exclusive: usize,
-    pub(crate) old_line_count: usize,
-    pub(crate) old_end: lsp::LspPosition,
 }
 
 /// Canvas-based high-performance text editor.
@@ -402,21 +197,14 @@ pub struct CodeEditor {
     pub(crate) scrollable_id: Id,
     /// ID for the horizontal scrollable widget (only used when wrap_enabled = false)
     pub(crate) horizontal_scrollable_id: Id,
-    /// Incremental per-line width index for the horizontal scrollbar.
-    pub(crate) max_content_width_cache: RefCell<Option<MaxContentWidthCache>>,
+    /// Cache for max content width: (buffer_revision, width_in_pixels)
+    pub(crate) max_content_width_cache: RefCell<Option<(u64, f32)>>,
     /// Current viewport scroll position (Y offset)
     pub(crate) viewport_scroll: f32,
     /// Viewport height (visible area)
     pub(crate) viewport_height: f32,
     /// Viewport width (visible area)
     pub(crate) viewport_width: f32,
-    /// Whether `viewport_height`/`viewport_width` have ever been set from a
-    /// real `Scrolled` event. Until then they hold construction-time
-    /// placeholder values (chosen so undirected logic like Page Up/Down has
-    /// *something* sane to divide by before the first real layout), which
-    /// `draw()` must NOT trust for deciding what's actually visible — it
-    /// uses the real per-frame layout bounds instead until this is `true`.
-    pub(crate) viewport_metrics_confirmed: bool,
     /// Command history for undo/redo
     pub(crate) history: CommandHistory,
     /// Whether we're currently grouping commands (for smart undo)
@@ -443,26 +231,12 @@ pub struct CodeEditor {
         RefCell<Option<(u64, Rc<Vec<folding::FoldRegion>>)>>,
     /// Search state
     pub(crate) search_state: search::SearchState,
-    /// Custom entries displayed before the built-in context-menu actions.
-    custom_context_menu_entries: Vec<ContextMenuEntry>,
-    /// Whether the built-in editing actions are shown in the context menu.
-    default_context_menu_enabled: bool,
-    /// Whether the built-in reveal-in-file-manager action is shown.
-    reveal_in_file_manager_enabled: bool,
-    /// Go-to-line dialog state
-    pub(crate) goto_line_state: goto_line::GotoLineState,
-    /// Whether Vim key handling is enabled for this editor instance.
-    vim_enabled: bool,
-    /// Per-editor Vim mode, parser prefixes and unnamed register.
-    pub(crate) vim_state: vim::VimState,
     /// Translations for UI text
     pub(crate) translations: Translations,
     /// Whether search/replace functionality is enabled
     pub(crate) search_replace_enabled: bool,
     /// Whether line numbers are displayed
     pub(crate) line_numbers_enabled: bool,
-    /// Whether to render whitespace characters visibly (spaces as `·`, tabs as `→`)
-    pub(crate) show_whitespace: bool,
     /// Whether LSP support is enabled
     pub(crate) lsp_enabled: bool,
     /// Active LSP client connection, if configured.
@@ -473,14 +247,6 @@ pub struct CodeEditor {
     pub(crate) lsp_pending_changes: Vec<lsp::LspTextChange>,
     /// Shadow copy of buffer content used to compute LSP deltas.
     pub(crate) lsp_shadow_text: String,
-    /// Whether `lsp_shadow_text` still exactly matches the server document.
-    pub(crate) lsp_shadow_is_current: bool,
-    /// Current server-side line count, maintained incrementally.
-    pub(crate) lsp_synced_line_count: usize,
-    /// Length of the current server-side final line in Unicode scalar values.
-    pub(crate) lsp_synced_last_line_len: usize,
-    /// Pre-edit range used to build a bounded incremental LSP change.
-    pub(crate) lsp_edit_snapshot: Option<LspEditSnapshot>,
     /// Whether to auto-flush LSP changes after edits.
     pub(crate) lsp_auto_flush: bool,
     /// Whether the canvas has user input focus (for keyboard events)
@@ -494,8 +260,8 @@ pub struct CodeEditor {
     /// This is updated via subscription events and used to handle modifier-dependent
     /// interactions, such as "Ctrl+Click" for jumping to a definition.
     pub(crate) modifiers: Cell<iced::keyboard::Modifiers>,
-    /// Last left-button press (time, position, consecutive count), used to
-    /// detect double/triple clicks.
+    /// Last left-button press (time, position, consecutive count) for
+    /// double/triple-click detection.
     pub(crate) last_click: Cell<Option<(Instant, iced::Point, u8)>>,
     /// The font used for rendering text
     pub(crate) font: iced::Font,
@@ -531,29 +297,6 @@ pub struct CodeEditor {
     /// rendering (where we only have `&self`), but we still want to memoize the
     /// expensive computation without forcing external mutability.
     visual_lines_cache: RefCell<Option<VisualLinesCache>>,
-    /// Sequential per-line syntax-highlight cache (see [`HighlightCache`]).
-    ///
-    /// Stored behind a `RefCell` because highlighting is performed during
-    /// rendering (where only `&self` is available) yet should be memoized.
-    /// Spans are reused across wrapped visual segments and across scroll-only
-    /// renders. On an edit the cache is truncated from the first changed line
-    /// (tracked via `pre_edit_line`) rather than fully cleared, so multi-line
-    /// constructs stay correct without re-parsing the whole file.
-    pub(crate) highlight_cache: RefCell<Option<HighlightCache>>,
-    /// Remaining syntax lines that may be parsed during the current content
-    /// render. `usize::MAX` keeps direct non-render uses (notably tests) uncapped.
-    pub(crate) highlight_lines_remaining: Cell<usize>,
-    /// Topmost logical line touched by the cursors/selections before the
-    /// current edit, captured at the top of `update()`.
-    ///
-    /// Used as a conservative lower bound for the first line an edit may
-    /// change, to truncate `highlight_cache` precisely.
-    pub(crate) pre_edit_line: usize,
-    /// Bottommost logical line touched before the current edit.
-    ///
-    /// Together with `pre_edit_line`, this bounds the portion of the visual-line
-    /// cache that must be rebuilt after a localized edit.
-    pub(crate) pre_edit_last_line: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -575,143 +318,6 @@ struct VisualLinesKey {
 struct VisualLinesCache {
     key: VisualLinesKey,
     visual_lines: Rc<Vec<wrapping::VisualLine>>,
-    buffer_line_count: usize,
-}
-
-/// Per-line widths plus a counted ordered index for O(log n) max updates.
-pub(crate) struct MaxContentWidthCache {
-    revision: u64,
-    line_widths: Vec<f32>,
-    width_counts: BTreeMap<u32, usize>,
-}
-
-impl MaxContentWidthCache {
-    fn add_width(&mut self, width: f32) {
-        *self.width_counts.entry(width.to_bits()).or_insert(0) += 1;
-    }
-
-    fn remove_width(&mut self, width: f32) {
-        let bits = width.to_bits();
-        let remove_entry = if let Some(count) = self.width_counts.get_mut(&bits)
-        {
-            *count = count.saturating_sub(1);
-            *count == 0
-        } else {
-            false
-        };
-        if remove_entry {
-            self.width_counts.remove(&bits);
-        }
-    }
-
-    fn max_width(&self) -> f32 {
-        self.width_counts
-            .last_key_value()
-            .map_or(0.0, |(bits, _)| f32::from_bits(*bits))
-    }
-}
-
-/// One highlighted logical line together with the syntect parser state *after*
-/// it, so highlighting can resume sequentially from any cached line.
-///
-/// Storing the post-line state is what makes multi-line constructs (block
-/// comments, multi-line strings) highlight correctly: line `N` is highlighted
-/// starting from the state left by line `N - 1`.
-struct CachedHighlightLine {
-    /// Colored token spans covering the full logical line.
-    spans: Rc<Vec<(Color, String)>>,
-    /// Syntect parse state after this line (start state for the next line).
-    parse_state: ParseState,
-    /// Syntect highlight state after this line (start state for the next line).
-    highlight_state: HighlightState,
-}
-
-/// Sequential per-line syntax-highlight cache.
-///
-/// `lines` holds a dense, valid prefix: `lines[i]` is the highlight of logical
-/// line `i`. The prefix is extended lazily as deeper lines become visible and
-/// truncated from the first edited line on each edit (see
-/// [`CodeEditor::invalidate_highlight_from`]), so an edit never forces a full
-/// re-parse from the top of the file.
-pub(crate) struct HighlightCache {
-    /// Active syntax/language identifier these lines were highlighted with.
-    syntax: String,
-    /// Dense valid prefix of highlighted lines (vector index = logical line).
-    lines: Vec<CachedHighlightLine>,
-}
-
-impl HighlightCache {
-    /// Creates an empty cache for the given syntax identifier.
-    ///
-    /// # Arguments
-    ///
-    /// * `syntax` - Active syntax/language identifier the cache is built for.
-    pub(crate) fn new(syntax: String) -> Self {
-        Self { syntax, lines: Vec::new() }
-    }
-
-    /// Returns the syntax identifier these lines were highlighted with.
-    pub(crate) fn syntax(&self) -> &str {
-        &self.syntax
-    }
-
-    /// Returns the number of highlighted logical lines (valid prefix length).
-    pub(crate) fn valid_len(&self) -> usize {
-        self.lines.len()
-    }
-
-    /// Returns the cached spans for `logical_line`, if within the valid prefix.
-    ///
-    /// # Arguments
-    ///
-    /// * `logical_line` - Index of the logical line to look up.
-    pub(crate) fn spans(
-        &self,
-        logical_line: usize,
-    ) -> Option<Rc<Vec<(Color, String)>>> {
-        self.lines.get(logical_line).map(|line| Rc::clone(&line.spans))
-    }
-
-    /// Returns the syntect state to resume highlighting the next line from.
-    ///
-    /// This is the state left after the last cached line, or `None` when the
-    /// cache is empty (highlighting then starts from the syntax's initial
-    /// state).
-    pub(crate) fn resume_state(&self) -> Option<(ParseState, HighlightState)> {
-        self.lines.last().map(|line| {
-            (line.parse_state.clone(), line.highlight_state.clone())
-        })
-    }
-
-    /// Appends one highlighted line and its post-line state to the prefix.
-    ///
-    /// # Arguments
-    ///
-    /// * `spans` - The colored token spans of the line.
-    /// * `parse_state` - Syntect parse state after the line.
-    /// * `highlight_state` - Syntect highlight state after the line.
-    pub(crate) fn push_line(
-        &mut self,
-        spans: Rc<Vec<(Color, String)>>,
-        parse_state: ParseState,
-        highlight_state: HighlightState,
-    ) {
-        self.lines.push(CachedHighlightLine {
-            spans,
-            parse_state,
-            highlight_state,
-        });
-    }
-
-    /// Truncates the valid prefix to `line`, discarding lines at index `line`
-    /// and beyond so they are re-highlighted on next access.
-    ///
-    /// # Arguments
-    ///
-    /// * `line` - First logical line to invalidate.
-    pub(crate) fn truncate(&mut self, line: usize) {
-        self.lines.truncate(line);
-    }
 }
 
 /// Messages emitted by the code editor
@@ -719,12 +325,6 @@ impl HighlightCache {
 pub enum Message {
     /// Character typed
     CharacterInput(char),
-    /// A printable key interpreted by the Vim state machine.
-    VimKey(char),
-    /// Toggle Vim behavior for this editor instance.
-    ToggleVimMode,
-    /// Requests that the host save this editor's current document.
-    WriteRequested,
     /// Backspace pressed
     Backspace,
     /// Delete pressed
@@ -747,22 +347,16 @@ pub enum Message {
     DoubleClick(iced::Point),
     /// Triple-click: select the whole line under the cursor
     TripleClick(iced::Point),
-    /// Right-clicked in the editor to position and open the context menu
-    ContextMenuRequested(iced::Point),
-    /// A configured context-menu action was selected.
-    CustomContextMenuAction(String),
-    /// Requests that the host reveal the editor's file in the system file manager.
-    RevealInFileManager,
-    /// Cut selected text
-    Cut,
     /// Copy selected text (Ctrl+C)
     Copy,
+    /// Cut selected text (Ctrl+X)
+    Cut,
+    /// Select the entire buffer (Ctrl/Cmd+A)
+    SelectAll,
     /// Paste text from clipboard (Ctrl+V)
     Paste(String),
     /// Delete selected text (Shift+Delete)
     DeleteSelection,
-    /// Select the complete document
-    SelectAll,
     /// Request redraw for cursor blink
     Tick,
     /// Page Up pressed
@@ -777,16 +371,20 @@ pub enum Message {
     CtrlHome,
     /// Ctrl+End pressed (move to end of document)
     CtrlEnd,
+    /// Ctrl+Left pressed (move to previous word boundary, shift extends selection)
+    WordLeft(bool),
+    /// Ctrl+Right pressed (move to next word boundary, shift extends selection)
+    WordRight(bool),
+    /// Ctrl+Backspace pressed (delete word before the cursor)
+    DeleteWordBackward,
+    /// Ctrl+Delete pressed (delete word after the cursor)
+    DeleteWordForward,
+    /// Alt+Up pressed (move the current line(s) up)
+    MoveLineUp,
+    /// Alt+Down pressed (move the current line(s) down)
+    MoveLineDown,
     /// Go to an explicit logical position (line, column), both 0-based.
     GotoPosition(usize, usize),
-    /// Open the go-to-line dialog (Cmd/Ctrl+G).
-    OpenGotoLine,
-    /// Close the go-to-line dialog.
-    CloseGotoLine,
-    /// Change the one-based line number shown in the go-to-line input.
-    GotoLineChanged(String),
-    /// Submit the current go-to-line input.
-    SubmitGotoLine,
     /// Viewport scrolled - track scroll position
     Scrolled(iced::widget::scrollable::Viewport),
     /// Horizontal scrollbar scrolled (only when wrap is disabled)
@@ -855,16 +453,18 @@ pub enum Message {
     FoldAll,
     /// Unfold every collapsed block in the buffer.
     UnfoldAll,
-    /// Alt+Up: move the current line (or selected line range) up by one line.
-    MoveLineUp,
-    /// Alt+Down: move the current line (or selected line range) down by one line.
-    MoveLineDown,
-    /// Shift+Alt+Up: duplicate the current line (or selected line range) above.
-    DuplicateLineUp,
-    /// Shift+Alt+Down: duplicate the current line (or selected line range) below.
-    DuplicateLineDown,
-    /// Ctrl+/: toggle line comments on the current line or primary selection.
+    /// Tab pressed with a selection — indent selected lines.
+    IndentLines,
+    /// Shift+Tab pressed with a selection — unindent selected lines.
+    UnindentLines,
+    /// Toggle line comment on current line(s) (Ctrl+/)
     ToggleComment,
+    /// Join current line with the next line (Ctrl+J)
+    JoinLines,
+    /// Shift+Alt+Down — duplicate current line(s) downward.
+    DuplicateLineDown,
+    /// Shift+Alt+Up — duplicate current line(s) upward.
+    DuplicateLineUp,
 }
 
 /// Indentation style used when pressing the Tab key.
@@ -945,7 +545,6 @@ impl CodeEditor {
             viewport_scroll: 0.0,
             viewport_height: 600.0, // Default, will be updated
             viewport_width: 800.0,  // Default, will be updated
-            viewport_metrics_confirmed: false,
             history: CommandHistory::new(100),
             is_grouping: false,
             wrap_enabled: true,
@@ -957,25 +556,14 @@ impl CodeEditor {
             fold_revision: 0,
             foldable_regions_cache: RefCell::new(None),
             search_state: search::SearchState::new(),
-            custom_context_menu_entries: Vec::new(),
-            default_context_menu_enabled: true,
-            reveal_in_file_manager_enabled: false,
-            goto_line_state: goto_line::GotoLineState::new(),
-            vim_enabled: false,
-            vim_state: vim::VimState::default(),
             translations: Translations::default(),
             search_replace_enabled: true,
             line_numbers_enabled: true,
-            show_whitespace: true,
             lsp_enabled: true,
             lsp_client: None,
             lsp_document: None,
             lsp_pending_changes: Vec::new(),
             lsp_shadow_text: String::new(),
-            lsp_shadow_is_current: true,
-            lsp_synced_line_count: 1,
-            lsp_synced_last_line_len: 0,
-            lsp_edit_snapshot: None,
             lsp_auto_flush: true,
             has_canvas_focus: false,
             focus_locked: false,
@@ -996,76 +584,12 @@ impl CodeEditor {
             cache_window_end_line: 0,
             buffer_revision: 0,
             visual_lines_cache: RefCell::new(None),
-            highlight_cache: RefCell::new(None),
-            highlight_lines_remaining: Cell::new(usize::MAX),
-            pre_edit_line: 0,
-            pre_edit_last_line: 0,
         };
 
         // Perform initial character dimension calculation
         editor.recalculate_char_dimensions(false);
 
         editor
-    }
-
-    /// Replaces the custom context-menu entries.
-    pub fn set_custom_context_menu_entries(
-        &mut self,
-        entries: Vec<ContextMenuEntry>,
-    ) {
-        self.custom_context_menu_entries = entries;
-    }
-
-    /// Replaces the custom context-menu entries using the builder pattern.
-    #[must_use]
-    pub fn with_custom_context_menu_entries(
-        mut self,
-        entries: Vec<ContextMenuEntry>,
-    ) -> Self {
-        self.set_custom_context_menu_entries(entries);
-        self
-    }
-
-    /// Returns the custom context-menu entries in display order.
-    pub fn custom_context_menu_entries(&self) -> &[ContextMenuEntry] {
-        &self.custom_context_menu_entries
-    }
-
-    /// Sets whether the built-in editing actions appear in the context menu.
-    pub fn set_default_context_menu_enabled(&mut self, enabled: bool) {
-        self.default_context_menu_enabled = enabled;
-    }
-
-    /// Sets built-in context-menu visibility using the builder pattern.
-    #[must_use]
-    pub fn with_default_context_menu_enabled(mut self, enabled: bool) -> Self {
-        self.set_default_context_menu_enabled(enabled);
-        self
-    }
-
-    /// Returns whether the built-in context-menu actions are enabled.
-    pub fn default_context_menu_enabled(&self) -> bool {
-        self.default_context_menu_enabled
-    }
-
-    /// Sets whether the built-in reveal-in-file-manager action is shown.
-    pub fn set_reveal_in_file_manager_enabled(&mut self, enabled: bool) {
-        self.reveal_in_file_manager_enabled = enabled;
-    }
-
-    /// Sets reveal-in-file-manager visibility using the builder pattern.
-    #[must_use]
-    pub fn with_reveal_in_file_manager_enabled(
-        mut self,
-        enabled: bool,
-    ) -> Self {
-        self.set_reveal_in_file_manager_enabled(enabled);
-        self
-    }
-
-    /// Returns whether the reveal-in-file-manager action is shown.
-    pub fn reveal_in_file_manager_enabled(&self) -> bool {
-        self.reveal_in_file_manager_enabled
     }
 
     /// Sets the font used by the editor
@@ -1114,7 +638,6 @@ impl CodeEditor {
 
         self.content_cache.clear();
         self.overlay_cache.clear();
-        *self.max_content_width_cache.borrow_mut() = None;
     }
 
     /// Measures the width of a single character string using the current font settings.
@@ -1208,45 +731,6 @@ impl CodeEditor {
     /// The complete text content of the editor
     pub fn content(&self) -> String {
         self.buffer.to_string()
-    }
-
-    /// Enables or disables Vim behavior for this editor instance.
-    ///
-    /// Changing this setting enters a clean Normal mode without modifying the
-    /// buffer or command history.
-    pub fn set_vim_enabled(&mut self, enabled: bool) {
-        if self.is_grouping {
-            self.history.end_group();
-            self.is_grouping = false;
-        }
-        self.vim_enabled = enabled;
-        self.vim_state.enter_clean_normal_mode();
-        self.cursors.remove_all_but_primary();
-        let position = if enabled {
-            self.vim_normal_position(self.cursors.primary_position())
-        } else {
-            self.cursors.primary_position()
-        };
-        self.cursors.set_single(position);
-        self.is_dragging = false;
-        self.overlay_cache.clear();
-    }
-
-    /// Sets whether Vim behavior is enabled using the builder pattern.
-    #[must_use]
-    pub fn with_vim_enabled(mut self, enabled: bool) -> Self {
-        self.set_vim_enabled(enabled);
-        self
-    }
-
-    /// Returns whether Vim behavior is enabled for this editor instance.
-    pub fn vim_enabled(&self) -> bool {
-        self.vim_enabled
-    }
-
-    /// Returns the active Vim mode, or `None` when Vim behavior is disabled.
-    pub fn vim_mode(&self) -> Option<VimMode> {
-        self.vim_enabled.then(|| self.vim_state.mode())
     }
 
     /// Sets the viewport height for the editor.
@@ -1359,9 +843,6 @@ impl CodeEditor {
         self.lsp_client = Some(client);
         self.lsp_document = Some(document);
         self.lsp_shadow_text = text;
-        self.lsp_shadow_is_current = true;
-        self.update_lsp_synced_extent();
-        self.lsp_edit_snapshot = None;
         self.lsp_pending_changes.clear();
     }
 
@@ -1383,9 +864,6 @@ impl CodeEditor {
         client.did_open(&document, &text);
         self.lsp_document = Some(document);
         self.lsp_shadow_text = text;
-        self.lsp_shadow_is_current = true;
-        self.update_lsp_synced_extent();
-        self.lsp_edit_snapshot = None;
         self.lsp_pending_changes.clear();
     }
 
@@ -1401,10 +879,6 @@ impl CodeEditor {
         self.lsp_client = None;
         self.lsp_document = None;
         self.lsp_shadow_text = String::new();
-        self.lsp_shadow_is_current = true;
-        self.lsp_synced_line_count = 1;
-        self.lsp_synced_last_line_len = 0;
-        self.lsp_edit_snapshot = None;
         self.lsp_pending_changes.clear();
     }
 
@@ -1571,26 +1045,6 @@ impl CodeEditor {
         self.has_focus()
     }
 
-    /// Forces a full re-render on the next frame, discarding any cached
-    /// content/overlay geometry and the cached visible-line window. Content,
-    /// cursor, selection, and undo history are untouched — this only affects
-    /// what gets *redrawn*, not what's in the buffer.
-    ///
-    /// Call this after restoring an editor's content from persisted state
-    /// (a fresh app launch, or reading a saved session/collection off disk):
-    /// a newly-constructed editor's viewport metrics start out unset and
-    /// only ever get corrected by a real `Scrolled` event, so without ever
-    /// having been scrolled at least once, it can render blank, with a
-    /// stale line window, or with glyph-spacing artifacts until the user
-    /// happens to scroll it — this clears the stale cached state up front
-    /// instead of waiting on that.
-    pub fn invalidate_render_cache(&mut self) {
-        self.content_cache.clear();
-        self.overlay_cache.clear();
-        self.cache_window_start_line = 0;
-        self.cache_window_end_line = 0;
-    }
-
     /// Resets the editor with new content.
     ///
     /// This method replaces the buffer content and resets all editor state
@@ -1622,7 +1076,6 @@ impl CodeEditor {
     pub fn reset(&mut self, content: &str) -> iced::Task<Message> {
         self.buffer = TextBuffer::new(content);
         self.cursors.set_single((0, 0));
-        self.vim_state.reset();
         self.horizontal_scroll_offset = 0.0;
         self.is_dragging = false;
         self.viewport_scroll = 0.0;
@@ -1634,10 +1087,6 @@ impl CodeEditor {
         self.overlay_cache = canvas::Cache::default();
         self.buffer_revision = self.buffer_revision.wrapping_add(1);
         *self.visual_lines_cache.borrow_mut() = None;
-        // The buffer is fully replaced, so discard the whole highlight prefix.
-        self.pre_edit_line = 0;
-        self.pre_edit_last_line = usize::MAX;
-        self.invalidate_highlight_from(0);
         self.enqueue_lsp_change();
 
         // Scroll to top to force a redraw
@@ -1762,6 +1211,36 @@ impl CodeEditor {
         ch == '_' || ch.is_alphanumeric()
     }
 
+    pub(crate) fn classify_click(&self, position: iced::Point) -> u8 {
+        let now = Instant::now();
+        let count = match self.last_click.get() {
+            Some((t, p, c))
+                if now.duration_since(t)
+                    < std::time::Duration::from_millis(400)
+                    && p.distance(position) < 6.0 =>
+            {
+                if c >= 3 { 1 } else { c + 1 }
+            }
+            _ => 1,
+        };
+        self.last_click.set(Some((now, position, count)));
+        count
+    }
+
+    pub(crate) fn select_all_text(&mut self) {
+        let line_count = self.buffer.line_count();
+        if line_count == 0 {
+            return;
+        }
+        self.cursors.remove_all_but_primary();
+        let last_line = line_count - 1;
+        let last_col = self.buffer.line(last_line).chars().count();
+        let cursor = self.cursors.primary_mut();
+        cursor.anchor = Some((0, 0));
+        cursor.position = (last_line, last_col);
+        self.overlay_cache.clear();
+    }
+
     /// Computes and queues the latest LSP text change for the buffer.
     ///
     /// When auto-flush is enabled, this immediately sends changes.
@@ -1771,120 +1250,30 @@ impl CodeEditor {
         }
 
         let new_text = self.buffer.to_string();
-        let change = if self.lsp_shadow_is_current {
-            lsp::compute_text_change(&self.lsp_shadow_text, &new_text)
-        } else {
-            let end_line = self.lsp_synced_line_count.saturating_sub(1);
-            Some(lsp::LspTextChange {
-                range: lsp::LspRange {
-                    start: lsp::LspPosition { line: 0, character: 0 },
-                    end: lsp::LspPosition {
-                        line: u32::try_from(end_line).unwrap_or(u32::MAX),
-                        character: u32::try_from(self.lsp_synced_last_line_len)
-                            .unwrap_or(u32::MAX),
-                    },
-                },
-                text: new_text.clone(),
-            })
-        };
-        if let Some(change) = change {
+        let old_text = self.lsp_shadow_text.as_str();
+        if let Some(change) = lsp::compute_text_change(old_text, &new_text) {
             self.lsp_pending_changes.push(change);
         }
         self.lsp_shadow_text = new_text;
-        self.lsp_shadow_is_current = true;
-        self.update_lsp_synced_extent();
         if self.lsp_auto_flush {
             self.lsp_flush_pending_changes();
         }
-    }
-
-    /// Queues the bounded range replacement captured before a normal editor
-    /// command. Unlike `enqueue_lsp_change`, this never serializes or diffs the
-    /// complete document.
-    pub(crate) fn enqueue_incremental_lsp_change(&mut self) {
-        if self.lsp_document.is_none() {
-            self.lsp_edit_snapshot = None;
-            return;
-        }
-
-        let Some(snapshot) = self.lsp_edit_snapshot.take() else {
-            self.enqueue_lsp_change();
-            return;
-        };
-
-        let new_line_count = self.buffer.line_count();
-        let start_line =
-            snapshot.start_line.min(new_line_count.saturating_sub(1));
-        let new_end_exclusive = if new_line_count >= snapshot.old_line_count {
-            snapshot
-                .old_end_exclusive
-                .saturating_add(new_line_count - snapshot.old_line_count)
-                .min(new_line_count)
-        } else {
-            snapshot
-                .old_end_exclusive
-                .saturating_sub(snapshot.old_line_count - new_line_count)
-                .max(start_line.saturating_add(1))
-                .min(new_line_count)
-        };
-        let text =
-            self.buffer.line_range_to_string(start_line, new_end_exclusive);
-        self.lsp_pending_changes.push(lsp::LspTextChange {
-            range: lsp::LspRange {
-                start: lsp::LspPosition {
-                    line: u32::try_from(snapshot.start_line)
-                        .unwrap_or(u32::MAX),
-                    character: 0,
-                },
-                end: snapshot.old_end,
-            },
-            text,
-        });
-
-        // The shadow string is intentionally not rewritten here: doing so
-        // would reintroduce an O(document size) copy. The compact extent below
-        // is sufficient for a rare future full-document fallback.
-        self.lsp_shadow_text = String::new();
-        self.lsp_shadow_is_current = false;
-        self.update_lsp_synced_extent();
-        if self.lsp_auto_flush {
-            self.lsp_flush_pending_changes();
-        }
-    }
-
-    /// Updates the compact extent of the document state represented by queued
-    /// and already-flushed LSP changes.
-    fn update_lsp_synced_extent(&mut self) {
-        self.lsp_synced_line_count = self.buffer.line_count();
-        self.lsp_synced_last_line_len =
-            self.buffer.line_len(self.lsp_synced_line_count.saturating_sub(1));
     }
 
     /// Refreshes search matches after buffer modification.
     ///
     /// Should be called after any operation that modifies the buffer.
-    /// If search is active, recalculates only the affected logical lines and
-    /// selects the match closest to the current cursor position.
+    /// If search is active, recalculates matches and selects the one
+    /// closest to the current cursor position.
     pub(crate) fn refresh_search_matches_if_needed(&mut self) {
-        if self.search_matches_visible() && !self.search_state.query.is_empty()
-        {
-            let start_line = self.pre_edit_line.saturating_sub(1);
-            let old_end_exclusive = self.pre_edit_last_line.saturating_add(2);
-            self.search_state.update_matches_after_edit(
-                &self.buffer,
-                start_line,
-                old_end_exclusive,
-            );
+        if self.search_state.is_open && !self.search_state.query.is_empty() {
+            // Recalculate matches with current query
+            self.search_state.update_matches(&self.buffer);
 
             // Select match closest to cursor to maintain context
             self.search_state
                 .select_match_near_cursor(self.cursors.primary_position());
         }
-    }
-
-    pub(crate) fn search_matches_visible(&self) -> bool {
-        self.search_state.is_open
-            || (self.vim_enabled && self.vim_state.last_search().is_some())
     }
 
     /// Returns whether the editor has unsaved changes.
@@ -1948,36 +1337,6 @@ impl CodeEditor {
     /// `true` if line wrapping is enabled, `false` otherwise
     pub fn wrap_enabled(&self) -> bool {
         self.wrap_enabled
-    }
-
-    /// Enables or disables visible whitespace rendering.
-    ///
-    /// When enabled, space characters are rendered as `·` and tab characters
-    /// as `→`, both drawn in a dimmed color to remain non-intrusive. Toggling
-    /// this setting clears the content cache to trigger an immediate redraw.
-    ///
-    /// # Arguments
-    ///
-    /// * `enabled` - Whether to show whitespace characters
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use iced_code_editor::CodeEditor;
-    ///
-    /// let mut editor = CodeEditor::new("fn main() {}", "rs");
-    /// editor.set_show_whitespace(true);
-    /// ```
-    pub fn set_show_whitespace(&mut self, enabled: bool) {
-        if self.show_whitespace != enabled {
-            self.show_whitespace = enabled;
-            self.content_cache.clear();
-        }
-    }
-
-    /// Returns whether visible whitespace rendering is enabled.
-    pub fn show_whitespace(&self) -> bool {
-        self.show_whitespace
     }
 
     /// Enables or disables code folding (collapse/expand blocks).
@@ -2351,18 +1710,6 @@ impl CodeEditor {
         self.update(&Message::CloseSearch)
     }
 
-    /// Opens the go-to-line dialog programmatically.
-    ///
-    /// The input is pre-filled with the current one-based line number.
-    pub fn open_goto_line_dialog(&mut self) -> iced::Task<Message> {
-        self.update(&Message::OpenGotoLine)
-    }
-
-    /// Closes the go-to-line dialog programmatically.
-    pub fn close_goto_line_dialog(&mut self) -> iced::Task<Message> {
-        self.update(&Message::CloseGotoLine)
-    }
-
     /// Sets the line wrapping with builder pattern.
     ///
     /// # Arguments
@@ -2606,36 +1953,27 @@ impl CodeEditor {
     /// Total width in pixels including gutter, padding and a right margin.
     pub(crate) fn max_content_width(&self) -> f32 {
         let mut cache = self.max_content_width_cache.borrow_mut();
-        if cache
-            .as_ref()
-            .is_none_or(|existing| existing.revision != self.buffer_revision)
+        if let Some((rev, w)) = *cache
+            && rev == self.buffer_revision
         {
-            let line_widths: Vec<f32> = (0..self.buffer.line_count())
-                .map(|line| {
-                    measure_text_width(
-                        self.buffer.line(line),
-                        self.full_char_width,
-                        self.char_width,
-                    )
-                })
-                .collect();
-            let mut width_counts = BTreeMap::new();
-            for width in &line_widths {
-                *width_counts.entry(width.to_bits()).or_insert(0) += 1;
-            }
-            *cache = Some(MaxContentWidthCache {
-                revision: self.buffer_revision,
-                line_widths,
-                width_counts,
-            });
+            return w;
         }
 
         let gutter = self.gutter_width();
-        let max_line_width =
-            cache.as_ref().map_or(0.0, MaxContentWidthCache::max_width);
+        let max_line_width = (0..self.buffer.line_count())
+            .map(|i| {
+                measure_text_width(
+                    self.buffer.line(i),
+                    self.full_char_width,
+                    self.char_width,
+                )
+            })
+            .fold(0.0_f32, f32::max);
 
         // gutter + left padding + text + right margin
-        gutter + 5.0 + max_line_width + 20.0
+        let total = gutter + 5.0 + max_line_width + 20.0;
+        *cache = Some((self.buffer_revision, total));
+        total
     }
 
     /// Returns wrapped "visual lines" for the current buffer and layout, with memoization.
@@ -2693,175 +2031,9 @@ impl CodeEditor {
         );
         let visual_lines = Rc::new(visual_lines);
 
-        *cache = Some(VisualLinesCache {
-            key,
-            visual_lines: visual_lines.clone(),
-            buffer_line_count: self.buffer.line_count(),
-        });
+        *cache =
+            Some(VisualLinesCache { key, visual_lines: visual_lines.clone() });
         visual_lines
-    }
-
-    /// Rebuilds only the logical-line slice affected by the latest edit.
-    ///
-    /// The common typing path changes one line. Reusing the unchanged prefix
-    /// and suffix prevents wrapping work from scaling with total file size.
-    /// Collapsed folds intentionally fall back to a full rebuild because an
-    /// indentation edit can change which distant lines are hidden.
-    pub(crate) fn refresh_visual_lines_after_edit(
-        &self,
-        previous_revision: u64,
-    ) {
-        if !self.collapsed_folds.is_empty() {
-            *self.visual_lines_cache.borrow_mut() = None;
-            return;
-        }
-
-        let mut cache_guard = self.visual_lines_cache.borrow_mut();
-        let Some(cache) = cache_guard.as_mut() else { return };
-        if cache.key.buffer_revision != previous_revision {
-            *cache_guard = None;
-            return;
-        }
-
-        let same_layout = cache.key.gutter_width_bits
-            == self.gutter_width().to_bits()
-            && cache.key.wrap_enabled == self.wrap_enabled
-            && cache.key.wrap_column == self.wrap_column
-            && cache.key.folding_enabled == self.folding_enabled
-            && cache.key.fold_revision == self.fold_revision
-            && cache.key.full_char_width_bits == self.full_char_width.to_bits()
-            && cache.key.char_width_bits == self.char_width.to_bits();
-        if !same_layout {
-            *cache_guard = None;
-            return;
-        }
-
-        let old_line_count = cache.buffer_line_count;
-        let new_line_count = self.buffer.line_count();
-        let start_line =
-            self.pre_edit_line.saturating_sub(1).min(old_line_count);
-        let old_end_line =
-            self.pre_edit_last_line.saturating_add(2).min(old_line_count);
-        let new_end_line = if new_line_count >= old_line_count {
-            old_end_line
-                .saturating_add(new_line_count - old_line_count)
-                .min(new_line_count)
-        } else {
-            old_end_line
-                .saturating_sub(old_line_count - new_line_count)
-                .max(start_line)
-                .min(new_line_count)
-        };
-
-        let prefix_end = cache
-            .visual_lines
-            .partition_point(|visual| visual.logical_line < start_line);
-        let suffix_start = cache
-            .visual_lines
-            .partition_point(|visual| visual.logical_line < old_end_line);
-
-        let wrapping_calc = wrapping::WrappingCalculator::new(
-            self.wrap_enabled,
-            self.wrap_column,
-            self.full_char_width,
-            self.char_width,
-        );
-        let changed_visual_lines = wrapping_calc.calculate_visual_lines_range(
-            &self.buffer,
-            f32::from_bits(cache.key.viewport_width_bits),
-            f32::from_bits(cache.key.gutter_width_bits),
-            &HashSet::new(),
-            start_line..new_end_line,
-        );
-
-        let old_segment_count = suffix_start.saturating_sub(prefix_end);
-        let new_segment_count = changed_visual_lines.len();
-        let visual_lines = Rc::make_mut(&mut cache.visual_lines);
-
-        // The overwhelmingly common typing case keeps both the logical-line
-        // count and the number of wrapped segments stable. Update that tiny
-        // slice in place, without allocating or moving the rest of the file.
-        if new_line_count == old_line_count
-            && old_segment_count == new_segment_count
-        {
-            visual_lines[prefix_end..suffix_start]
-                .clone_from_slice(&changed_visual_lines);
-        } else {
-            visual_lines.splice(prefix_end..suffix_start, changed_visual_lines);
-
-            let shifted_suffix_start = prefix_end + new_segment_count;
-            for visual in &mut visual_lines[shifted_suffix_start..] {
-                visual.logical_line = if new_line_count >= old_line_count {
-                    visual
-                        .logical_line
-                        .saturating_add(new_line_count - old_line_count)
-                } else {
-                    visual
-                        .logical_line
-                        .saturating_sub(old_line_count - new_line_count)
-                };
-            }
-        }
-
-        cache.key.buffer_revision = self.buffer_revision;
-        cache.buffer_line_count = new_line_count;
-    }
-
-    /// Updates the horizontal-width index for the lines affected by an edit.
-    ///
-    /// This removes the final whole-file pass that used to happen after every
-    /// keystroke when wrapping was disabled.
-    pub(crate) fn refresh_max_content_width_after_edit(
-        &self,
-        previous_revision: u64,
-    ) {
-        let mut cache_guard = self.max_content_width_cache.borrow_mut();
-        let Some(cache) = cache_guard.as_mut() else { return };
-        if cache.revision != previous_revision {
-            *cache_guard = None;
-            return;
-        }
-
-        let old_line_count = cache.line_widths.len();
-        let new_line_count = self.buffer.line_count();
-        let start_line =
-            self.pre_edit_line.saturating_sub(1).min(old_line_count);
-        let old_end_line =
-            self.pre_edit_last_line.saturating_add(2).min(old_line_count);
-        if start_line == 0 && old_end_line == old_line_count {
-            *cache_guard = None;
-            return;
-        }
-
-        let new_end_line = if new_line_count >= old_line_count {
-            old_end_line
-                .saturating_add(new_line_count - old_line_count)
-                .min(new_line_count)
-        } else {
-            old_end_line
-                .saturating_sub(old_line_count - new_line_count)
-                .max(start_line)
-                .min(new_line_count)
-        };
-        let old_widths = cache.line_widths[start_line..old_end_line].to_vec();
-        let new_widths: Vec<f32> = (start_line..new_end_line)
-            .map(|line| {
-                measure_text_width(
-                    self.buffer.line(line),
-                    self.full_char_width,
-                    self.char_width,
-                )
-            })
-            .collect();
-
-        for width in old_widths {
-            cache.remove_width(width);
-        }
-        for width in &new_widths {
-            cache.add_width(*width);
-        }
-        cache.line_widths.splice(start_line..old_end_line, new_widths);
-        cache.revision = self.buffer_revision;
     }
 
     /// Initiates a "Go to Definition" request for the symbol at the current cursor position.
@@ -2905,122 +2077,6 @@ mod tests {
     use super::*;
     use std::cell::RefCell;
     use std::rc::Rc;
-
-    #[test]
-    fn test_custom_context_menu_configuration() {
-        let custom_entries = vec![
-            ContextMenuEntry::item("format", "Format document")
-                .with_shortcut("Shift+Alt+F"),
-            ContextMenuEntry::separator(),
-            ContextMenuEntry::Item(
-                ContextMenuItem::new("rename", "Rename symbol")
-                    .with_enabled(false),
-            ),
-        ];
-
-        let editor = CodeEditor::new("", "rs")
-            .with_custom_context_menu_entries(custom_entries.clone())
-            .with_default_context_menu_enabled(false);
-
-        assert_eq!(editor.custom_context_menu_entries(), custom_entries);
-        assert!(!editor.default_context_menu_enabled());
-
-        let default_editor = CodeEditor::new("", "rs");
-        assert!(default_editor.custom_context_menu_entries().is_empty());
-        assert!(default_editor.default_context_menu_enabled());
-    }
-
-    #[test]
-    fn test_reveal_in_file_manager_configuration() {
-        let mut editor = CodeEditor::new("", "rs");
-        assert!(!editor.reveal_in_file_manager_enabled());
-
-        editor.set_reveal_in_file_manager_enabled(true);
-        assert!(editor.reveal_in_file_manager_enabled());
-
-        let editor =
-            CodeEditor::new("", "rs").with_reveal_in_file_manager_enabled(true);
-        assert!(editor.reveal_in_file_manager_enabled());
-    }
-
-    #[test]
-    fn vim_disabled_by_default() {
-        let editor = CodeEditor::new("unchanged", "rs");
-
-        assert!(!editor.vim_enabled());
-        assert_eq!(editor.vim_mode(), None);
-        assert_eq!(editor.content(), "unchanged");
-        assert!(!editor.can_undo());
-        assert!(!editor.can_redo());
-    }
-
-    #[test]
-    fn vim_enable_enters_clean_normal_mode() {
-        let mut editor = CodeEditor::new("unchanged", "rs");
-        assert_eq!(editor.vim_state.parse_key('9'), None);
-        assert_eq!(editor.vim_state.parse_key('d'), None);
-
-        editor.set_vim_enabled(true);
-
-        assert!(editor.vim_enabled());
-        assert_eq!(editor.vim_mode(), Some(VimMode::Normal));
-        assert_eq!(
-            editor.vim_state.parse_key('l'),
-            Some(vim::VimAction::Motion {
-                motion: vim::VimMotion::Right,
-                count: 1,
-            })
-        );
-        assert_eq!(editor.content(), "unchanged");
-        assert!(!editor.can_undo());
-        assert!(!editor.can_redo());
-    }
-
-    #[test]
-    fn vim_disable_clears_pending_state() {
-        let mut editor =
-            CodeEditor::new("unchanged", "rs").with_vim_enabled(true);
-        assert_eq!(editor.vim_state.parse_key('4'), None);
-        assert_eq!(editor.vim_state.parse_key('d'), None);
-
-        editor.set_vim_enabled(false);
-        assert!(!editor.vim_enabled());
-        assert_eq!(editor.vim_mode(), None);
-
-        editor.set_vim_enabled(true);
-        assert_eq!(
-            editor.vim_state.parse_key('w'),
-            Some(vim::VimAction::Motion {
-                motion: vim::VimMotion::WordForward,
-                count: 1,
-            })
-        );
-        assert_eq!(editor.content(), "unchanged");
-        assert!(!editor.can_undo());
-        assert!(!editor.can_redo());
-    }
-
-    #[test]
-    fn vim_reset_clears_pending_state() {
-        let mut editor = CodeEditor::new("before", "rs").with_vim_enabled(true);
-        assert_eq!(editor.vim_state.parse_key('3'), None);
-        assert_eq!(editor.vim_state.parse_key('g'), None);
-
-        let _ = editor.reset("after");
-
-        assert_eq!(editor.vim_mode(), Some(VimMode::Normal));
-        assert_eq!(editor.vim_state.parse_key('g'), None);
-        assert_eq!(
-            editor.vim_state.parse_key('g'),
-            Some(vim::VimAction::Motion {
-                motion: vim::VimMotion::DocumentStart,
-                count: 1,
-            })
-        );
-        assert_eq!(editor.content(), "after");
-        assert!(!editor.can_undo());
-        assert!(!editor.can_redo());
-    }
 
     #[test]
     fn test_compare_floats() {
@@ -3332,39 +2388,6 @@ mod tests {
     }
 
     #[test]
-    fn test_editor_update_sends_bounded_incremental_lsp_change() {
-        let changes = Rc::new(RefCell::new(Vec::new()));
-        let client = TestLspClient { changes: Rc::clone(&changes) };
-        let content = (0..10)
-            .map(|line| format!("line{line}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let mut editor = CodeEditor::new(&content, "rs");
-        editor.attach_lsp(
-            Box::new(client),
-            lsp::LspDocument::new("file:///large.rs", "rust"),
-        );
-        editor.request_focus();
-        editor.has_canvas_focus = true;
-        editor.focus_locked = false;
-        editor.cursors.primary_mut().position = (5, 2);
-
-        let _ = editor.update(&Message::CharacterInput('X'));
-
-        let changes = changes.borrow();
-        assert_eq!(changes.len(), 1);
-        assert_eq!(changes[0].len(), 1);
-        let change = &changes[0][0];
-        assert_eq!(change.range.start.line, 4);
-        assert_eq!(change.range.start.character, 0);
-        assert_eq!(change.range.end.line, 7);
-        assert_eq!(change.range.end.character, 0);
-        assert_eq!(change.text, "line4\nliXne5\nline6\n");
-        assert!(!editor.lsp_shadow_is_current);
-        assert!(editor.lsp_shadow_text.is_empty());
-    }
-
-    #[test]
     fn test_visual_lines_cached_changes_on_viewport_width_change() {
         let editor = CodeEditor::new("a\nb\nc", "rs");
 
@@ -3425,35 +2448,6 @@ mod tests {
         assert!(
             w3 > w1,
             "After revision bump with longer content, width should increase"
-        );
-    }
-
-    #[test]
-    fn test_max_content_width_cache_updates_incrementally_after_newline() {
-        let mut editor =
-            CodeEditor::new("short\nthis is the longest line\ntail", "rs");
-        editor.set_wrap_enabled(false);
-        editor.request_focus();
-        editor.has_canvas_focus = true;
-        editor.focus_locked = false;
-        editor.cursors.primary_mut().position = (1, 7);
-        let _ = editor.max_content_width();
-
-        let _ = editor.update(&Message::Enter);
-        let incremental = editor.max_content_width();
-        let expected = CodeEditor::new(&editor.content(), "rs");
-
-        assert!(
-            (incremental - expected.max_content_width()).abs() < f32::EPSILON
-        );
-        let cache = editor.max_content_width_cache.borrow();
-        assert_eq!(
-            cache.as_ref().map(|cache| cache.line_widths.len()),
-            Some(editor.buffer.line_count())
-        );
-        assert_eq!(
-            cache.as_ref().map(|cache| cache.revision),
-            Some(editor.buffer_revision)
         );
     }
 

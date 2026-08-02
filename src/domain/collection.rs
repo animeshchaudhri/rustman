@@ -4,6 +4,8 @@ use super::request::{ApiKeyLocation, AuthType, BodyType, FormField, HttpMethod, 
 
 fn default_jwt_algo() -> String { "HS256".to_owned() }
 
+fn default_timeout_ms() -> u64 { 30_000 }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Collection {
     pub id: String,
@@ -40,6 +42,8 @@ pub struct SavedRequest {
     pub jwt_algo: String,
     pub pre_request_script: String,
     pub test_script: String,
+    #[serde(default = "default_timeout_ms")]
+    pub timeout_ms: u64,
 }
 
 impl SavedRequest {
@@ -69,6 +73,7 @@ impl SavedRequest {
             jwt_algo: "HS256".to_owned(),
             pre_request_script: String::new(),
             test_script: String::new(),
+            timeout_ms: default_timeout_ms(),
         }
     }
 }
