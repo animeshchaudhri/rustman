@@ -16,7 +16,6 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         (RequestTab::Body, "Body"),
         (RequestTab::Auth, "Auth"),
         (RequestTab::Scripts, "Scripts"),
-        (RequestTab::Settings, "Settings"),
     ];
 
     let btns: Vec<Element<Message>> = tabs

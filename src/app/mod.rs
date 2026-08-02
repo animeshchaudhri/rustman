@@ -1,3 +1,4 @@
+use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -16,6 +17,7 @@ use crate::{
 
 mod boot;
 mod request_ops;
+mod scripting;
 mod session;
 mod subscription;
 mod update;
@@ -27,7 +29,7 @@ pub struct AppState {
     pub requests: HashMap<String, Vec<SavedRequest>>,
     pub history: Vec<HistoryEntry>,
     pub environments: Vec<AppEnvironment>,
-    pub http_client: reqwest::Client,
+    pub http_client: OnceCell<reqwest::Client>,
     pub db: Option<Connection>,
     pub data_dir: PathBuf,
     pub status_message: Option<String>,
@@ -77,6 +79,20 @@ pub struct AppState {
     pub ui_scale: f64,
     /// Auto-update progress for the banner + settings panel.
     pub update: UpdateState,
+    /// Default request timeout in ms, applied to every request (used to be
+    /// configurable per-tab; moved to a single global setting).
+    pub default_timeout_ms: u64,
+    /// Raw text of the timeout input in the Settings panel.
+    pub default_timeout_text: String,
+
+    pub global_pre_request_editor: iced::widget::text_editor::Content,
+    /// Runs before every request's own test script. See
+    /// `global_pre_request_editor` for why this is a plain text_editor.
+    pub global_test_editor: iced::widget::text_editor::Content,
+    /// Whether the full-size Global Scripts editor popup is open (opened
+    /// from a summary card in the Settings panel — the two script editors
+    /// need real room, more than the sidebar can spare).
+    pub global_scripts_modal_open: bool,
 }
 
 /// State machine for the self-update flow.
@@ -96,6 +112,52 @@ pub enum UpdateState {
 impl AppState {
     pub(crate) fn active_env(&self) -> Option<&AppEnvironment> {
         self.environments.iter().find(|e| e.is_active)
+    }
+
+    /// Lazily build the HTTP client on first use so that TLS cert loading does
+    /// not block the initial render.
+    pub(crate) fn http(&self) -> &reqwest::Client {
+        self.http_client
+            .get_or_init(|| crate::services::http::build_client())
+    }
+
+    /// Whether a code editor that's *currently on screen* has keyboard
+    /// focus — used to decide whether Ctrl+Z/Tab should stay scoped to that
+    /// editor instead of the app-level undo stack / field-navigation.
+    ///
+    /// Deliberately does NOT just OR together every editor's
+    /// `has_keyboard_focus()` regardless of which UI tab is showing: the
+    /// vendored `CodeEditor` tracks focus via a single process-wide "last
+    /// focused editor" id plus a per-instance flag that's only ever updated
+    /// while that instance is actually being rendered. An editor that isn't
+    /// currently visible (its widgets aren't in the tree, so nothing can
+    /// ever tell it "you lost focus") keeps reporting whatever it last had —
+    /// which, in practice, is "focused" forever once you've typed in it even
+    /// once. Gating on which tab is actually showing is what makes this
+    /// resilient to that staleness.
+    pub(crate) fn any_visible_code_editor_focused(&self) -> bool {
+        use crate::message::{RequestTab, ResponseTab};
+
+        // The Global Scripts popup covers the whole screen as a `stack!`
+        // overlay while open — Ctrl+Z/Tab must stay scoped to it (or just be
+        // inert) rather than leaking through to the request tab underneath,
+        // which the user can't even see right now.
+        if self.global_scripts_modal_open {
+            return true;
+        }
+
+        let tab = self.tabs.active_tab();
+        let request_panel_focused = match tab.active_request_tab {
+            RequestTab::Body => tab.body_editor.has_keyboard_focus(),
+            RequestTab::Scripts => {
+                tab.pre_request_editor.has_keyboard_focus() || tab.test_editor.has_keyboard_focus()
+            }
+            _ => false,
+        };
+        let response_panel_focused = matches!(tab.active_response_tab, ResponseTab::Body)
+            && tab.response_editor.has_keyboard_focus();
+
+        request_panel_focused || response_panel_focused
     }
 }
 

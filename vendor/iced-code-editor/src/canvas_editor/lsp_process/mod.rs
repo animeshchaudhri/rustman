@@ -22,6 +22,7 @@ use self::config::{
 use crate::canvas_editor::lsp::{
     LspClient, LspDocument, LspPosition, LspTextChange,
 };
+use crate::text_utils::char_to_byte_index;
 use serde_json::json;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -108,13 +109,6 @@ impl TextModel {
             line.chars().take(char_index).map(|c| c.len_utf16() as u32).sum();
         LspPosition { line: position.line, character: utf16_col }
     }
-}
-
-/// Converts a character index to a byte index in a string.
-///
-/// Returns the length of the string if the index is out of bounds.
-fn char_to_byte_index(s: &str, char_index: usize) -> usize {
-    s.char_indices().nth(char_index).map_or(s.len(), |(idx, _)| idx)
 }
 
 // =============================================================================

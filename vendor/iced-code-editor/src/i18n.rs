@@ -291,6 +291,93 @@ impl Translations {
         rust_i18n::t!("replace.all_tooltip", locale = self.language.to_locale())
             .into_owned()
     }
+
+    /// Returns the context-menu label for undo.
+    #[must_use]
+    pub fn context_menu_undo(&self) -> String {
+        rust_i18n::t!("context_menu.undo", locale = self.language.to_locale())
+            .into_owned()
+    }
+
+    /// Returns the context-menu label for redo.
+    #[must_use]
+    pub fn context_menu_redo(&self) -> String {
+        rust_i18n::t!("context_menu.redo", locale = self.language.to_locale())
+            .into_owned()
+    }
+
+    /// Returns the context-menu label for cut.
+    #[must_use]
+    pub fn context_menu_cut(&self) -> String {
+        rust_i18n::t!("context_menu.cut", locale = self.language.to_locale())
+            .into_owned()
+    }
+
+    /// Returns the context-menu label for copy.
+    #[must_use]
+    pub fn context_menu_copy(&self) -> String {
+        rust_i18n::t!("context_menu.copy", locale = self.language.to_locale())
+            .into_owned()
+    }
+
+    /// Returns the context-menu label for paste.
+    #[must_use]
+    pub fn context_menu_paste(&self) -> String {
+        rust_i18n::t!("context_menu.paste", locale = self.language.to_locale())
+            .into_owned()
+    }
+
+    /// Returns the context-menu label for select all.
+    #[must_use]
+    pub fn context_menu_select_all(&self) -> String {
+        rust_i18n::t!(
+            "context_menu.select_all",
+            locale = self.language.to_locale()
+        )
+        .into_owned()
+    }
+
+    /// Returns the macOS context-menu label for revealing a file.
+    #[must_use]
+    pub fn context_menu_reveal_in_finder(&self) -> String {
+        rust_i18n::t!(
+            "context_menu.reveal_in_finder",
+            locale = self.language.to_locale()
+        )
+        .into_owned()
+    }
+
+    /// Returns the Windows context-menu label for revealing a file.
+    #[must_use]
+    pub fn context_menu_reveal_in_file_explorer(&self) -> String {
+        rust_i18n::t!(
+            "context_menu.reveal_in_file_explorer",
+            locale = self.language.to_locale()
+        )
+        .into_owned()
+    }
+
+    /// Returns the Linux context-menu label for opening a file's parent folder.
+    #[must_use]
+    pub fn context_menu_open_containing_folder(&self) -> String {
+        rust_i18n::t!(
+            "context_menu.open_containing_folder",
+            locale = self.language.to_locale()
+        )
+        .into_owned()
+    }
+
+    /// Returns the platform-appropriate label for revealing a file.
+    #[must_use]
+    pub fn context_menu_reveal_in_file_manager(&self) -> String {
+        if cfg!(target_os = "macos") {
+            self.context_menu_reveal_in_finder()
+        } else if cfg!(target_os = "windows") {
+            self.context_menu_reveal_in_file_explorer()
+        } else {
+            self.context_menu_open_containing_folder()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -480,5 +567,145 @@ mod tests {
 
         t.set_language(Language::ChineseSimplified);
         assert_eq!(t.search_placeholder(), "搜索...");
+    }
+
+    #[test]
+    fn test_context_menu_translations_cover_all_locales() {
+        let cases = [
+            (
+                Language::English,
+                [
+                    "Undo",
+                    "Redo",
+                    "Cut",
+                    "Copy",
+                    "Paste",
+                    "Select All",
+                    "Reveal in Finder",
+                    "Reveal in File Explorer",
+                    "Open Containing Folder",
+                ],
+            ),
+            (
+                Language::French,
+                [
+                    "Annuler",
+                    "Rétablir",
+                    "Couper",
+                    "Copier",
+                    "Coller",
+                    "Tout sélectionner",
+                    "Révéler dans le Finder",
+                    "Afficher dans l'Explorateur de fichiers",
+                    "Ouvrir le dossier contenant",
+                ],
+            ),
+            (
+                Language::Spanish,
+                [
+                    "Deshacer",
+                    "Rehacer",
+                    "Cortar",
+                    "Copiar",
+                    "Pegar",
+                    "Seleccionar todo",
+                    "Mostrar en Finder",
+                    "Mostrar en el Explorador de archivos",
+                    "Abrir carpeta contenedora",
+                ],
+            ),
+            (
+                Language::German,
+                [
+                    "Rückgängig",
+                    "Wiederholen",
+                    "Ausschneiden",
+                    "Kopieren",
+                    "Einfügen",
+                    "Alle auswählen",
+                    "Im Finder anzeigen",
+                    "Im Datei-Explorer anzeigen",
+                    "Übergeordneten Ordner öffnen",
+                ],
+            ),
+            (
+                Language::Italian,
+                [
+                    "Annulla azione",
+                    "Ripeti",
+                    "Taglia",
+                    "Copia",
+                    "Incolla",
+                    "Seleziona tutto",
+                    "Visualizza in Finder",
+                    "Visualizza in Esplora file",
+                    "Apri cartella superiore",
+                ],
+            ),
+            (
+                Language::PortugueseBR,
+                [
+                    "Desfazer",
+                    "Refazer",
+                    "Recortar",
+                    "Copiar",
+                    "Colar",
+                    "Selecionar Tudo",
+                    "Revelar no Finder",
+                    "Revelar no Explorador de Arquivos",
+                    "Abrir a Pasta Que Contém",
+                ],
+            ),
+            (
+                Language::PortuguesePT,
+                [
+                    "Anular",
+                    "Refazer",
+                    "Cortar",
+                    "Copiar",
+                    "Colar",
+                    "Selecionar tudo",
+                    "Mostrar no Finder",
+                    "Mostrar no Explorador de Ficheiros",
+                    "Abrir pasta contentora",
+                ],
+            ),
+            (
+                Language::ChineseSimplified,
+                [
+                    "撤消",
+                    "恢复",
+                    "剪切",
+                    "复制",
+                    "粘贴",
+                    "选择全部",
+                    "在访达中显示",
+                    "在文件资源管理器中显示",
+                    "打开所在的文件夹",
+                ],
+            ),
+        ];
+
+        for (language, expected) in cases {
+            let translations = Translations::new(language);
+            assert_eq!(translations.context_menu_undo(), expected[0]);
+            assert_eq!(translations.context_menu_redo(), expected[1]);
+            assert_eq!(translations.context_menu_cut(), expected[2]);
+            assert_eq!(translations.context_menu_copy(), expected[3]);
+            assert_eq!(translations.context_menu_paste(), expected[4]);
+            assert_eq!(translations.context_menu_select_all(), expected[5]);
+            assert_eq!(
+                translations.context_menu_reveal_in_finder(),
+                expected[6]
+            );
+            assert_eq!(
+                translations.context_menu_reveal_in_file_explorer(),
+                expected[7]
+            );
+            assert_eq!(
+                translations.context_menu_open_containing_folder(),
+                expected[8]
+            );
+        }
     }
 }

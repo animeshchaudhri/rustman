@@ -11,4 +11,12 @@ pub struct AppSession {
     pub sidebar_panel: String,
     #[serde(default)]
     pub theme_idx: usize,
+    #[serde(default = "default_timeout_ms")]
+    pub default_timeout_ms: u64,
+    #[serde(default)]
+    pub global_pre_request_script: String,
+    #[serde(default)]
+    pub global_test_script: String,
 }
+
+fn default_timeout_ms() -> u64 { 30_000 }
