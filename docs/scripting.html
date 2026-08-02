@@ -113,6 +113,11 @@
     }
     .toc a:hover { color: var(--text); text-decoration: none; }
 
+    .docs-banner {
+      display: block; width: 100%; max-width: 640px; height: auto;
+      border-radius: var(--r); border: 1px solid var(--border);
+      margin-bottom: 1.75rem;
+    }
     .docs-content h1 {
       font-size: clamp(1.9rem, 4vw, 2.5rem); font-weight: 900;
       letter-spacing: -0.03em; margin-bottom: 0.5rem;
@@ -241,6 +246,7 @@
   </aside>
 
   <main class="docs-content">
+    <img class="docs-banner" src="rustman-scripting.png" alt="Rustman Scripting" />
     <div class="docs-kicker">Docs · Scripting</div>
     <h1>Rustman scripting language</h1>
     <p class="docs-lede">
