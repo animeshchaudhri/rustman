@@ -13,7 +13,7 @@ path = "src/main.rs"
 # GUI
 iced = { version = "0.14", features = ["tokio", "advanced", "image", "svg"] }
 # Full-featured code editor widget (line numbers, syntect highlight, selection, undo)
-iced-code-editor = "0.3.9"
+iced-code-editor = "0.3.11"
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 # HTTP

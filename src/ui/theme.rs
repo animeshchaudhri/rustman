@@ -345,6 +345,7 @@ impl Palette {
             scrollbar_background: Color::TRANSPARENT,
             scroller_color: Color { r: Self::text_subtle().r, g: Self::text_subtle().g, b: Self::text_subtle().b, a: 0.5 },
             current_line_highlight: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.10 },
+            whitespace_color: Color { r: Self::text_subtle().r, g: Self::text_subtle().g, b: Self::text_subtle().b, a: 0.4 },
             selection_color: Color { r: accent.r, g: accent.g, b: accent.b, a: 0.28 },
             syntax_theme_name: t.syntax_theme,
         }
