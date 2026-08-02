@@ -42,11 +42,13 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             tab.modified = true;
         }
         RequestMsg::MethodChanged(v) => {
-            if let Ok(m) = v.parse() { tab.method = m; tab.modified = true; }
+            if let Ok(m) = v.parse() { if tab.method != m { tab.method = m; tab.modified = true; } }
         }
         RequestMsg::TabSelected(t) => tab.active_request_tab = t,
         RequestMsg::BodyEdited(msg) => {
-            tab.modified = true;
+            if is_body_edit(&msg) {
+                tab.modified = true;
+            }
             return tab.body_editor.update(&msg)
                 .map(|m| Message::Request(RequestMsg::BodyEdited(m)));
         }
@@ -161,7 +163,7 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         RequestMsg::ApiKeyNameChanged(v) => { tab.api_key_name = v; tab.modified = true; }
         RequestMsg::ApiKeyValueChanged(v) => { tab.api_key_value = v; tab.modified = true; }
         RequestMsg::AuthTypeChanged(v) => {
-            if let Ok(a) = v.parse() { tab.auth_type = a; tab.modified = true; }
+            if let Ok(a) = v.parse() { if tab.auth_type != a { tab.auth_type = a; tab.modified = true; } }
         }
         RequestMsg::CookieStringChanged(v) => { tab.cookie_string = v; tab.modified = true; }
         RequestMsg::JwtSecretChanged(v) => { tab.jwt_secret = v; tab.modified = true; }
@@ -300,8 +302,10 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         }
         RequestMsg::BodyTypeChanged(v) => {
             if let Ok(b) = v.parse() {
-                tab.body_type = b;
-                tab.modified = true;
+                if tab.body_type != b {
+                    tab.body_type = b;
+                    tab.modified = true;
+                }
             }
         }
         RequestMsg::FormFieldAdded => {
@@ -338,8 +342,10 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         }
         RequestMsg::ApiKeyLocationChanged(v) => {
             if let Ok(loc) = v.parse() {
-                tab.api_key_location = loc;
-                tab.modified = true;
+                if tab.api_key_location != loc {
+                    tab.api_key_location = loc;
+                    tab.modified = true;
+                }
             }
         }
         RequestMsg::Abort => {
@@ -489,6 +495,39 @@ fn serialize_bulk_kv(items: &[crate::domain::request::KeyValue]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Returns `true` when the CodeEditor message changes buffer content (insert,
+/// delete, paste, undo/redo, etc.).  Navigation, scrolling, focus, and search
+/// messages do NOT count — they shouldn't mark the request as modified.
+fn is_body_edit(msg: &iced_code_editor::Message) -> bool {
+    use iced_code_editor::Message as M;
+    matches!(
+        msg,
+        M::CharacterInput(_)
+            | M::Backspace
+            | M::Delete
+            | M::Enter
+            | M::Tab
+            | M::Paste(_)
+            | M::Cut
+            | M::DeleteSelection
+            | M::Undo
+            | M::Redo
+            | M::DeleteWordBackward
+            | M::DeleteWordForward
+            | M::MoveLineUp
+            | M::MoveLineDown
+            | M::IndentLines
+            | M::UnindentLines
+            | M::ToggleComment
+            | M::JoinLines
+            | M::DuplicateLineDown
+            | M::DuplicateLineUp
+            | M::ReplaceNext
+            | M::ReplaceAll
+            | M::ImeCommit(_)
+    )
 }
 
 #[cfg(test)]
