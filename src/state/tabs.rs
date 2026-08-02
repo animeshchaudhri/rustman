@@ -26,6 +26,33 @@ pub struct WsMessage {
     pub is_outgoing: bool,
 }
 
+/// A rich preview for a binary response body, populated asynchronously once
+/// the response arrives (see `AppMsg::SpreadsheetPreviewReady` /
+/// `AppMsg::PdfPreviewReady`). `None` means either the response isn't binary,
+/// the binary type has no richer preview, or the preview hasn't finished
+/// rendering/parsing yet.
+#[derive(Default)]
+pub enum ResponsePreview {
+    #[default]
+    None,
+    Spreadsheet(Result<crate::services::spreadsheet::ParsedSheet, String>),
+    Pdf(PdfPreviewState),
+}
+
+pub struct PdfPreviewState {
+    pub page_count: usize,
+    pub current_page: usize,
+    /// `None` while the current page is still rendering.
+    pub current_image: Option<iced::widget::image::Handle>,
+}
+
+/// One `test(name, condition)` call's outcome from a test script run.
+#[derive(Debug, Clone)]
+pub struct TestResult {
+    pub name: String,
+    pub passed: bool,
+}
+
 pub struct RequestTabState {
     pub id: String,
     pub title: String,
@@ -48,10 +75,8 @@ pub struct RequestTabState {
     pub jwt_secret: String,
     pub jwt_subject: String,
     pub jwt_algo: String,
-    pub pre_request_editor: text_editor::Content,
-    pub test_editor: text_editor::Content,
-    pub timeout_ms: u64,
-    pub timeout_text: String,
+    pub pre_request_editor: CodeEditor,
+    pub test_editor: CodeEditor,
     pub active_request_tab: crate::message::RequestTab,
     pub active_response_tab: crate::message::ResponseTab,
     pub response: Option<HttpResponse>,
@@ -62,6 +87,22 @@ pub struct RequestTabState {
     pub response_viewer_lines: usize,
     pub viewer_processing: bool,
     pub parsed_json: Option<serde_json::Value>,
+    pub response_preview: ResponsePreview,
+    /// Results of the last test-script run against this tab's response.
+    pub test_results: Vec<TestResult>,
+    /// Set if the pre-request or test script itself failed to run (syntax
+    /// error, unknown function, etc.) — distinct from a test *assertion*
+    /// failing, which shows up as a normal failed `TestResult` instead.
+    pub script_error: Option<String>,
+    /// `print(...)` calls from the last pre-request + test script run,
+    /// in order, for debugging a script without needing an assertion.
+    pub script_logs: Vec<String>,
+    /// `script_logs` joined into one selectable/copyable text_editor's
+    /// content — kept in sync wherever `script_logs` is set. A plain `text`
+    /// widget can't be selected/copied in this iced version, and there's no
+    /// read-only mode, so this is edited-but-ignored: actions apply so the
+    /// selection renders correctly, but nothing reads the result back out.
+    pub console_editor: text_editor::Content,
     pub ws: WsState,
     pub saved_as: Option<(String, String)>,
     pub jobs: JobManager,
@@ -139,10 +180,8 @@ impl RequestTabState {
             jwt_secret: String::new(),
             jwt_subject: String::new(),
             jwt_algo: "HS256".to_owned(),
-            pre_request_editor: text_editor::Content::new(),
-            test_editor: text_editor::Content::new(),
-            timeout_ms: 30_000,
-            timeout_text: "30000".to_owned(),
+            pre_request_editor: make_code_editor("", "txt"),
+            test_editor: make_code_editor("", "txt"),
             active_request_tab: crate::message::RequestTab::Params,
             active_response_tab: crate::message::ResponseTab::Body,
             ws: WsState::default(),
@@ -154,6 +193,11 @@ impl RequestTabState {
             response_viewer_lines: 0,
             viewer_processing: false,
             parsed_json: None,
+            response_preview: ResponsePreview::default(),
+            test_results: Vec::new(),
+            script_error: None,
+            script_logs: Vec::new(),
+            console_editor: text_editor::Content::new(),
             saved_as: None,
             jobs: JobManager::default(),
             undo: Vec::new(),
@@ -211,6 +255,19 @@ impl RequestTabState {
             self.undo.remove(0);
         }
         self.redo.clear();
+    }
+
+    /// Replaces `script_logs` wholesale and rebuilds `console_editor` to match.
+    pub fn set_script_logs(&mut self, logs: Vec<String>) {
+        self.console_editor = text_editor::Content::with_text(&logs.join("\n"));
+        self.script_logs = logs;
+    }
+
+    /// Appends to `script_logs` (e.g. a test script's logs on top of a
+    /// pre-request script's) and rebuilds `console_editor` to match.
+    pub fn extend_script_logs(&mut self, logs: Vec<String>) {
+        self.script_logs.extend(logs);
+        self.console_editor = text_editor::Content::with_text(&self.script_logs.join("\n"));
     }
 
     pub fn set_viewer_content(&mut self, text: &str, is_json: bool) {
@@ -277,10 +334,8 @@ impl RequestTabState {
         tab.jwt_secret = req.jwt_secret.clone();
         tab.jwt_subject = req.jwt_subject.clone();
         tab.jwt_algo = req.jwt_algo.clone();
-        tab.pre_request_editor = text_editor::Content::with_text(&req.pre_request_script);
-        tab.test_editor = text_editor::Content::with_text(&req.test_script);
-        tab.timeout_ms = req.timeout_ms;
-        tab.timeout_text = req.timeout_ms.to_string();
+        tab.pre_request_editor = make_code_editor(&req.pre_request_script, "txt");
+        tab.test_editor = make_code_editor(&req.test_script, "txt");
         tab.saved_as = Some((req.collection_id.clone(), req.id.clone()));
         tab
     }
@@ -346,6 +401,15 @@ impl TabManager {
     pub fn switch_to(&mut self, idx: usize) {
         if idx < self.tabs.len() {
             self.active = idx;
+            // Belt-and-suspenders redraw: this tab's editors may not have
+            // been drawn since a viewport change (window resize, panel
+            // split drag) while it wasn't visible, so force a clean render
+            // now rather than trusting whatever was last cached.
+            let tab = &mut self.tabs[idx];
+            tab.body_editor.invalidate_render_cache();
+            tab.response_editor.invalidate_render_cache();
+            tab.pre_request_editor.invalidate_render_cache();
+            tab.test_editor.invalidate_render_cache();
         }
     }
 
@@ -408,7 +472,6 @@ pub struct TabSnapshot {
     pub jwt_algo: String,
     pub pre_request_script: String,
     pub test_script: String,
-    pub timeout_ms: u64,
     pub saved_as: Option<(String, String)>,
     #[serde(default)]
     pub active_request_tab: crate::message::RequestTab,
@@ -442,9 +505,8 @@ impl From<&RequestTabState> for TabSnapshot {
             jwt_secret: t.jwt_secret.clone(),
             jwt_subject: t.jwt_subject.clone(),
             jwt_algo: t.jwt_algo.clone(),
-            pre_request_script: t.pre_request_editor.text(),
-            test_script: t.test_editor.text(),
-            timeout_ms: t.timeout_ms,
+            pre_request_script: t.pre_request_editor.content(),
+            test_script: t.test_editor.content(),
             saved_as: t.saved_as.clone(),
             active_request_tab: t.active_request_tab.clone(),
             active_response_tab: t.active_response_tab.clone(),

@@ -81,34 +81,53 @@ fn indent_width(line: &str) -> Option<usize> {
 /// one line are returned.
 pub fn compute_foldable_regions(buffer: &TextBuffer) -> Vec<FoldRegion> {
     let line_count = buffer.line_count();
-    // Precompute indentation once: O(n) instead of re-scanning per header.
+    // Precompute indentation once. Blank lines remain transparent to folding.
     let indents: Vec<Option<usize>> =
         (0..line_count).map(|i| indent_width(buffer.line(i))).collect();
 
-    let mut regions = Vec::new();
+    let mut regions: Vec<FoldRegion> = Vec::new();
+    // Stack entries are `(indent, region_index)`. A region is opened when the
+    // next non-blank line is deeper, and closed by the first non-blank line at
+    // the same or a shallower indentation. This keeps detection O(n), including
+    // deeply nested or very large uniformly-indented files.
+    let mut open_regions: Vec<(usize, usize)> = Vec::new();
+    let mut non_blank = indents
+        .iter()
+        .enumerate()
+        .filter_map(|(line, indent)| indent.map(|width| (line, width)))
+        .peekable();
 
-    for i in 0..line_count {
-        let Some(header_indent) = indents[i] else {
-            continue; // Blank lines are never headers.
-        };
-
-        // Scan forward, tracking the last non-blank line more deeply indented
-        // than the header. Blank lines are skipped without ending the region.
-        let mut last_content = i;
-        let mut j = i + 1;
-        while j < line_count {
-            match indents[j] {
-                None => j += 1, // Blank line: tentatively inside the region.
-                Some(indent) if indent > header_indent => {
-                    last_content = j;
-                    j += 1;
-                }
-                Some(_) => break, // Sibling/outer line ends the region.
+    let mut previous_non_blank = None;
+    while let Some((line, indent)) = non_blank.next() {
+        while open_regions
+            .last()
+            .is_some_and(|(header_indent, _)| *header_indent >= indent)
+        {
+            if let Some((_, region_index)) = open_regions.pop()
+                && let Some(end_line) = previous_non_blank
+                && let Some(region) = regions.get_mut(region_index)
+            {
+                region.end_line = end_line;
             }
         }
 
-        if last_content > i {
-            regions.push(FoldRegion::new(i, last_content));
+        if non_blank
+            .peek()
+            .is_some_and(|(_, next_indent)| *next_indent > indent)
+        {
+            let region_index = regions.len();
+            regions.push(FoldRegion::new(line, line));
+            open_regions.push((indent, region_index));
+        }
+
+        previous_non_blank = Some(line);
+    }
+
+    if let Some(end_line) = previous_non_blank {
+        for (_, region_index) in open_regions {
+            if let Some(region) = regions.get_mut(region_index) {
+                region.end_line = end_line;
+            }
         }
     }
 
@@ -122,7 +141,22 @@ pub fn compute_foldable_regions(buffer: &TextBuffer) -> Vec<FoldRegion> {
 /// * `regions` - Pre-computed fold regions
 /// * `line` - The logical line index to test
 pub fn is_fold_header(regions: &[FoldRegion], line: usize) -> bool {
-    regions.iter().any(|r| r.start_line == line)
+    regions.binary_search_by_key(&line, |region| region.start_line).is_ok()
+}
+
+/// Checks whether one logical line is a fold header without scanning the whole
+/// buffer or building every fold region.
+///
+/// Rendering and hover hit-testing only need this local yes/no answer. Full
+/// region discovery remains deferred until the user actually folds a block.
+pub fn is_line_fold_header(buffer: &TextBuffer, line: usize) -> bool {
+    let Some(header_indent) = indent_width(buffer.line(line)) else {
+        return false;
+    };
+
+    (line.saturating_add(1)..buffer.line_count())
+        .find_map(|next_line| indent_width(buffer.line(next_line)))
+        .is_some_and(|next_indent| next_indent > header_indent)
 }
 
 /// Computes the set of logical lines hidden by the currently collapsed regions.
@@ -249,5 +283,13 @@ mod tests {
         assert!(is_fold_header(&regions, 5));
         assert!(!is_fold_header(&regions, 1));
         assert!(!is_fold_header(&regions, 3));
+    }
+
+    #[test]
+    fn test_is_line_fold_header_skips_blank_lines() {
+        let buffer = TextBuffer::new("header\n\n    body\nsibling");
+        assert!(is_line_fold_header(&buffer, 0));
+        assert!(!is_line_fold_header(&buffer, 1));
+        assert!(!is_line_fold_header(&buffer, 2));
     }
 }

@@ -1,28 +1,29 @@
 use iced::{
-    widget::{column, container, row, text, text_editor, Space},
+    widget::{column, container, row, text, Space},
     Element, Length,
 };
 
 use crate::{
     message::{Message, RequestMsg},
     state::tabs::RequestTabState,
-    ui::{styles, theme::{Palette, MONO}},
+    ui::{styles, theme::Palette},
 };
 
 pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
+    let pre_request: Element<Message> = tab
+        .pre_request_editor
+        .view()
+        .map(|m| Message::Request(RequestMsg::PreRequestScriptEdited(m)));
+    let test: Element<Message> = tab
+        .test_editor
+        .view()
+        .map(|m| Message::Request(RequestMsg::TestScriptEdited(m)));
+
     column![
-        script_section_header("Pre-request Script", "Runs before each request · access req object"),
-        text_editor(&tab.pre_request_editor)
-            .on_action(|a| Message::Request(RequestMsg::PreRequestScriptEdited(a)))
-            .height(Length::FillPortion(1))
-            .font(MONO)
-            .style(styles::scripts_editor),
-        script_section_header("Test Script", "Runs after response · use pm.test() to assert"),
-        text_editor(&tab.test_editor)
-            .on_action(|a| Message::Request(RequestMsg::TestScriptEdited(a)))
-            .height(Length::FillPortion(1))
-            .font(MONO)
-            .style(styles::scripts_editor),
+        script_section_header("Pre-request Script", "Runs before each request · env(), set_header()"),
+        container(pre_request).height(Length::FillPortion(1)),
+        script_section_header("Test Script", "Runs after response · use test(name, condition)"),
+        container(test).height(Length::FillPortion(1)),
     ]
     .spacing(0)
     .height(Length::Fill)

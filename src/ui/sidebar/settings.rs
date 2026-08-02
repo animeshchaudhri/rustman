@@ -28,14 +28,22 @@ pub fn view(state: &crate::app::AppState) -> Element<'_, Message> {
     ));
     let appearance = card(build_appearance(state.theme_idx));
     let layout = card(build_layout(state.horizontal_layout));
+    let request_defaults = card(build_request_defaults(&state.default_timeout_text));
+    let global_scripts = card(build_global_scripts(
+        state.global_pre_request_editor.text().len(),
+        state.global_test_editor.text().len(),
+    ));
     let updates = card(build_updates(&state.update));
     let shortcuts = card(build_shortcuts());
     let footer = build_footer();
 
     scrollable(
-        column![header, profile, git_identity, appearance, layout, updates, shortcuts, footer]
-            .spacing(6)
-            .padding(iced::Padding { top: 0.0, right: 8.0, bottom: 8.0, left: 8.0 }),
+        column![
+            header, profile, git_identity, appearance, layout, request_defaults,
+            global_scripts, updates, shortcuts, footer
+        ]
+        .spacing(6)
+        .padding(iced::Padding { top: 0.0, right: 8.0, bottom: 8.0, left: 8.0 }),
     )
     .height(Length::Fill)
     .style(crate::ui::theme::hidden_scrollbar)
@@ -61,6 +69,63 @@ fn build_git_identity(name: &str, email: &str) -> Element<'static, Message> {
         Space::new().height(4),
         text("Used for git commits. Saves to the active repo's config.")
             .size(9).color(Palette::text_subtle()),
+    ]
+    .spacing(0)
+    .into()
+}
+
+fn build_request_defaults(timeout_text: &str) -> Element<'static, Message> {
+    column![
+        section_label("REQUEST DEFAULTS"),
+        field_label("Timeout (ms)"),
+        text_input("30000", timeout_text)
+            .on_input(|v| Message::Settings(SettingsMsg::DefaultTimeoutChanged(v)))
+            .size(12)
+            .padding([6, 10])
+            .width(160)
+            .style(crate::ui::styles::field_input),
+        Space::new().height(4),
+        text("Applied to every request. 0 falls back to 30000.")
+            .size(9).color(Palette::text_subtle()),
+    ]
+    .spacing(0)
+    .into()
+}
+
+fn build_global_scripts(pre_request_len: usize, test_len: usize) -> Element<'static, Message> {
+    let status = match (pre_request_len > 0, test_len > 0) {
+        (false, false) => "Not set up yet".to_owned(),
+        (true, false) => "Pre-request configured".to_owned(),
+        (false, true) => "Test script configured".to_owned(),
+        (true, true) => "All configured".to_owned(),
+    };
+
+    column![
+        section_label("GLOBAL SCRIPTS"),
+        text("Runs before every request's own pre-request/test script — for setup you'd otherwise copy-paste into each request.")
+            .size(9).color(Palette::text_subtle()),
+        Space::new().height(8),
+        row![
+            text(status).size(11).color(Palette::text_muted()),
+            Space::new().width(Length::Fill),
+            button(text("Edit").size(11).color(Palette::text()))
+                .on_press(Message::Settings(SettingsMsg::OpenGlobalScriptsModal))
+                .style(|_t, s| {
+                    let hov = matches!(s, iced::widget::button::Status::Hovered);
+                    iced::widget::button::Style {
+                        background: Some(Background::Color(if hov {
+                            Palette::surface_raised()
+                        } else {
+                            Palette::surface_high()
+                        })),
+                        border: Border { color: Palette::border(), width: 1.0, radius: 6.0.into() },
+                        text_color: Palette::text(),
+                        ..Default::default()
+                    }
+                })
+                .padding([5, 12]),
+        ]
+        .align_y(iced::Alignment::Center),
     ]
     .spacing(0)
     .into()
@@ -376,6 +441,12 @@ fn build_footer() -> Element<'static, Message> {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn card(content: impl Into<Element<'static, Message>>) -> Element<'static, Message> {
+    card_ref(content)
+}
+
+/// Like `card`, but for content that borrows from `AppState` (e.g. a code
+/// editor's own `view()`) instead of owning everything it displays.
+fn card_ref<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     let bg = Palette::surface();
     let bd = Palette::border_subtle();
     container(content)

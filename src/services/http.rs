@@ -56,9 +56,10 @@ pub async fn send(
     tab_id: String,
     req: &SavedRequest,
     env: Option<&AppEnvironment>,
+    default_timeout_ms: u64,
 ) -> HttpResult {
     let start = Instant::now();
-    match do_send(client, &tab_id, req, env).await {
+    match do_send(client, &tab_id, req, env, default_timeout_ms).await {
         Ok(mut resp) => {
             resp.duration_ms = start.elapsed().as_millis() as u64;
             HttpResult { tab_id, response: resp }
@@ -75,6 +76,7 @@ async fn do_send(
     _tab_id: &str,
     req: &SavedRequest,
     env: Option<&AppEnvironment>,
+    default_timeout_ms: u64,
 ) -> Result<HttpResponse, String> {
     let url = substitute(&req.url, env);
     // The query is sent from `params`; if the URL also carries one (e.g. older
@@ -91,7 +93,7 @@ async fn do_send(
         .map_err(|_| format!("Invalid HTTP method: {}", req.method))?;
 
     let mut builder = client.request(method, &url);
-    let timeout_ms = if req.timeout_ms < 1000 { 30_000 } else { req.timeout_ms };
+    let timeout_ms = if default_timeout_ms < 1000 { 30_000 } else { default_timeout_ms };
     builder = builder.timeout(Duration::from_millis(timeout_ms));
 
     let mut header_map = HeaderMap::new();
@@ -173,29 +175,47 @@ async fn do_send(
 
     match &req.body_type {
         BodyType::FormData => {
-            let mut form = reqwest::multipart::Form::new();
-            for field in &req.form_data_fields {
-                if !field.enabled {
-                    continue;
-                }
-                if let crate::domain::request::FormFieldType::File = field.field_type {
-                    let file_data = field.file_data.as_ref().ok_or_else(|| {
-                        format!("File field '{}' has no data — pick a file first", field.key)
-                    })?;
-                    let bytes = general_purpose::STANDARD
-                        .decode(file_data)
-                        .map_err(|e| format!("Base64 decode: {e}"))?;
-                    let fname = field.file_name.clone().unwrap_or_else(|| "file".to_owned());
-                    let mut part = reqwest::multipart::Part::bytes(bytes).file_name(fname);
-                    if let Some(mime) = &field.mime_type {
-                        part = part.mime_str(mime).map_err(|e| e.to_string())?;
+            let has_file = req
+                .form_data_fields
+                .iter()
+                .any(|f| f.enabled && f.field_type == crate::domain::request::FormFieldType::File);
+
+            if has_file {
+                let mut form = reqwest::multipart::Form::new();
+                for field in &req.form_data_fields {
+                    if !field.enabled {
+                        continue;
                     }
-                    form = form.part(field.key.clone(), part);
-                } else {
-                    form = form.text(field.key.clone(), field.value.clone());
+                    if let crate::domain::request::FormFieldType::File = field.field_type {
+                        let file_data = field.file_data.as_ref().ok_or_else(|| {
+                            format!("File field '{}' has no data — pick a file first", field.key)
+                        })?;
+                        let bytes = general_purpose::STANDARD
+                            .decode(file_data)
+                            .map_err(|e| format!("Base64 decode: {e}"))?;
+                        let fname = field.file_name.clone().unwrap_or_else(|| "file".to_owned());
+                        let mut part = reqwest::multipart::Part::bytes(bytes).file_name(fname);
+                        if let Some(mime) = &field.mime_type {
+                            part = part.mime_str(mime).map_err(|e| e.to_string())?;
+                        }
+                        form = form.part(field.key.clone(), part);
+                    } else {
+                        form = form.text(field.key.clone(), field.value.clone());
+                    }
                 }
+                builder = builder.multipart(form);
+            } else {
+                // No file fields: send as application/x-www-form-urlencoded,
+                // which is what plain HTML-style forms (logins, etc.) expect —
+                // multipart/form-data would be syntactically wrong for them.
+                let pairs: Vec<(String, String)> = req
+                    .form_data_fields
+                    .iter()
+                    .filter(|f| f.enabled)
+                    .map(|f| (f.key.clone(), f.value.clone()))
+                    .collect();
+                builder = builder.form(&pairs);
             }
-            builder = builder.multipart(form);
         }
         BodyType::Json | BodyType::Text => {
             let body = substitute(&req.body, env);
@@ -224,20 +244,40 @@ async fn do_send(
         }
     }
 
-    let raw_body = response.text().await.map_err(|e| format!("Read body: {e}"))?;
-    let body_size = raw_body.len();
+    let raw_bytes = response.bytes().await.map_err(|e| format!("Read body: {e}"))?;
+    let body_size = raw_bytes.len();
     let is_large = body_size > INLINE_BODY_THRESHOLD;
 
-    Ok(HttpResponse {
-        status,
-        status_text,
-        headers,
-        body: if is_large { String::new() } else { maybe_pretty(&raw_body) },
-        body_size,
-        body_stored: is_large,
-        duration_ms: 0, // filled by caller
-        error: None,
-    })
+    // Non-UTF-8 bodies (PDFs, images, other binary downloads) can't be shown
+    // as text. Detect them up front instead of lossily decoding them into a
+    // string full of replacement characters and feeding that into the text
+    // editor / JSON pretty-printer.
+    match String::from_utf8(raw_bytes.to_vec()) {
+        Ok(raw_body) => Ok(HttpResponse {
+            status,
+            status_text,
+            headers,
+            body: if is_large { String::new() } else { maybe_pretty(&raw_body) },
+            body_size,
+            body_stored: is_large,
+            is_binary: false,
+            binary_data: None,
+            duration_ms: 0, // filled by caller
+            error: None,
+        }),
+        Err(_) => Ok(HttpResponse {
+            status,
+            status_text,
+            headers,
+            body: String::new(),
+            body_size,
+            body_stored: false,
+            is_binary: true,
+            binary_data: if is_large { None } else { Some(raw_bytes.to_vec()) },
+            duration_ms: 0, // filled by caller
+            error: None,
+        }),
+    }
 }
 
 fn maybe_pretty(raw: &str) -> String {
@@ -321,5 +361,157 @@ mod error_tests {
     #[test]
     fn single_error_returns_itself() {
         assert_eq!(root_cause(&Err("boom", None)), "boom");
+    }
+}
+
+/// Diagnostic tests that hit the real local test server
+/// (`scripts/test_file_server.py`, port 8899) to check whether a mixed
+/// text+file multipart form actually goes out over the wire correctly.
+/// `#[ignore]`d by default since they need that server running:
+///   python3 scripts/test_file_server.py 8899 &
+///   cargo test --lib -- --ignored --nocapture live_form_upload
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+    use crate::domain::collection::SavedRequest;
+    use crate::domain::request::{BodyType, FormField, FormFieldType, HttpMethod};
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_form_upload_with_mixed_text_and_file_fields() {
+        let client = build_client();
+        let mut req = SavedRequest::new_in(String::new(), "test".to_owned());
+        req.method = HttpMethod::Post;
+        req.url = "http://localhost:8899/upload".to_owned();
+        req.body_type = BodyType::FormData;
+        req.form_data_fields = vec![
+            FormField {
+                id: "1".to_owned(),
+                key: "name".to_owned(),
+                value: "rustman".to_owned(),
+                field_type: FormFieldType::Text,
+                enabled: true,
+                file_name: None,
+                file_data: None,
+                mime_type: None,
+            },
+            FormField {
+                id: "2".to_owned(),
+                key: "avatar".to_owned(),
+                value: String::new(),
+                field_type: FormFieldType::File,
+                enabled: true,
+                file_name: Some("avatar.png".to_owned()),
+                file_data: Some(general_purpose::STANDARD.encode(b"fake png bytes")),
+                mime_type: Some("image/png".to_owned()),
+            },
+        ];
+
+        let result = send(&client, "tab-1".to_owned(), &req, None, 30_000).await;
+        eprintln!("response: {:?}", result.response);
+        assert_eq!(result.response.error, None, "request failed: {:?}", result.response.error);
+        assert_eq!(result.response.status, 200);
+
+        let parsed: serde_json::Value = serde_json::from_str(&result.response.body)
+            .expect("server response should be JSON");
+        eprintln!("parsed server response: {parsed:#}");
+
+        let files = parsed["files"].as_array().expect("files array");
+        let fields = parsed["fields"].as_object().expect("fields object");
+
+        assert_eq!(fields.get("name").and_then(|v| v.as_str()), Some("rustman"));
+        assert_eq!(files.len(), 1, "expected exactly one uploaded file, got: {files:?}");
+        assert_eq!(files[0]["filename"], "avatar.png");
+        assert_eq!(files[0]["size"], 14); // "fake png bytes".len()
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_form_upload_sends_correct_excel_mime_type() {
+        let client = build_client();
+        let mut req = SavedRequest::new_in(String::new(), "test".to_owned());
+        req.method = HttpMethod::Post;
+        req.url = "http://localhost:8899/upload".to_owned();
+        req.body_type = BodyType::FormData;
+        req.form_data_fields = vec![FormField {
+            id: "1".to_owned(),
+            key: "report".to_owned(),
+            value: String::new(),
+            field_type: FormFieldType::File,
+            enabled: true,
+            file_name: Some("report.xlsx".to_owned()),
+            file_data: Some(general_purpose::STANDARD.encode(b"fake xlsx bytes")),
+            mime_type: Some(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_owned(),
+            ),
+        }];
+
+        let result = send(&client, "tab-1".to_owned(), &req, None, 30_000).await;
+        assert_eq!(result.response.error, None, "request failed: {:?}", result.response.error);
+        assert_eq!(result.response.status, 200);
+
+        let parsed: serde_json::Value = serde_json::from_str(&result.response.body)
+            .expect("server response should be JSON");
+        eprintln!("parsed server response: {parsed:#}");
+
+        let files = parsed["files"].as_array().expect("files array");
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0]["filename"], "report.xlsx");
+        assert_eq!(
+            files[0]["content_type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "the multipart part's Content-Type on the wire should be the Excel \
+             MIME type, not a generic fallback like application/octet-stream"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_text_only_form_sends_urlencoded_not_multipart() {
+        // Reproduces the real bug report: a plain login form (no file
+        // fields) sent to a strict server that only accepts
+        // application/x-www-form-urlencoded and 400s on anything else
+        // (like multipart/form-data).
+        let client = build_client();
+        let mut req = SavedRequest::new_in(String::new(), "test".to_owned());
+        req.method = HttpMethod::Post;
+        req.url = "http://localhost:8899/login".to_owned();
+        req.body_type = BodyType::FormData;
+        req.form_data_fields = vec![
+            FormField {
+                id: "1".to_owned(),
+                key: "conta".to_owned(),
+                value: "sync_dep_1".to_owned(),
+                field_type: FormFieldType::Text,
+                enabled: true,
+                file_name: None,
+                file_data: None,
+                mime_type: None,
+            },
+            FormField {
+                id: "2".to_owned(),
+                key: "modulo".to_owned(),
+                value: "SYNC".to_owned(),
+                field_type: FormFieldType::Text,
+                enabled: true,
+                file_name: None,
+                file_data: None,
+                mime_type: None,
+            },
+        ];
+
+        let result = send(&client, "tab-1".to_owned(), &req, None, 30_000).await;
+        eprintln!("response: {:?}", result.response);
+        assert_eq!(result.response.error, None, "request failed: {:?}", result.response.error);
+        assert_eq!(
+            result.response.status, 200,
+            "server rejected the request — body: {}",
+            result.response.body
+        );
+
+        let parsed: serde_json::Value = serde_json::from_str(&result.response.body)
+            .expect("server response should be JSON");
+        assert_eq!(parsed["received_fields"]["conta"], "sync_dep_1");
+        assert_eq!(parsed["received_fields"]["modulo"], "SYNC");
     }
 }

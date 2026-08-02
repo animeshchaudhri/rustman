@@ -12,3 +12,14 @@ replace:
 
 settings:
   case_sensitive_label: "Groß-/Kleinschreibung"
+
+context_menu:
+  undo: "Rückgängig"
+  redo: "Wiederholen"
+  cut: "Ausschneiden"
+  copy: "Kopieren"
+  paste: "Einfügen"
+  select_all: "Alle auswählen"
+  reveal_in_finder: "Im Finder anzeigen"
+  reveal_in_file_explorer: "Im Datei-Explorer anzeigen"
+  open_containing_folder: "Übergeordneten Ordner öffnen"

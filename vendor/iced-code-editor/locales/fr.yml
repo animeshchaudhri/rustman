@@ -12,3 +12,14 @@ replace:
 
 settings:
   case_sensitive_label: "Sensible à la casse"
+
+context_menu:
+  undo: "Annuler"
+  redo: "Rétablir"
+  cut: "Couper"
+  copy: "Copier"
+  paste: "Coller"
+  select_all: "Tout sélectionner"
+  reveal_in_finder: "Révéler dans le Finder"
+  reveal_in_file_explorer: "Afficher dans l'Explorateur de fichiers"
+  open_containing_folder: "Ouvrir le dossier contenant"

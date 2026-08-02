@@ -354,6 +354,18 @@ impl InsertTextCommand {
 
         Self { line, col, text, cursor_before: cursor, cursor_after }
     }
+
+    /// Overrides the cursor position restored when this insertion is redone.
+    ///
+    /// Most paste operations leave the cursor after the inserted text, while
+    /// Vim paste leaves it on the first inserted character or line.
+    pub(crate) fn with_cursor_after(
+        mut self,
+        cursor_after: (usize, usize),
+    ) -> Self {
+        self.cursor_after = cursor_after;
+        self
+    }
 }
 
 impl Command for InsertTextCommand {
@@ -649,36 +661,318 @@ impl Command for ReplaceTextCommand {
     }
 }
 
-/// Command for moving a line up or down by swapping two lines.
+/// Command for moving a contiguous range of lines up or down by one line.
+///
+/// The range `[start, end]` (inclusive) is swapped with the adjacent line
+/// above (`down = false`) or below (`down = true`). Callers must ensure the
+/// move is legal: `start > 0` for an upward move and `end + 1 < line_count`
+/// for a downward move.
 #[derive(Debug, Clone)]
-pub struct MoveLineCommand {
-    /// The index of the first line being swapped
-    pub line_a: usize,
-    /// The index of the second line being swapped
-    pub line_b: usize,
+pub struct MoveLinesCommand {
+    start: usize,
+    end: usize,
+    down: bool,
     cursor_before: (usize, usize),
     cursor_after: (usize, usize),
 }
 
-impl MoveLineCommand {
+impl MoveLinesCommand {
+    /// Creates a new move-lines command.
+    ///
+    /// # Arguments
+    ///
+    /// * `start` - First line of the range to move (inclusive)
+    /// * `end` - Last line of the range to move (inclusive)
+    /// * `down` - `true` to move the range down, `false` to move it up
+    /// * `cursor` - Current cursor position
     pub fn new(
-        line_a: usize,
-        line_b: usize,
+        start: usize,
+        end: usize,
+        down: bool,
         cursor: (usize, usize),
-        cursor_after: (usize, usize),
     ) -> Self {
-        Self { line_a, line_b, cursor_before: cursor, cursor_after }
+        let cursor_after = if down {
+            (cursor.0 + 1, cursor.1)
+        } else {
+            (cursor.0 - 1, cursor.1)
+        };
+        Self { start, end, down, cursor_before: cursor, cursor_after }
     }
 }
 
-impl Command for MoveLineCommand {
-    fn execute(&mut self, buffer: &mut TextBuffer, cursor: &mut (usize, usize)) {
-        buffer.swap_lines(self.line_a, self.line_b);
+impl Command for MoveLinesCommand {
+    fn execute(
+        &mut self,
+        buffer: &mut TextBuffer,
+        cursor: &mut (usize, usize),
+    ) {
+        if self.down {
+            // Pull the line below the range up to the top of the range.
+            if let Some(line) = buffer.remove_line(self.end + 1) {
+                buffer.insert_line(self.start, line);
+            }
+        } else {
+            // Push the line above the range down to the bottom of the range.
+            if let Some(line) = buffer.remove_line(self.start - 1) {
+                buffer.insert_line(self.end, line);
+            }
+        }
         *cursor = self.cursor_after;
     }
 
     fn undo(&mut self, buffer: &mut TextBuffer, cursor: &mut (usize, usize)) {
-        buffer.swap_lines(self.line_a, self.line_b);
+        if self.down {
+            // The moved line is now at `start`; send it back below the range.
+            if let Some(line) = buffer.remove_line(self.start) {
+                buffer.insert_line(self.end + 1, line);
+            }
+        } else {
+            // The moved line is now at `end`; send it back above the range.
+            if let Some(line) = buffer.remove_line(self.end) {
+                buffer.insert_line(self.start - 1, line);
+            }
+        }
+        *cursor = self.cursor_before;
+    }
+}
+
+/// Command for duplicating a contiguous range of lines.
+///
+/// A copy of the range `[start, end]` (inclusive) is inserted directly below
+/// the range (`down = true`) or directly above it (`down = false`).
+#[derive(Debug, Clone)]
+pub struct DuplicateLinesCommand {
+    start: usize,
+    end: usize,
+    down: bool,
+    cursor_before: (usize, usize),
+    cursor_after: (usize, usize),
+}
+
+impl DuplicateLinesCommand {
+    /// Creates a new duplicate-lines command.
+    ///
+    /// # Arguments
+    ///
+    /// * `start` - First line of the range to duplicate (inclusive)
+    /// * `end` - Last line of the range to duplicate (inclusive)
+    /// * `down` - `true` to insert the copy below, `false` to insert it above
+    /// * `cursor` - Current cursor position
+    pub fn new(
+        start: usize,
+        end: usize,
+        down: bool,
+        cursor: (usize, usize),
+    ) -> Self {
+        let block_len = end - start + 1;
+        // Downward: move the cursor onto the new copy below. Upward: the copy
+        // is inserted above, so the original line index now points to the copy.
+        let cursor_after =
+            if down { (cursor.0 + block_len, cursor.1) } else { cursor };
+        Self { start, end, down, cursor_before: cursor, cursor_after }
+    }
+}
+
+impl Command for DuplicateLinesCommand {
+    fn execute(
+        &mut self,
+        buffer: &mut TextBuffer,
+        cursor: &mut (usize, usize),
+    ) {
+        let block: Vec<String> = (self.start..=self.end)
+            .map(|i| buffer.line(i).to_string())
+            .collect();
+        let insert_at = if self.down { self.end + 1 } else { self.start };
+        for (offset, content) in block.into_iter().enumerate() {
+            buffer.insert_line(insert_at + offset, content);
+        }
+        *cursor = self.cursor_after;
+    }
+
+    fn undo(&mut self, buffer: &mut TextBuffer, cursor: &mut (usize, usize)) {
+        let block_len = self.end - self.start + 1;
+        let remove_at = if self.down { self.end + 1 } else { self.start };
+        for _ in 0..block_len {
+            buffer.remove_line(remove_at);
+        }
+        *cursor = self.cursor_before;
+    }
+}
+
+/// Returns the line-comment token for a syntax identifier, or `None` if the
+/// language has no line comment (e.g. HTML, CSS, Markdown).
+///
+/// Accepts both file extensions (`"rs"`) and language names (`"rust"`), matching
+/// the aliases normalised elsewhere in the editor.
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(line_comment_token("rs"), Some("//"));
+/// assert_eq!(line_comment_token("python"), Some("#"));
+/// assert_eq!(line_comment_token("html"), None);
+/// ```
+pub(crate) fn line_comment_token(syntax: &str) -> Option<&'static str> {
+    match syntax {
+        "rs" | "rust" | "js" | "javascript" | "ts" | "typescript" | "jsx"
+        | "tsx" | "go" => Some("//"),
+        "py" | "python" => Some("#"),
+        "lua" => Some("--"),
+        _ => None,
+    }
+}
+
+/// Computes the character count of the leading whitespace of a line.
+fn indent_char_count(line: &str) -> usize {
+    let trimmed = line.trim_start();
+    line[..line.len() - trimmed.len()].chars().count()
+}
+
+/// Shifts a position's column by `delta` when it sits at or past the line's
+/// indentation, clamping so the column never moves into the indentation.
+///
+/// Positions left of the indentation (or on an untouched line) are returned
+/// unchanged.
+fn adjust_column(
+    pos: (usize, usize),
+    start: usize,
+    indents: &[usize],
+    deltas: &[isize],
+) -> (usize, usize) {
+    let Some(idx) = pos.0.checked_sub(start).filter(|&i| i < deltas.len())
+    else {
+        return pos;
+    };
+    let indent = indents[idx];
+    if pos.1 >= indent {
+        let shifted = (pos.1 as isize + deltas[idx]).max(indent as isize);
+        (pos.0, shifted as usize)
+    } else {
+        pos
+    }
+}
+
+/// Command for toggling line comments on a contiguous range of lines.
+///
+/// The action (comment vs. uncomment) is decided once at construction so that
+/// redo stays consistent: if every non-blank line in `[start, end]` is already
+/// commented the range is uncommented, otherwise every non-blank line is
+/// commented. The comment token is inserted *after* the existing indentation,
+/// and blank lines are left untouched.
+#[derive(Debug, Clone)]
+pub struct ToggleCommentCommand {
+    start: usize,
+    old_lines: Vec<String>,
+    new_lines: Vec<String>,
+    indents: Vec<usize>,
+    deltas: Vec<isize>,
+    cursor_before: (usize, usize),
+    cursor_after: (usize, usize),
+}
+
+impl ToggleCommentCommand {
+    /// Creates a new toggle-comment command.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` - The text buffer (read to capture original lines)
+    /// * `start` - First line of the range (inclusive)
+    /// * `end` - Last line of the range (inclusive)
+    /// * `token` - The line-comment token (e.g. `"//"`, inserted as `"// "`)
+    /// * `cursor` - Current cursor position
+    pub fn new(
+        buffer: &TextBuffer,
+        start: usize,
+        end: usize,
+        token: &str,
+        cursor: (usize, usize),
+    ) -> Self {
+        let old_lines: Vec<String> =
+            (start..=end).map(|i| buffer.line(i).to_string()).collect();
+
+        // Uncomment only when every non-blank line is already commented.
+        let uncomment = old_lines
+            .iter()
+            .filter(|line| !line.trim_start().is_empty())
+            .all(|line| line.trim_start().starts_with(token));
+
+        let token_len = token.chars().count();
+        let mut new_lines = Vec::with_capacity(old_lines.len());
+        let mut indents = Vec::with_capacity(old_lines.len());
+        let mut deltas = Vec::with_capacity(old_lines.len());
+
+        for line in &old_lines {
+            let trimmed = line.trim_start();
+            let indent_len = indent_char_count(line);
+            let indent: String = line.chars().take(indent_len).collect();
+            indents.push(indent_len);
+
+            if trimmed.is_empty() {
+                // Leave blank lines untouched.
+                new_lines.push(line.clone());
+                deltas.push(0);
+            } else if uncomment {
+                let rest = &trimmed[token.len()..];
+                // Drop a single space directly after the token, if present.
+                let rest = rest.strip_prefix(' ').unwrap_or(rest);
+                let new_line = format!("{indent}{rest}");
+                deltas.push(
+                    new_line.chars().count() as isize
+                        - line.chars().count() as isize,
+                );
+                new_lines.push(new_line);
+            } else {
+                new_lines.push(format!("{indent}{token} {trimmed}"));
+                deltas.push(token_len as isize + 1);
+            }
+        }
+
+        let cursor_after = adjust_column(cursor, start, &indents, &deltas);
+
+        Self {
+            start,
+            old_lines,
+            new_lines,
+            indents,
+            deltas,
+            cursor_before: cursor,
+            cursor_after,
+        }
+    }
+
+    /// Returns `true` when the toggle leaves the buffer unchanged (e.g. a range
+    /// of only blank lines), so the caller can skip recording history.
+    pub fn is_noop(&self) -> bool {
+        self.old_lines == self.new_lines
+    }
+
+    /// Adjusts a position (such as a selection anchor) by the same per-line
+    /// column shift this command applies, so selections track the edit.
+    pub fn adjust_position(&self, pos: (usize, usize)) -> (usize, usize) {
+        adjust_column(pos, self.start, &self.indents, &self.deltas)
+    }
+}
+
+impl Command for ToggleCommentCommand {
+    fn execute(
+        &mut self,
+        buffer: &mut TextBuffer,
+        cursor: &mut (usize, usize),
+    ) {
+        for (offset, content) in self.new_lines.iter().enumerate() {
+            let line_idx = self.start + offset;
+            let len = buffer.line_len(line_idx);
+            buffer.replace_range(line_idx, 0, len, content);
+        }
+        *cursor = self.cursor_after;
+    }
+
+    fn undo(&mut self, buffer: &mut TextBuffer, cursor: &mut (usize, usize)) {
+        for (offset, content) in self.old_lines.iter().enumerate() {
+            let line_idx = self.start + offset;
+            let len = buffer.line_len(line_idx);
+            buffer.replace_range(line_idx, 0, len, content);
+        }
         *cursor = self.cursor_before;
     }
 }
@@ -916,5 +1210,196 @@ mod tests {
 
         composite.undo(&mut buffer, &mut cursor);
         assert_eq!(buffer.line(0), "foo foo foo");
+    }
+
+    #[test]
+    fn test_move_lines_command_down() {
+        let mut buffer = TextBuffer::new("a\nb\nc");
+        let mut cursor = (1, 0);
+        let mut cmd = MoveLinesCommand::new(1, 1, true, cursor);
+
+        cmd.execute(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), "a\nc\nb");
+        assert_eq!(cursor, (2, 0));
+
+        cmd.undo(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), "a\nb\nc");
+        assert_eq!(cursor, (1, 0));
+    }
+
+    #[test]
+    fn test_move_lines_command_up() {
+        let mut buffer = TextBuffer::new("a\nb\nc");
+        let mut cursor = (2, 0);
+        let mut cmd = MoveLinesCommand::new(2, 2, false, cursor);
+
+        cmd.execute(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), "a\nc\nb");
+        assert_eq!(cursor, (1, 0));
+
+        cmd.undo(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), "a\nb\nc");
+        assert_eq!(cursor, (2, 0));
+    }
+
+    #[test]
+    fn test_move_lines_command_range_down() {
+        let mut buffer = TextBuffer::new("a\nb\nc\nd");
+        let mut cursor = (1, 0);
+        // Move the block [1, 2] (b, c) down.
+        let mut cmd = MoveLinesCommand::new(1, 2, true, cursor);
+
+        cmd.execute(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), "a\nd\nb\nc");
+        assert_eq!(cursor, (2, 0));
+
+        cmd.undo(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), "a\nb\nc\nd");
+        assert_eq!(cursor, (1, 0));
+    }
+
+    #[test]
+    fn test_duplicate_lines_command_down() {
+        let mut buffer = TextBuffer::new("a\nb\nc");
+        let mut cursor = (1, 0);
+        let mut cmd = DuplicateLinesCommand::new(1, 1, true, cursor);
+
+        cmd.execute(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), "a\nb\nb\nc");
+        assert_eq!(cursor, (2, 0));
+
+        cmd.undo(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), "a\nb\nc");
+        assert_eq!(cursor, (1, 0));
+    }
+
+    #[test]
+    fn test_duplicate_lines_command_up() {
+        let mut buffer = TextBuffer::new("a\nb\nc");
+        let mut cursor = (1, 0);
+        let mut cmd = DuplicateLinesCommand::new(1, 1, false, cursor);
+
+        cmd.execute(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), "a\nb\nb\nc");
+        // Cursor stays on the upper copy.
+        assert_eq!(cursor, (1, 0));
+
+        cmd.undo(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), "a\nb\nc");
+        assert_eq!(cursor, (1, 0));
+    }
+
+    #[test]
+    fn test_duplicate_lines_command_range_down() {
+        let mut buffer = TextBuffer::new("a\nb\nc\nd");
+        let mut cursor = (1, 0);
+        // Duplicate the block [1, 2] (b, c) below.
+        let mut cmd = DuplicateLinesCommand::new(1, 2, true, cursor);
+
+        cmd.execute(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), "a\nb\nc\nb\nc\nd");
+        assert_eq!(cursor, (3, 0));
+
+        cmd.undo(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), "a\nb\nc\nd");
+        assert_eq!(cursor, (1, 0));
+    }
+
+    #[test]
+    fn test_line_comment_token() {
+        assert_eq!(line_comment_token("rs"), Some("//"));
+        assert_eq!(line_comment_token("rust"), Some("//"));
+        assert_eq!(line_comment_token("ts"), Some("//"));
+        assert_eq!(line_comment_token("go"), Some("//"));
+        assert_eq!(line_comment_token("py"), Some("#"));
+        assert_eq!(line_comment_token("python"), Some("#"));
+        assert_eq!(line_comment_token("lua"), Some("--"));
+        assert_eq!(line_comment_token("html"), None);
+        assert_eq!(line_comment_token("txt"), None);
+    }
+
+    #[test]
+    fn test_toggle_comment_single_line() {
+        let mut buffer = TextBuffer::new("let x = 1;");
+        let mut cursor = (0, 4);
+        let mut cmd = ToggleCommentCommand::new(&buffer, 0, 0, "//", cursor);
+
+        cmd.execute(&mut buffer, &mut cursor);
+        assert_eq!(buffer.line(0), "// let x = 1;");
+        // Cursor shifted right by "// " (3 chars).
+        assert_eq!(cursor, (0, 7));
+
+        cmd.undo(&mut buffer, &mut cursor);
+        assert_eq!(buffer.line(0), "let x = 1;");
+        assert_eq!(cursor, (0, 4));
+    }
+
+    #[test]
+    fn test_toggle_comment_preserves_indentation() {
+        let mut buffer = TextBuffer::new("    let x = 1;");
+        let mut cursor = (0, 8);
+        let mut cmd = ToggleCommentCommand::new(&buffer, 0, 0, "//", cursor);
+
+        cmd.execute(&mut buffer, &mut cursor);
+        // Token inserted after the indentation, not at column 0.
+        assert_eq!(buffer.line(0), "    // let x = 1;");
+        assert_eq!(cursor, (0, 11));
+    }
+
+    #[test]
+    fn test_toggle_comment_uncomment() {
+        let mut buffer = TextBuffer::new("    // let x = 1;");
+        let mut cursor = (0, 11);
+        let mut cmd = ToggleCommentCommand::new(&buffer, 0, 0, "//", cursor);
+
+        cmd.execute(&mut buffer, &mut cursor);
+        // Removes the token and the single following space.
+        assert_eq!(buffer.line(0), "    let x = 1;");
+        assert_eq!(cursor, (0, 8));
+    }
+
+    #[test]
+    fn test_toggle_comment_multiline_mixed_comments_all() {
+        let mut buffer = TextBuffer::new("// a\nb\nc");
+        let mut cursor = (0, 0);
+        // Not all non-blank lines are commented -> comment everything.
+        let mut cmd = ToggleCommentCommand::new(&buffer, 0, 2, "//", cursor);
+
+        cmd.execute(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), "// // a\n// b\n// c");
+
+        cmd.undo(&mut buffer, &mut cursor);
+        assert_eq!(buffer.to_string(), "// a\nb\nc");
+    }
+
+    #[test]
+    fn test_toggle_comment_skips_blank_lines() {
+        let mut buffer = TextBuffer::new("a\n\nb");
+        let mut cursor = (0, 0);
+        let mut cmd = ToggleCommentCommand::new(&buffer, 0, 2, "//", cursor);
+
+        cmd.execute(&mut buffer, &mut cursor);
+        // The blank middle line is left untouched.
+        assert_eq!(buffer.to_string(), "// a\n\n// b");
+    }
+
+    #[test]
+    fn test_toggle_comment_python_token() {
+        let mut buffer = TextBuffer::new("x = 1");
+        let mut cursor = (0, 0);
+        let mut cmd = ToggleCommentCommand::new(&buffer, 0, 0, "#", cursor);
+
+        cmd.execute(&mut buffer, &mut cursor);
+        assert_eq!(buffer.line(0), "# x = 1");
+
+        cmd.undo(&mut buffer, &mut cursor);
+        assert_eq!(buffer.line(0), "x = 1");
+    }
+
+    #[test]
+    fn test_toggle_comment_noop_on_blank_range() {
+        let buffer = TextBuffer::new("\n  \n");
+        let cmd = ToggleCommentCommand::new(&buffer, 0, 2, "//", (0, 0));
+        assert!(cmd.is_noop());
     }
 }
