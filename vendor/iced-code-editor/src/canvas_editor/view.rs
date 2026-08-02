@@ -328,8 +328,8 @@ impl CodeEditor {
                 + 5.0
                 + super::measure_text_width(
                     &prefix_text,
-                    self.full_char_width,
-                    self.char_width,
+                    self.full_char_width.get(),
+                    self.char_width.get(),
                 )
                 - self.horizontal_scroll_offset;
 

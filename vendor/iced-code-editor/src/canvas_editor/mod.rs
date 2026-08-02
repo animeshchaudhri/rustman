@@ -248,6 +248,20 @@ pub(crate) const GUTTER_WIDTH: f32 = 45.0;
 pub(crate) const FOLD_MARGIN_WIDTH: f32 = 14.0;
 pub(crate) const CURSOR_BLINK_INTERVAL: std::time::Duration =
     std::time::Duration::from_millis(530);
+/// How long after construction the editor keeps re-verifying its char-width
+/// measurement against the live font system (see `ensure_font_metrics`).
+/// Fonts registered by the host application at startup are guaranteed to be
+/// loaded well within this window.
+pub(crate) const FONT_METRICS_SETTLE_DURATION: std::time::Duration =
+    std::time::Duration::from_secs(5);
+/// A draw after a pause longer than this triggers a char-width re-verification,
+/// so editors that stayed hidden during startup still get corrected on their
+/// first real render.
+pub(crate) const FONT_METRICS_REVISIT_GAP: std::time::Duration =
+    std::time::Duration::from_secs(1);
+/// Minimum absolute width difference that counts as the real font having
+/// replaced the fallback measurement.
+pub(crate) const FONT_METRICS_EPSILON: f32 = 0.25;
 
 /// Measures the width of a single character.
 ///
@@ -373,6 +387,16 @@ pub struct CodeEditor {
     pub(crate) syntax: String,
     /// Last cursor blink time
     pub(crate) last_blink: Instant,
+    /// Wall-clock creation time; used to bound the font-metrics re-check window
+    /// (fonts can be registered asynchronously after the editor is built).
+    pub(crate) created_at: Instant,
+    /// When the editor was last drawn; used to re-verify font metrics after a
+    /// long pause in rendering (see `ensure_font_metrics`).
+    pub(crate) last_draw_at: Cell<Instant>,
+    /// `true` once the char-width measurement has been observed to change from
+    /// the value captured at construction (i.e. the real font loaded and the
+    /// metrics are now final), so the per-frame re-check can stop.
+    pub(crate) font_metrics_updated: Cell<bool>,
     /// Cursor visible state
     pub(crate) cursor_visible: bool,
     /// Mouse is currently dragging for selection
@@ -503,12 +527,19 @@ pub struct CodeEditor {
     pub(crate) ime_preedit: Option<ImePreedit>,
     /// Font size in pixels
     pub(crate) font_size: f32,
-    /// Full character width (wide chars like CJK) in pixels
-    pub(crate) full_char_width: f32,
+    /// Full character width (wide chars like CJK) in pixels.
+    ///
+    /// Held in a `Cell` because it can be re-measured during rendering: the
+    /// initial measurement happens before embedded fonts are loaded, so glyph
+    /// metrics are re-verified on the first frames (see
+    /// [`CodeEditor::ensure_font_metrics`]).
+    pub(crate) full_char_width: Cell<f32>,
     /// Line height in pixels
     pub(crate) line_height: f32,
-    /// Character width in pixels
-    pub(crate) char_width: f32,
+    /// Character width in pixels.
+    ///
+    /// Held in a `Cell` — see [`CodeEditor::full_char_width`].
+    pub(crate) char_width: Cell<f32>,
     /// Cached render window: the first visual line index included in the cache.
     /// We keep a larger window than the currently visible range to avoid clearing
     /// the canvas cache on every small scroll. Only when scrolling crosses the
@@ -935,6 +966,9 @@ impl CodeEditor {
             style: crate::theme::from_iced_theme(&iced::Theme::TokyoNightStorm),
             syntax: syntax.to_string(),
             last_blink: Instant::now(),
+            created_at: Instant::now(),
+            last_draw_at: Cell::new(Instant::now()),
+            font_metrics_updated: Cell::new(false),
             cursor_visible: true,
             is_dragging: false,
             content_cache: canvas::Cache::default(),
@@ -985,9 +1019,9 @@ impl CodeEditor {
             font: iced::Font::MONOSPACE,
             ime_preedit: None,
             font_size: FONT_SIZE,
-            full_char_width: CHAR_WIDTH * 2.0,
+            full_char_width: Cell::new(CHAR_WIDTH * 2.0),
             line_height: LINE_HEIGHT,
-            char_width: CHAR_WIDTH,
+            char_width: Cell::new(CHAR_WIDTH),
             // Initialize render window tracking for virtual scrolling:
             // these indices define the cached visual line window. The window is
             // expanded beyond the visible range to amortize redraws and keep scrolling smooth.
@@ -1094,17 +1128,20 @@ impl CodeEditor {
 
     /// Recalculates character dimensions based on current font and size.
     fn recalculate_char_dimensions(&mut self, auto_adjust_line_height: bool) {
-        self.char_width = self.measure_single_char_width("a");
+        self.char_width
+            .set(self.measure_single_char_width("a"));
         // Use '汉' as a standard reference for CJK (Chinese, Japanese, Korean) wide characters
-        self.full_char_width = self.measure_single_char_width("汉");
+        self.full_char_width
+            .set(self.measure_single_char_width("汉"));
 
         // Fallback for infinite width measurements
-        if self.char_width.is_infinite() {
-            self.char_width = self.font_size / 2.0; // Rough estimate for monospace
+        if self.char_width.get().is_infinite() {
+            self.char_width
+                .set(self.font_size / 2.0); // Rough estimate for monospace
         }
 
-        if self.full_char_width.is_infinite() {
-            self.full_char_width = self.font_size;
+        if self.full_char_width.get().is_infinite() {
+            self.full_char_width.set(self.font_size);
         }
 
         if auto_adjust_line_height {
@@ -1115,6 +1152,57 @@ impl CodeEditor {
         self.content_cache.clear();
         self.overlay_cache.clear();
         *self.max_content_width_cache.borrow_mut() = None;
+    }
+
+    /// Re-verifies the character-width measurement against the live font
+    /// system.
+    ///
+    /// A `CodeEditor` is often constructed before iced has finished loading
+    /// the embedded fonts (e.g. when an app restores its session state during
+    /// startup). The initial `char_width` is then measured with a fallback
+    /// font, so every token position, wrap point and cursor offset — computed
+    /// from that width — is wrong once the real font renders, which shows up
+    /// as misaligned glyphs (punctuation tokens visibly "warped" or
+    /// overlapping while colors/highlighting stay correct).
+    ///
+    /// This is a self-healing check. A measurement happens:
+    ///
+    /// - every frame while the editor is young (the fonts are registered by
+    ///   the host at startup, so they are guaranteed to have loaded within
+    ///   `FONT_METRICS_SETTLE_DURATION`), and
+    /// - whenever the editor is drawn again after a `FONT_METRICS_REVISIT_GAP`
+    ///   pause (e.g. a session-restored tab that stayed hidden and only
+    ///   rendered for the first time long after startup).
+    ///
+    /// The moment the measured width differs from the cached one, the real
+    /// font has been registered: the metrics are refreshed and all geometry
+    /// caches dropped so the next frame lays the text out correctly, and the
+    /// check is disabled for good. While no change is seen, the only ongoing
+    /// cost outside the young window is the single comparison above — a
+    /// continuously drawn editor never re-measures after it has settled.
+    fn ensure_font_metrics(&self) {
+        if self.font_metrics_updated.get() {
+            return;
+        }
+        let now = Instant::now();
+        let young =
+            now.duration_since(self.created_at) <= FONT_METRICS_SETTLE_DURATION;
+        let revisit =
+            now.duration_since(self.last_draw_at.get()) > FONT_METRICS_REVISIT_GAP;
+        self.last_draw_at.set(now);
+        if !young && !revisit {
+            return;
+        }
+        let measured = self.measure_single_char_width("a");
+        if (measured - self.char_width.get()).abs() > FONT_METRICS_EPSILON {
+            self.char_width.set(measured);
+            self.full_char_width
+                .set(self.measure_single_char_width("汉"));
+            self.font_metrics_updated.set(true);
+            self.content_cache.clear();
+            self.overlay_cache.clear();
+            *self.max_content_width_cache.borrow_mut() = None;
+        }
     }
 
     /// Measures the width of a single character string using the current font settings.
@@ -1149,7 +1237,7 @@ impl CodeEditor {
     ///
     /// The character width in pixels
     pub fn char_width(&self) -> f32 {
-        self.char_width
+        self.char_width.get()
     }
 
     /// Returns the width of a wide character (e.g. CJK) in pixels.
@@ -1158,12 +1246,12 @@ impl CodeEditor {
     ///
     /// The full character width in pixels
     pub fn full_char_width(&self) -> f32 {
-        self.full_char_width
+        self.full_char_width.get()
     }
 
     /// Measures the rendered width for a given text snippet using editor metrics.
     pub fn measure_text_width(&self, text: &str) -> f32 {
-        measure_text_width(text, self.full_char_width, self.char_width)
+        measure_text_width(text, self.full_char_width.get(), self.char_width.get())
     }
 
     /// Sets the line height used by the editor
@@ -1693,8 +1781,8 @@ impl CodeEditor {
             + 5.0
             + measure_text_width(
                 &prefix_text,
-                self.full_char_width,
-                self.char_width,
+                self.full_char_width.get(),
+                self.char_width.get(),
             );
         let y = visual_index as f32 * self.line_height;
         Some(iced::Point::new(x, y))
@@ -2614,8 +2702,8 @@ impl CodeEditor {
                 .map(|line| {
                     measure_text_width(
                         self.buffer.line(line),
-                        self.full_char_width,
-                        self.char_width,
+                        self.full_char_width.get(),
+                        self.char_width.get(),
                     )
                 })
                 .collect();
@@ -2667,8 +2755,8 @@ impl CodeEditor {
             wrap_column: self.wrap_column,
             folding_enabled: self.folding_enabled,
             fold_revision: self.fold_revision,
-            full_char_width_bits: self.full_char_width.to_bits(),
-            char_width_bits: self.char_width.to_bits(),
+            full_char_width_bits: self.full_char_width.get().to_bits(),
+            char_width_bits: self.char_width.get().to_bits(),
         };
 
         let mut cache = self.visual_lines_cache.borrow_mut();
@@ -2682,8 +2770,8 @@ impl CodeEditor {
         let wrapping_calc = wrapping::WrappingCalculator::new(
             self.wrap_enabled,
             self.wrap_column,
-            self.full_char_width,
-            self.char_width,
+            self.full_char_width.get(),
+            self.char_width.get(),
         );
         let visual_lines = wrapping_calc.calculate_visual_lines(
             &self.buffer,
@@ -2729,8 +2817,8 @@ impl CodeEditor {
             && cache.key.wrap_column == self.wrap_column
             && cache.key.folding_enabled == self.folding_enabled
             && cache.key.fold_revision == self.fold_revision
-            && cache.key.full_char_width_bits == self.full_char_width.to_bits()
-            && cache.key.char_width_bits == self.char_width.to_bits();
+            && cache.key.full_char_width_bits == self.full_char_width.get().to_bits()
+            && cache.key.char_width_bits == self.char_width.get().to_bits();
         if !same_layout {
             *cache_guard = None;
             return;
@@ -2763,8 +2851,8 @@ impl CodeEditor {
         let wrapping_calc = wrapping::WrappingCalculator::new(
             self.wrap_enabled,
             self.wrap_column,
-            self.full_char_width,
-            self.char_width,
+            self.full_char_width.get(),
+            self.char_width.get(),
         );
         let changed_visual_lines = wrapping_calc.calculate_visual_lines_range(
             &self.buffer,
@@ -2848,8 +2936,8 @@ impl CodeEditor {
             .map(|line| {
                 measure_text_width(
                     self.buffer.line(line),
-                    self.full_char_width,
-                    self.char_width,
+                    self.full_char_width.get(),
+                    self.char_width.get(),
                 )
             })
             .collect();
@@ -3227,8 +3315,8 @@ mod tests {
         // Char width should have scaled back to roughly default (but depends on measurement)
         // We check if it is close to the expected value, but since measurement can vary,
         // we just ensure it is positive and close to what we expect (around 8.4)
-        assert!(editor.char_width > 0.0);
-        assert!((editor.char_width - CHAR_WIDTH).abs() < 0.5);
+        assert!(editor.char_width() > 0.0);
+        assert!((editor.char_width() - CHAR_WIDTH).abs() < 0.5);
     }
 
     #[test]
@@ -3251,6 +3339,37 @@ mod tests {
         // Check that width_cjk is roughly double of width_a (common in terminal fonts)
         // but we just check it is significantly larger
         assert!(width_cjk >= width_a * 1.5);
+    }
+
+    #[test]
+    fn test_ensure_font_metrics_self_heals_stale_width() {
+        let editor = CodeEditor::new("", "rs");
+
+        // The real measurement for the editor's font:
+        let real = editor.measure_single_char_width("a");
+
+        // Simulate the boot race: the width was captured before the real font
+        // was registered, so it is wrong by more than the epsilon.
+        let stale = real + 2.0;
+        editor.char_width.set(stale);
+
+        // A stale measurement must be corrected by the self-heal check.
+        editor.ensure_font_metrics();
+        assert!(
+            (editor.char_width() - real).abs() <= FONT_METRICS_EPSILON,
+            "char_width should be re-measured to the real font width \
+             (got {}, expected {real})",
+            editor.char_width()
+        );
+
+        // Once corrected, the check is disabled for good.
+        editor.font_metrics_updated.set(true);
+        editor.char_width.set(stale);
+        editor.ensure_font_metrics();
+        assert!(
+            (editor.char_width() - stale).abs() < f32::EPSILON,
+            "no further re-measurement after the metrics settled"
+        );
     }
 
     #[test]

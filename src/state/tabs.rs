@@ -513,3 +513,42 @@ impl From<&RequestTabState> for TabSnapshot {
         }
     }
 }
+
+#[cfg(test)]
+mod session_round_trip_tests {
+    use super::*;
+
+    fn restore(raw_body: &str) -> String {
+        let mut tab = RequestTabState::new();
+        tab.body_editor = make_code_editor(raw_body, "json");
+        let snap: TabSnapshot = (&tab).into();
+        let encoded = serde_json::to_string(&snap).unwrap();
+        let decoded: TabSnapshot = serde_json::from_str(&encoded).unwrap();
+        let restored = make_code_editor(&decoded.body, "json");
+        restored.content()
+    }
+
+    #[test]
+    fn pretty_json_survives_session_round_trip() {
+        let raw = "{\n  \"name\": \"anime\",\n  \"tags\": [\"a\", \"b\"],\n  \"n\": 42\n}";
+        assert_eq!(restore(raw), raw);
+    }
+
+    #[test]
+    fn minified_json_survives_session_round_trip() {
+        let raw = "{\"name\":\"anime\",\"tags\":[\"a\",\"b\"],\"n\":42}";
+        assert_eq!(restore(raw), raw);
+    }
+
+    #[test]
+    fn json_with_escapes_survives_session_round_trip() {
+        let raw = "{\n  \"body\": \"line1\\nline2\",\n  \"q\": \"say \\\"hi\\\"\"\n}";
+        assert_eq!(restore(raw), raw);
+    }
+
+    #[test]
+    fn crlf_body_survives_session_round_trip() {
+        let raw = "{\r\n  \"a\": 1\r\n}";
+        assert_eq!(restore(raw), raw);
+    }
+}

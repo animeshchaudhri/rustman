@@ -33,14 +33,17 @@ impl TextBuffer {
     ///
     /// * `content` - Initial text content (will be split into lines)
     ///
-    /// # Returns
+    /// # Notes
     ///
-    /// A new `TextBuffer` instance
+    /// Lines are split on `\n` only (`str::lines` also strips `\r\n` line
+    /// terminators, which would silently rewrite CRLF content — including
+    /// `\r\n` sequences inside JSON string values — and corrupt the buffer's
+    /// round-trip through `to_string`).
     pub fn new(content: &str) -> Self {
         let mut lines_after: Vec<String> = if content.is_empty() {
             vec![String::new()]
         } else {
-            content.lines().map(String::from).collect()
+            content.split('\n').map(String::from).collect()
         };
         lines_after.reverse();
 

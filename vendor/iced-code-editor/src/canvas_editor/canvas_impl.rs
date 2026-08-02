@@ -1156,12 +1156,12 @@ impl CodeEditor {
                 .map(|ch| {
                     measure_char_width(
                         ch,
-                        self.full_char_width,
-                        self.char_width,
+                        self.full_char_width.get(),
+                        self.char_width.get(),
                     )
                 })
                 .filter(|width| *width > 0.0)
-                .unwrap_or(self.char_width)
+                .unwrap_or(self.char_width.get())
         } else {
             2.0
         };
@@ -2049,6 +2049,14 @@ impl canvas::Program<Message> for CodeEditor {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
+        // Re-verify the char-width measurement against the live font system
+        // while the editor is young — at construction the embedded fonts may
+        // not be loaded yet, so the first measured widths can belong to a
+        // fallback font and every token position built from them would be
+        // wrong. This must run before visual_lines_cached (and the content
+        // cache below) so the freshly corrected widths drive the layout.
+        self.ensure_font_metrics();
+
         let visual_lines: Rc<Vec<VisualLine>> =
             self.visual_lines_cached(bounds.width);
 
@@ -2143,8 +2151,8 @@ impl canvas::Program<Message> for CodeEditor {
                     gutter_width: self.gutter_width(),
                     line_height: self.line_height,
                     font_size: self.font_size,
-                    full_char_width: self.full_char_width,
-                    char_width: self.char_width,
+                    full_char_width: self.full_char_width.get(),
+                    char_width: self.char_width.get(),
                     font: self.font,
                     horizontal_scroll_offset: self.horizontal_scroll_offset,
                 };
@@ -2208,8 +2216,8 @@ impl canvas::Program<Message> for CodeEditor {
                     gutter_width: self.gutter_width(),
                     line_height: self.line_height,
                     font_size: self.font_size,
-                    full_char_width: self.full_char_width,
-                    char_width: self.char_width,
+                    full_char_width: self.full_char_width.get(),
+                    char_width: self.char_width.get(),
                     font: self.font,
                     horizontal_scroll_offset: self.horizontal_scroll_offset,
                 };
