@@ -1,6 +1,5 @@
 //! Canvas rendering implementation using Iced's `canvas::Program`.
 
-use crate::text_utils::char_range_to_byte_range;
 use iced::advanced::input_method;
 use iced::mouse;
 use iced::widget::canvas::{self, Geometry};
@@ -9,10 +8,8 @@ use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::OnceLock;
 use syntect::easy::HighlightLines;
-use syntect::highlighting::{
-    HighlightIterator, HighlightState, Highlighter, Style, ThemeSet,
-};
-use syntect::parsing::{ParseState, ScopeStack, SyntaxSet};
+use syntect::highlighting::{Style, ThemeSet};
+use syntect::parsing::SyntaxSet;
 
 /// Computes geometry (x start and width) for a text segment used in rendering or highlighting.
 ///
@@ -86,110 +83,9 @@ fn expand_tabs(text: &str, tab_width: usize) -> Cow<'_, str> {
     Cow::Owned(expanded)
 }
 
-/// Expands tabs and replaces whitespace with visible symbols: `\t` → `→` +
-/// `·` fill, ` ` → `·`. The output has the same logical width as the
-/// `expand_tabs` output, so existing width measurements remain valid.
-fn expand_tabs_visible(text: &str, tab_width: usize) -> String {
-    let mut result = String::with_capacity(text.len() * 2);
-    for ch in text.chars() {
-        match ch {
-            '\t' => {
-                result.push('→');
-                for _ in 1..tab_width {
-                    result.push('·');
-                }
-            }
-            ' ' => result.push('·'),
-            other => result.push(other),
-        }
-    }
-    result
-}
-
-/// Splits a string (already processed by [`expand_tabs_visible`]) into
-/// alternating `(is_whitespace, segment)` pairs, where whitespace segments
-/// consist exclusively of `·` and `→` characters.
-fn split_whitespace_segments(text: &str) -> Vec<(bool, &str)> {
-    if text.is_empty() {
-        return vec![];
-    }
-
-    let mut result = Vec::new();
-    let mut seg_start = 0usize;
-    let mut chars = text.char_indices().peekable();
-
-    let is_ws_char = |c: char| c == '·' || c == '→';
-
-    let first_ch = chars.peek().map(|(_, c)| *c).unwrap_or(' ');
-    let mut current_is_ws = is_ws_char(first_ch);
-
-    for (byte_idx, ch) in chars {
-        let ch_is_ws = is_ws_char(ch);
-        if ch_is_ws != current_is_ws {
-            result.push((current_is_ws, &text[seg_start..byte_idx]));
-            seg_start = byte_idx;
-            current_is_ws = ch_is_ws;
-        }
-    }
-    result.push((current_is_ws, &text[seg_start..]));
-    result
-}
-
-/// Converts a syntect highlight [`Style`] into an iced [`Color`].
-///
-/// Only the foreground color is used; alpha is left fully opaque.
-///
-/// # Arguments
-///
-/// * `style` - The syntect style whose foreground color is converted.
-fn color_from_style(style: Style) -> Color {
-    Color::from_rgb(
-        f32::from(style.foreground.r) / 255.0,
-        f32::from(style.foreground.g) / 255.0,
-        f32::from(style.foreground.b) / 255.0,
-    )
-}
-
-/// Tokenizes a full logical line into colored spans using syntect.
-///
-/// The returned spans cover the entire line in order, each pairing an iced
-/// [`Color`] with the owned token text. Each call highlights the line
-/// independently from the syntax's initial state, so it does not handle
-/// multi-line constructs; it is used for tests and benchmarks. Rendering uses
-/// the sequential [`CodeEditor::highlighted_line_cached`] instead.
-///
-/// # Arguments
-///
-/// * `line` - The full logical line content (without trailing newline).
-/// * `syntax` - The syntect syntax definition to tokenize with.
-/// * `theme` - The syntect highlighting theme providing token colors.
-/// * `syntax_set` - The syntax set the `syntax` belongs to.
-///
-/// # Returns
-///
-/// The ordered colored spans covering the entire line.
-pub fn highlight_line_spans(
-    line: &str,
-    syntax: &syntect::parsing::SyntaxReference,
-    theme: &syntect::highlighting::Theme,
-    syntax_set: &SyntaxSet,
-) -> Vec<(Color, String)> {
-    let mut highlighter = HighlightLines::new(syntax, theme);
-    let ranges = highlighter
-        .highlight_line(line, syntax_set)
-        .unwrap_or_else(|_| vec![(Style::default(), line)]);
-
-    ranges
-        .into_iter()
-        .map(|(style, text)| (color_from_style(style), text.to_string()))
-        .collect()
-}
-
 use super::folding;
 use super::wrapping::{VisualLine, WrappingCalculator};
-use super::{
-    ArrowDirection, CodeEditor, Message, measure_char_width, measure_text_width,
-};
+use super::{ArrowDirection, CodeEditor, Message, measure_text_width};
 use iced::widget::canvas::Action;
 
 static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
@@ -299,8 +195,8 @@ impl CodeEditor {
             return;
         }
 
-        if !folding::is_line_fold_header(&self.buffer, visual_line.logical_line)
-        {
+        let regions = self.foldable_regions();
+        if !folding::is_fold_header(&regions, visual_line.logical_line) {
             return;
         }
 
@@ -384,131 +280,6 @@ impl CodeEditor {
         }
     }
 
-    /// Returns the memoized syntax-highlighted spans for a logical line.
-    ///
-    /// Highlighting is performed sequentially: lines `0..=logical_line` are
-    /// tokenized in order, each resuming from the syntect state left by the
-    /// previous line, so multi-line constructs (block comments, multi-line
-    /// strings) are colored correctly. The result is stored as a dense valid
-    /// prefix in [`HighlightCache`] and reused across wrapped visual segments
-    /// and across renders; an edit truncates the prefix from the changed line
-    /// (see [`CodeEditor::invalidate_highlight_from`]) instead of clearing it,
-    /// so deep lines are not re-parsed from the top on every keystroke. The
-    /// cache is reset only when the active syntax changes.
-    ///
-    /// # Arguments
-    ///
-    /// * `logical_line` - Index of the logical line in the buffer.
-    /// * `syntax` - The syntect syntax definition to tokenize with.
-    /// * `theme` - The syntect highlighting theme providing token colors.
-    /// * `syntax_set` - The syntax set the `syntax` belongs to.
-    ///
-    /// # Returns
-    ///
-    /// A shared handle to the line's colored token spans.
-    fn highlighted_line_cached(
-        &self,
-        logical_line: usize,
-        syntax: &syntect::parsing::SyntaxReference,
-        theme: &syntect::highlighting::Theme,
-        syntax_set: &SyntaxSet,
-    ) -> Rc<Vec<(Color, String)>> {
-        let mut guard = self.highlight_cache.borrow_mut();
-
-        // Reset the whole cache only when the active syntax changes.
-        let needs_reset =
-            guard.as_ref().is_none_or(|cache| cache.syntax() != self.syntax);
-        if needs_reset {
-            *guard = Some(super::HighlightCache::new(self.syntax.clone()));
-        }
-
-        let Some(cache) = guard.as_mut() else {
-            // Unreachable: populated just above. `unwrap`/`panic` are denied,
-            // so fall back to a single independent highlight without caching.
-            return Rc::new(highlight_line_spans(
-                self.buffer.line(logical_line),
-                syntax,
-                theme,
-                syntax_set,
-            ));
-        };
-
-        if let Some(spans) = cache.spans(logical_line) {
-            return spans;
-        }
-
-        // Extend the valid prefix sequentially up to `logical_line`, carrying
-        // the parser/highlight state forward across lines.
-        let highlighter = Highlighter::new(theme);
-        let (mut parse_state, mut highlight_state) =
-            cache.resume_state().unwrap_or_else(|| {
-                (
-                    ParseState::new(syntax),
-                    HighlightState::new(&highlighter, ScopeStack::new()),
-                )
-            });
-
-        let line_count = self.buffer.line_count();
-        let target = logical_line.min(line_count.saturating_sub(1));
-        let missing_lines =
-            target.saturating_add(1).saturating_sub(cache.valid_len());
-        let lines_to_parse =
-            missing_lines.min(self.highlight_lines_remaining.get());
-        let parse_end = cache
-            .valid_len()
-            .saturating_add(lines_to_parse)
-            .saturating_sub(1)
-            .min(target);
-        let mut result = None;
-        if lines_to_parse > 0 {
-            for index in cache.valid_len()..=parse_end {
-                // syntect's `_newlines` syntaxes expect a trailing '\n' for correct
-                // end-of-line context handling; the stored buffer line has none.
-                let mut line = self.buffer.line(index).to_string();
-                line.push('\n');
-
-                let ops = parse_state
-                    .parse_line(&line, syntax_set)
-                    .unwrap_or_default();
-                let spans: Vec<(Color, String)> = HighlightIterator::new(
-                    &mut highlight_state,
-                    &ops,
-                    &line,
-                    &highlighter,
-                )
-                .filter_map(|(style, text)| {
-                    let text = text.strip_suffix('\n').unwrap_or(text);
-                    if text.is_empty() {
-                        None
-                    } else {
-                        Some((color_from_style(style), text.to_string()))
-                    }
-                })
-                .collect();
-
-                let spans = Rc::new(spans);
-                cache.push_line(
-                    Rc::clone(&spans),
-                    parse_state.clone(),
-                    highlight_state.clone(),
-                );
-                if index == logical_line {
-                    result = Some(spans);
-                }
-            }
-        }
-        self.highlight_lines_remaining.set(
-            self.highlight_lines_remaining.get().saturating_sub(lines_to_parse),
-        );
-
-        result.or_else(|| cache.spans(logical_line)).unwrap_or_else(|| {
-            Rc::new(vec![(
-                self.style.text_color,
-                self.buffer.line(logical_line).to_string(),
-            )])
-        })
-    }
-
     /// Draws text content with syntax highlighting or plain text fallback.
     ///
     /// # Arguments
@@ -531,21 +302,35 @@ impl CodeEditor {
         syntax_set: &SyntaxSet,
         syntax_theme: Option<&syntect::highlighting::Theme>,
     ) {
-        if let (Some(syntax), Some(syntax_theme)) = (syntax_ref, syntax_theme) {
-            // Reuse the memoized full-line spans; only the visible segment of
-            // the (possibly wrapped) line is positioned and drawn here.
-            let spans = self.highlighted_line_cached(
-                visual_line.logical_line,
-                syntax,
-                syntax_theme,
-                syntax_set,
-            );
+        let full_line_content = self.buffer.line(visual_line.logical_line);
 
+        // Convert character indices to byte indices for UTF-8 string slicing
+        let start_byte = full_line_content
+            .char_indices()
+            .nth(visual_line.start_col)
+            .map_or(full_line_content.len(), |(idx, _)| idx);
+        let end_byte = full_line_content
+            .char_indices()
+            .nth(visual_line.end_col)
+            .map_or(full_line_content.len(), |(idx, _)| idx);
+        let line_segment = &full_line_content[start_byte..end_byte];
+
+        if let (Some(syntax), Some(syntax_theme)) = (syntax_ref, syntax_theme) {
+            let mut highlighter = HighlightLines::new(syntax, syntax_theme);
+
+            // Highlight the full line to get correct token colors
+            let full_line_ranges = highlighter
+                .highlight_line(full_line_content, syntax_set)
+                .unwrap_or_else(|_| {
+                    vec![(Style::default(), full_line_content)]
+                });
+
+            // Extract only the ranges that fall within our segment
             let mut x_offset =
                 ctx.gutter_width + 5.0 - ctx.horizontal_scroll_offset;
             let mut char_pos = 0;
 
-            for (color, text) in spans.iter() {
+            for (style, text) in full_line_ranges {
                 let text_len = text.chars().count();
                 let text_end = char_pos + text_len;
 
@@ -562,57 +347,40 @@ impl CodeEditor {
                     let text_end_offset =
                         text_start_offset + (segment_end - segment_start);
 
-                    let (start_byte, end_byte) = char_range_to_byte_range(
-                        text,
-                        text_start_offset,
-                        text_end_offset,
-                    );
+                    // Convert character offsets to byte offsets for UTF-8 slicing
+                    let start_byte = text
+                        .char_indices()
+                        .nth(text_start_offset)
+                        .map_or(text.len(), |(idx, _)| idx);
+                    let end_byte = text
+                        .char_indices()
+                        .nth(text_end_offset)
+                        .map_or(text.len(), |(idx, _)| idx);
 
                     let segment_text = &text[start_byte..end_byte];
-                    let display_text = if self.show_whitespace {
-                        expand_tabs_visible(segment_text, super::TAB_WIDTH)
-                    } else {
-                        expand_tabs(segment_text, super::TAB_WIDTH).into_owned()
-                    };
+                    let display_text =
+                        expand_tabs(segment_text, super::TAB_WIDTH)
+                            .into_owned();
                     let display_width = measure_text_width(
                         &display_text,
                         ctx.full_char_width,
                         ctx.char_width,
                     );
 
-                    if self.show_whitespace {
-                        let ws_color = self.style.whitespace_color;
-                        let mut seg_x = x_offset;
-                        for (is_ws, seg) in
-                            split_whitespace_segments(&display_text)
-                        {
-                            let seg_color =
-                                if is_ws { ws_color } else { *color };
-                            let seg_width = measure_text_width(
-                                seg,
-                                ctx.full_char_width,
-                                ctx.char_width,
-                            );
-                            frame.fill_text(canvas::Text {
-                                content: seg.to_string(),
-                                position: Point::new(seg_x, y + 2.0),
-                                color: seg_color,
-                                size: ctx.font_size.into(),
-                                font: ctx.font,
-                                ..canvas::Text::default()
-                            });
-                            seg_x += seg_width;
-                        }
-                    } else {
-                        frame.fill_text(canvas::Text {
-                            content: display_text,
-                            position: Point::new(x_offset, y + 2.0),
-                            color: *color,
-                            size: ctx.font_size.into(),
-                            font: ctx.font,
-                            ..canvas::Text::default()
-                        });
-                    }
+                    let color = Color::from_rgb(
+                        f32::from(style.foreground.r) / 255.0,
+                        f32::from(style.foreground.g) / 255.0,
+                        f32::from(style.foreground.b) / 255.0,
+                    );
+
+                    frame.fill_text(canvas::Text {
+                        content: display_text,
+                        position: Point::new(x_offset, y + 2.0),
+                        color,
+                        size: ctx.font_size.into(),
+                        font: ctx.font,
+                        ..canvas::Text::default()
+                    });
 
                     x_offset += display_width;
                 }
@@ -621,94 +389,20 @@ impl CodeEditor {
             }
         } else {
             // Fallback to plain text
-            let full_line_content = self.buffer.line(visual_line.logical_line);
-            let (start_byte, end_byte) = char_range_to_byte_range(
-                full_line_content,
-                visual_line.start_col,
-                visual_line.end_col,
-            );
-            let line_segment = &full_line_content[start_byte..end_byte];
-            let display_text = if self.show_whitespace {
-                expand_tabs_visible(line_segment, super::TAB_WIDTH)
-            } else {
-                expand_tabs(line_segment, super::TAB_WIDTH).into_owned()
-            };
-            let base_x = ctx.gutter_width + 5.0 - ctx.horizontal_scroll_offset;
-            if self.show_whitespace {
-                let ws_color = self.style.whitespace_color;
-                let text_color = self.style.text_color;
-                let mut seg_x = base_x;
-                for (is_ws, seg) in split_whitespace_segments(&display_text) {
-                    let seg_color = if is_ws { ws_color } else { text_color };
-                    let seg_width = measure_text_width(
-                        seg,
-                        ctx.full_char_width,
-                        ctx.char_width,
-                    );
-                    frame.fill_text(canvas::Text {
-                        content: seg.to_string(),
-                        position: Point::new(seg_x, y + 2.0),
-                        color: seg_color,
-                        size: ctx.font_size.into(),
-                        font: ctx.font,
-                        ..canvas::Text::default()
-                    });
-                    seg_x += seg_width;
-                }
-            } else {
-                frame.fill_text(canvas::Text {
-                    content: display_text,
-                    position: Point::new(base_x, y + 2.0),
-                    color: self.style.text_color,
-                    size: ctx.font_size.into(),
-                    font: ctx.font,
-                    ..canvas::Text::default()
-                });
-            }
+            let display_text =
+                expand_tabs(line_segment, super::TAB_WIDTH).into_owned();
+            frame.fill_text(canvas::Text {
+                content: display_text,
+                position: Point::new(
+                    ctx.gutter_width + 5.0 - ctx.horizontal_scroll_offset,
+                    y + 2.0,
+                ),
+                color: self.style.text_color,
+                size: ctx.font_size.into(),
+                font: ctx.font,
+                ..canvas::Text::default()
+            });
         }
-    }
-
-    /// Fills a single highlight rectangle for a column range within one visual
-    /// line.
-    ///
-    /// Computes the CJK-aware segment geometry, applies the horizontal scroll
-    /// offset, and draws the rectangle inset vertically to match the editor's
-    /// highlight styling. Shared by selection and search-match rendering.
-    ///
-    /// # Arguments
-    ///
-    /// * `frame` - The canvas frame to draw on
-    /// * `ctx` - Rendering context containing visual lines and metrics
-    /// * `visual_idx` - Index of the visual line being drawn (drives the Y position)
-    /// * `vl` - The visual line whose segment is highlighted
-    /// * `cols` - Inclusive start and exclusive end columns of the segment
-    /// * `color` - Fill color of the highlight rectangle
-    fn fill_highlight_segment(
-        &self,
-        frame: &mut canvas::Frame,
-        ctx: &RenderContext,
-        visual_idx: usize,
-        vl: &VisualLine,
-        cols: (usize, usize),
-        color: Color,
-    ) {
-        let y = visual_idx as f32 * ctx.line_height;
-        let line_content = self.buffer.line(vl.logical_line);
-        let (x_start, width) = calculate_segment_geometry(
-            line_content,
-            vl.start_col,
-            cols.0,
-            cols.1,
-            ctx.gutter_width + 5.0,
-            ctx.full_char_width,
-            ctx.char_width,
-        );
-        let x_start = x_start - ctx.horizontal_scroll_offset;
-        frame.fill_rectangle(
-            Point::new(x_start, y + 2.0),
-            Size::new(width, ctx.line_height - 4.0),
-            color,
-        );
     }
 
     /// Draws search match highlights for all visible matches.
@@ -726,8 +420,7 @@ impl CodeEditor {
         start_visual_idx: usize,
         end_visual_idx: usize,
     ) {
-        if !self.search_matches_visible() || self.search_state.query.is_empty()
-        {
+        if !self.search_state.is_open || self.search_state.query.is_empty() {
             return;
         }
 
@@ -791,13 +484,26 @@ impl CodeEditor {
                 {
                     if start_v == end_v {
                         // Match within same visual line
+                        let y = start_v as f32 * ctx.line_height;
                         let vl = &ctx.visual_lines[start_v];
-                        self.fill_highlight_segment(
-                            frame,
-                            ctx,
-                            start_v,
-                            vl,
-                            (search_match.col, search_match.col + query_len),
+                        let line_content = self.buffer.line(vl.logical_line);
+
+                        // Use calculate_segment_geometry to compute match position and width
+                        let (x_start, match_width) = calculate_segment_geometry(
+                            line_content,
+                            vl.start_col,
+                            search_match.col,
+                            search_match.col + query_len,
+                            ctx.gutter_width + 5.0,
+                            ctx.full_char_width,
+                            ctx.char_width,
+                        );
+                        let x_start = x_start - ctx.horizontal_scroll_offset;
+                        let x_end = x_start + match_width;
+
+                        frame.fill_rectangle(
+                            Point::new(x_start, y + 2.0),
+                            Size::new(x_end - x_start, ctx.line_height - 4.0),
                             highlight_color,
                         );
                     } else {
@@ -809,23 +515,45 @@ impl CodeEditor {
                             .skip(start_v)
                             .take(end_v - start_v + 1)
                         {
+                            let y = v_idx as f32 * ctx.line_height;
+
+                            let match_start_col = search_match.col;
+                            let match_end_col = search_match.col + query_len;
+
                             let sel_start_col = if v_idx == start_v {
-                                search_match.col
+                                match_start_col
                             } else {
                                 vl.start_col
                             };
                             let sel_end_col = if v_idx == end_v {
-                                search_match.col + query_len
+                                match_end_col
                             } else {
                                 vl.end_col
                             };
 
-                            self.fill_highlight_segment(
-                                frame,
-                                ctx,
-                                v_idx,
-                                vl,
-                                (sel_start_col, sel_end_col),
+                            let line_content =
+                                self.buffer.line(vl.logical_line);
+
+                            let (x_start, sel_width) =
+                                calculate_segment_geometry(
+                                    line_content,
+                                    vl.start_col,
+                                    sel_start_col,
+                                    sel_end_col,
+                                    ctx.gutter_width + 5.0,
+                                    ctx.full_char_width,
+                                    ctx.char_width,
+                                );
+                            let x_start =
+                                x_start - ctx.horizontal_scroll_offset;
+                            let x_end = x_start + sel_width;
+
+                            frame.fill_rectangle(
+                                Point::new(x_start, y + 2.0),
+                                Size::new(
+                                    x_end - x_start,
+                                    ctx.line_height - 4.0,
+                                ),
                                 highlight_color,
                             );
                         }
@@ -868,13 +596,25 @@ impl CodeEditor {
             if let (Some(start_v), Some(end_v)) = (start_visual, end_visual) {
                 if start_v == end_v {
                     // Selection within same visual line
+                    let y = start_v as f32 * ctx.line_height;
                     let vl = &ctx.visual_lines[start_v];
-                    self.fill_highlight_segment(
-                        frame,
-                        ctx,
-                        start_v,
-                        vl,
-                        (start.1, end.1),
+                    let line_content = self.buffer.line(vl.logical_line);
+
+                    let (x_start, sel_width) = calculate_segment_geometry(
+                        line_content,
+                        vl.start_col,
+                        start.1,
+                        end.1,
+                        ctx.gutter_width + 5.0,
+                        ctx.full_char_width,
+                        ctx.char_width,
+                    );
+                    let x_start = x_start - ctx.horizontal_scroll_offset;
+                    let x_end = x_start + sel_width;
+
+                    frame.fill_rectangle(
+                        Point::new(x_start, y + 2.0),
+                        Size::new(x_end - x_start, ctx.line_height - 4.0),
                         selection_color,
                     );
                 } else {
@@ -886,6 +626,8 @@ impl CodeEditor {
                         .skip(start_v)
                         .take(end_v - start_v + 1)
                     {
+                        let y = v_idx as f32 * ctx.line_height;
+
                         let sel_start_col = if v_idx == start_v {
                             start.1
                         } else {
@@ -894,12 +636,23 @@ impl CodeEditor {
                         let sel_end_col =
                             if v_idx == end_v { end.1 } else { vl.end_col };
 
-                        self.fill_highlight_segment(
-                            frame,
-                            ctx,
-                            v_idx,
-                            vl,
-                            (sel_start_col, sel_end_col),
+                        let line_content = self.buffer.line(vl.logical_line);
+
+                        let (x_start, sel_width) = calculate_segment_geometry(
+                            line_content,
+                            vl.start_col,
+                            sel_start_col,
+                            sel_end_col,
+                            ctx.gutter_width + 5.0,
+                            ctx.full_char_width,
+                            ctx.char_width,
+                        );
+                        let x_start = x_start - ctx.horizontal_scroll_offset;
+                        let x_end = x_start + sel_width;
+
+                        frame.fill_rectangle(
+                            Point::new(x_start, y + 2.0),
+                            Size::new(x_end - x_start, ctx.line_height - 4.0),
                             selection_color,
                         );
                     }
@@ -926,6 +679,8 @@ impl CodeEditor {
                     .skip(start_v)
                     .take(end_v - start_v + 1)
                 {
+                    let y = v_idx as f32 * ctx.line_height;
+
                     let sel_start_col =
                         if vl.logical_line == start.0 && v_idx == start_v {
                             start.1
@@ -940,12 +695,23 @@ impl CodeEditor {
                             vl.end_col
                         };
 
-                    self.fill_highlight_segment(
-                        frame,
-                        ctx,
-                        v_idx,
-                        vl,
-                        (sel_start_col, sel_end_col),
+                    let line_content = self.buffer.line(vl.logical_line);
+
+                    let (x_start, sel_width) = calculate_segment_geometry(
+                        line_content,
+                        vl.start_col,
+                        sel_start_col,
+                        sel_end_col,
+                        ctx.gutter_width + 5.0,
+                        ctx.full_char_width,
+                        ctx.char_width,
+                    );
+                    let x_start = x_start - ctx.horizontal_scroll_offset;
+                    let x_end = x_start + sel_width;
+
+                    frame.fill_rectangle(
+                        Point::new(x_start, y + 2.0),
+                        Size::new(x_end - x_start, ctx.line_height - 4.0),
                         selection_color,
                     );
                 }
@@ -1121,55 +887,17 @@ impl CodeEditor {
         } else if self.show_cursor && self.cursor_visible && self.has_focus() {
             // [Branch B] Normal caret rendering mode
             // ---------------------------------------------------------------------
-            // Vim mode is single-cursor and Visual selections use an inclusive
-            // active position that differs from the editor's half-open cursor.
-            // Standard editing continues to render every cursor in the set.
+            // Draw a caret for every cursor in the set.
+            // The primary cursor is drawn exactly like secondary ones — the viewport
+            // follows the primary, but visually all carets look the same.
             // ---------------------------------------------------------------------
-            if self.vim_enabled {
-                let position = self
-                    .vim_state
-                    .visual_positions()
-                    .map(|(_, active)| active)
-                    .unwrap_or_else(|| self.cursors.primary_position());
-                self.draw_single_caret(frame, ctx, position);
-            } else {
-                for cursor in self.cursors.iter() {
-                    self.draw_single_caret(frame, ctx, cursor.position);
-                }
+            for cursor in self.cursors.iter() {
+                self.draw_single_caret(frame, ctx, cursor.position);
             }
         }
     }
 
-    /// Returns the cursor size for a logical position using current font metrics.
-    ///
-    /// Standard editing and Vim Insert mode use the existing 2px bar. Vim
-    /// Normal and Visual modes use the width of the character under the cursor;
-    /// an empty line or end-of-line position uses one narrow character width.
-    fn cursor_size_for_position(&self, position: (usize, usize)) -> Size {
-        let uses_block =
-            self.vim_enabled && self.vim_state.mode() != super::VimMode::Insert;
-        let width = if uses_block {
-            self.buffer
-                .line(position.0)
-                .chars()
-                .nth(position.1)
-                .map(|ch| {
-                    measure_char_width(
-                        ch,
-                        self.full_char_width,
-                        self.char_width,
-                    )
-                })
-                .filter(|width| *width > 0.0)
-                .unwrap_or(self.char_width)
-        } else {
-            2.0
-        };
-
-        Size::new(width, (self.line_height - 4.0).max(1.0))
-    }
-
-    /// Draws one cursor at the given logical (line, col) position.
+    /// Draws a single 2px vertical caret at the given logical (line, col) position.
     ///
     /// # Arguments
     ///
@@ -1204,16 +932,11 @@ impl CodeEditor {
             let cursor_x = cursor_x_content - ctx.horizontal_scroll_offset;
             let cursor_y = cursor_visual as f32 * ctx.line_height;
 
-            let cursor_size = self.cursor_size_for_position(position);
-            let mut cursor_color = self.style.text_color;
-            if cursor_size.width > 2.0 {
-                cursor_color.a *= 0.55;
-            }
-
+            // Draw standard caret (2px vertical bar)
             frame.fill_rectangle(
                 Point::new(cursor_x, cursor_y + 2.0),
-                cursor_size,
-                cursor_color,
+                Size::new(2.0, ctx.line_height - 4.0),
+                self.style.text_color,
             );
         }
     }
@@ -1248,35 +971,8 @@ impl CodeEditor {
     fn handle_keyboard_shortcuts(
         &self,
         key: &keyboard::Key,
-        modified_key: &keyboard::Key,
         modifiers: &keyboard::Modifiers,
     ) -> Option<Action<Message>> {
-        // `command()` maps to Command on macOS and Control elsewhere. Keep
-        // accepting Control on macOS for backwards compatibility.
-        let command_pressed = modifiers.command() || modifiers.control();
-
-        // Toggle Vim behavior without conflicting with the platform paste
-        // shortcut (Ctrl/Cmd+V).
-        if command_pressed
-            && modifiers.alt()
-            && !modifiers.shift()
-            && matches!(key, keyboard::Key::Character(v) if v.as_str() == "v")
-        {
-            return Some(Action::publish(Message::ToggleVimMode).and_capture());
-        }
-
-        // Handle Ctrl/Cmd+S through the same host-owned save request as Vim
-        // `:w`.
-        if command_pressed
-            && !modifiers.alt()
-            && !modifiers.shift()
-            && matches!(key, keyboard::Key::Character(s) if s.as_str() == "s")
-        {
-            return Some(
-                Action::publish(Message::WriteRequested).and_capture(),
-            );
-        }
-
         // Shift+Tab: focus navigation backward (Tab alone inserts indentation)
         if matches!(key, keyboard::Key::Named(keyboard::key::Named::Tab))
             && modifiers.shift()
@@ -1287,10 +983,17 @@ impl CodeEditor {
             );
         }
 
+        // Handle Ctrl+X (cut)
+        if modifiers.command()
+            && matches!(key, keyboard::Key::Character(x) if x.as_str() == "x")
+        {
+            return Some(Action::publish(Message::Cut).and_capture());
+        }
+
         // Handle Ctrl+C / Ctrl+Insert (copy)
-        if (command_pressed
+        if (modifiers.command()
             && matches!(key, keyboard::Key::Character(c) if c.as_str() == "c"))
-            || (modifiers.control()
+            || (modifiers.command()
                 && matches!(
                     key,
                     keyboard::Key::Named(keyboard::key::Named::Insert)
@@ -1299,50 +1002,29 @@ impl CodeEditor {
             return Some(Action::publish(Message::Copy).and_capture());
         }
 
-        // Handle Ctrl/Cmd+X (cut)
-        if command_pressed
-            && matches!(key, keyboard::Key::Character(x) if x.as_str() == "x")
-        {
-            return Some(Action::publish(Message::Cut).and_capture());
-        }
-
-        // Handle Ctrl/Cmd+A (select all)
-        if command_pressed
+        // Select all (Ctrl/Cmd+A)
+        if modifiers.command()
             && matches!(key, keyboard::Key::Character(a) if a.as_str() == "a")
         {
             return Some(Action::publish(Message::SelectAll).and_capture());
         }
 
-        // Handle Ctrl/Cmd+Z (undo). Shift+Cmd+Z is redo on macOS.
-        if command_pressed
-            && !modifiers.shift()
+        // Handle Ctrl+Z (undo)
+        if modifiers.command()
             && matches!(key, keyboard::Key::Character(z) if z.as_str() == "z")
         {
             return Some(Action::publish(Message::Undo).and_capture());
         }
 
-        // Handle Ctrl/Cmd+Y and Shift+Cmd+Z (redo)
-        if command_pressed
-            && (matches!(key, keyboard::Key::Character(y) if y.as_str() == "y")
-                || (modifiers.shift()
-                    && matches!(key, keyboard::Key::Character(z) if z.as_str() == "z")))
-        {
-            return Some(Action::publish(Message::Redo).and_capture());
-        }
-
-        // Vim's redo binding is Ctrl+R in Normal mode. Keep the existing
-        // platform redo shortcuts above available in every editor mode.
-        if self.vim_enabled
-            && self.vim_state.mode() == super::VimMode::Normal
-            && modifiers.control()
-            && !modifiers.shift()
-            && matches!(key, keyboard::Key::Character(r) if r.as_str() == "r")
+        // Handle Ctrl+Y (redo)
+        if modifiers.command()
+            && matches!(key, keyboard::Key::Character(y) if y.as_str() == "y")
         {
             return Some(Action::publish(Message::Redo).and_capture());
         }
 
         // Handle Ctrl+F (open search)
-        if command_pressed
+        if modifiers.command()
             && matches!(key, keyboard::Key::Character(f) if f.as_str() == "f")
             && self.search_replace_enabled
         {
@@ -1350,7 +1032,7 @@ impl CodeEditor {
         }
 
         // Handle Ctrl+H (open search and replace)
-        if command_pressed
+        if modifiers.command()
             && matches!(key, keyboard::Key::Character(h) if h.as_str() == "h")
             && self.search_replace_enabled
         {
@@ -1359,29 +1041,13 @@ impl CodeEditor {
             );
         }
 
-        // Handle Cmd/Ctrl+G (open go-to-line input)
-        if command_pressed
-            && matches!(key, keyboard::Key::Character(g) if g.as_str() == "g")
-        {
-            return Some(Action::publish(Message::OpenGotoLine).and_capture());
-        }
-
-        // Handle Escape — close the active overlay, or collapse multi-cursor.
+        // Handle Escape — handled by CloseSearch message, which also collapses multi-cursor
         if matches!(key, keyboard::Key::Named(keyboard::key::Named::Escape)) {
-            let message = if self.goto_line_state.is_open {
-                Message::CloseGotoLine
-            } else if self.search_state.is_open {
-                Message::CloseSearch
-            } else if self.vim_enabled {
-                Message::VimKey('\u{1b}')
-            } else {
-                Message::CloseSearch
-            };
-            return Some(Action::publish(message).and_capture());
+            return Some(Action::publish(Message::CloseSearch).and_capture());
         }
 
         // Handle Ctrl+D (select next occurrence)
-        if command_pressed
+        if modifiers.command()
             && matches!(key, keyboard::Key::Character(d) if d.as_str() == "d")
         {
             return Some(
@@ -1389,21 +1055,8 @@ impl CodeEditor {
             );
         }
 
-        // Handle Ctrl+/ (toggle line comment).
-        //
-        // Match against both the base key and `modified_key` so the shortcut
-        // works regardless of layout: on US/QWERTY `/` is unshifted (in `key`),
-        // while on French AZERTY it is Shift+`:` and only appears in
-        // `modified_key`.
-        if command_pressed
-            && (matches!(key, keyboard::Key::Character(c) if c.as_str() == "/")
-                || matches!(modified_key, keyboard::Key::Character(c) if c.as_str() == "/"))
-        {
-            return Some(Action::publish(Message::ToggleComment).and_capture());
-        }
-
         // Handle Ctrl+Alt+Up (add cursor above)
-        if modifiers.control()
+        if modifiers.command()
             && modifiers.alt()
             && matches!(
                 key,
@@ -1416,7 +1069,7 @@ impl CodeEditor {
         }
 
         // Handle Ctrl+Alt+Down (add cursor below)
-        if modifiers.control()
+        if modifiers.command()
             && modifiers.alt()
             && matches!(
                 key,
@@ -1426,34 +1079,6 @@ impl CodeEditor {
             return Some(
                 Action::publish(Message::AddCursorBelow).and_capture(),
             );
-        }
-
-        // Handle Alt+Up / Alt+Down (move line) and Shift+Alt+Up / Shift+Alt+Down
-        // (duplicate line). Exclude Control to avoid clashing with the
-        // Ctrl+Alt+Up/Down multi-cursor shortcuts above.
-        if modifiers.alt() && !modifiers.control() {
-            if matches!(
-                key,
-                keyboard::Key::Named(keyboard::key::Named::ArrowUp)
-            ) {
-                let message = if modifiers.shift() {
-                    Message::DuplicateLineUp
-                } else {
-                    Message::MoveLineUp
-                };
-                return Some(Action::publish(message).and_capture());
-            }
-            if matches!(
-                key,
-                keyboard::Key::Named(keyboard::key::Named::ArrowDown)
-            ) {
-                let message = if modifiers.shift() {
-                    Message::DuplicateLineDown
-                } else {
-                    Message::MoveLineDown
-                };
-                return Some(Action::publish(message).and_capture());
-            }
         }
 
         // Handle Tab (cycle forward in search dialog if open)
@@ -1488,7 +1113,7 @@ impl CodeEditor {
         }
 
         // Handle Ctrl+V / Shift+Insert (paste) - read clipboard and send paste message
-        if (command_pressed
+        if (modifiers.command()
             && matches!(key, keyboard::Key::Character(v) if v.as_str() == "v"))
             || (modifiers.shift()
                 && matches!(
@@ -1501,14 +1126,14 @@ impl CodeEditor {
         }
 
         // Handle Ctrl+Home (go to start of document)
-        if command_pressed
+        if modifiers.command()
             && matches!(key, keyboard::Key::Named(keyboard::key::Named::Home))
         {
             return Some(Action::publish(Message::CtrlHome).and_capture());
         }
 
         // Handle Ctrl+End (go to end of document)
-        if command_pressed
+        if modifiers.command()
             && matches!(key, keyboard::Key::Named(keyboard::key::Named::End))
         {
             return Some(Action::publish(Message::CtrlEnd).and_capture());
@@ -1526,7 +1151,7 @@ impl CodeEditor {
         // Code folding shortcuts (only when folding is enabled).
         if self.folding_enabled {
             // Ctrl+. : toggle the fold of the block at the cursor.
-            if modifiers.control()
+            if modifiers.command()
                 && matches!(key, keyboard::Key::Character(c) if c.as_str() == ".")
             {
                 return Some(
@@ -1535,7 +1160,7 @@ impl CodeEditor {
             }
 
             // Ctrl+K : fold all blocks.
-            if modifiers.control()
+            if modifiers.command()
                 && !modifiers.shift()
                 && matches!(key, keyboard::Key::Character(c) if c.as_str() == "k")
             {
@@ -1543,7 +1168,7 @@ impl CodeEditor {
             }
 
             // Ctrl+J : unfold all blocks.
-            if modifiers.control()
+            if modifiers.command()
                 && !modifiers.shift()
                 && matches!(key, keyboard::Key::Character(c) if c.as_str() == "j")
             {
@@ -1551,15 +1176,23 @@ impl CodeEditor {
             }
         }
 
-        None
-    }
-
-    fn printable_input_message(&self, ch: char) -> Message {
-        if self.vim_enabled && self.vim_state.mode() != super::VimMode::Insert {
-            Message::VimKey(ch)
-        } else {
-            Message::CharacterInput(ch)
+        // Handle Ctrl+/ (toggle comment) — outside folding block, always available.
+        if modifiers.command()
+            && matches!(key, keyboard::Key::Character(c) if c.as_str() == "/")
+        {
+            return Some(Action::publish(Message::ToggleComment).and_capture());
         }
+
+        // Handle Ctrl+J (join lines) — only when folding is disabled (otherwise handled above).
+        if modifiers.command()
+            && !modifiers.shift()
+            && matches!(key, keyboard::Key::Character(c) if c.as_str() == "j")
+            && !self.folding_enabled
+        {
+            return Some(Action::publish(Message::JoinLines).and_capture());
+        }
+
+        None
     }
 
     /// Handles character input and special navigation keys.
@@ -1597,6 +1230,7 @@ impl CodeEditor {
         if let Some(text_content) = text
             && !text_content.is_empty()
             && !modifiers.control()
+            && !modifiers.command()
             && !modifiers.alt()
         {
             // Check if it's a printable character (not a control character)
@@ -1605,7 +1239,7 @@ impl CodeEditor {
                 && !first_char.is_control()
             {
                 return Some(
-                    Action::publish(self.printable_input_message(first_char))
+                    Action::publish(Message::CharacterInput(first_char))
                         .and_capture(),
                 );
             }
@@ -1614,65 +1248,71 @@ impl CodeEditor {
         // PRIORITY 2: Handle special named keys (navigation, editing)
         // These are only processed if text didn't contain a printable character
         let message = match key {
-            keyboard::Key::Named(keyboard::key::Named::Backspace)
-                if !self.vim_enabled
-                    || self.vim_state.mode() == super::VimMode::Insert
-                    || self.vim_state.command_line_active() =>
-            {
-                if self.vim_state.command_line_active() {
-                    Some(Message::VimKey('\u{8}'))
+            keyboard::Key::Named(keyboard::key::Named::Backspace) => {
+                if modifiers.command() || modifiers.control() {
+                    Some(Message::DeleteWordBackward)
                 } else {
                     Some(Message::Backspace)
                 }
             }
-            keyboard::Key::Named(keyboard::key::Named::Delete)
-                if !self.vim_enabled
-                    || self.vim_state.mode() == super::VimMode::Insert =>
-            {
-                Some(Message::Delete)
-            }
-            keyboard::Key::Named(keyboard::key::Named::Enter)
-                if !self.vim_enabled
-                    || self.vim_state.mode() == super::VimMode::Insert
-                    || self.vim_state.command_line_active() =>
-            {
-                if self.vim_state.command_line_active() {
-                    Some(Message::VimKey('\n'))
+            keyboard::Key::Named(keyboard::key::Named::Delete) => {
+                if modifiers.command() || modifiers.control() {
+                    Some(Message::DeleteWordForward)
                 } else {
-                    Some(Message::Enter)
+                    Some(Message::Delete)
                 }
             }
-            keyboard::Key::Named(keyboard::key::Named::Tab)
-                if !self.vim_enabled
-                    || self.vim_state.mode() == super::VimMode::Insert =>
-            {
-                // Handle Tab for focus navigation or text insertion
-                // This implements focus event propagation and focus chain management
+            keyboard::Key::Named(keyboard::key::Named::Enter) => {
+                Some(Message::Enter)
+            }
+            keyboard::Key::Named(keyboard::key::Named::Tab) => {
+                let has_sel = self.cursors.iter().any(|c| c.has_selection());
                 if modifiers.shift() {
-                    // Shift+Tab: focus navigation backward through widget hierarchy
-                    Some(Message::FocusNavigationShiftTab)
-                } else {
-                    // Regular Tab: check if search dialog is open
-                    if self.search_state.is_open {
-                        Some(Message::SearchDialogTab)
+                    if has_sel {
+                        Some(Message::UnindentLines)
                     } else {
-                        // Insert 4 spaces for Tab when not in search dialog
-                        Some(Message::Tab)
+                        Some(Message::FocusNavigationShiftTab)
                     }
+                } else if self.search_state.is_open {
+                    Some(Message::SearchDialogTab)
+                } else if has_sel {
+                    Some(Message::IndentLines)
+                } else {
+                    Some(Message::Tab)
                 }
             }
             keyboard::Key::Named(keyboard::key::Named::ArrowUp) => {
-                Some(Message::ArrowKey(ArrowDirection::Up, modifiers.shift()))
+                if modifiers.shift() && modifiers.alt() {
+                    Some(Message::DuplicateLineUp)
+                } else if modifiers.alt() {
+                    Some(Message::MoveLineUp)
+                } else {
+                    Some(Message::ArrowKey(ArrowDirection::Up, modifiers.shift()))
+                }
             }
             keyboard::Key::Named(keyboard::key::Named::ArrowDown) => {
-                Some(Message::ArrowKey(ArrowDirection::Down, modifiers.shift()))
+                if modifiers.shift() && modifiers.alt() {
+                    Some(Message::DuplicateLineDown)
+                } else if modifiers.alt() {
+                    Some(Message::MoveLineDown)
+                } else {
+                    Some(Message::ArrowKey(ArrowDirection::Down, modifiers.shift()))
+                }
             }
             keyboard::Key::Named(keyboard::key::Named::ArrowLeft) => {
-                Some(Message::ArrowKey(ArrowDirection::Left, modifiers.shift()))
+                if modifiers.command() || modifiers.control() {
+                    Some(Message::WordLeft(modifiers.shift()))
+                } else {
+                    Some(Message::ArrowKey(ArrowDirection::Left, modifiers.shift()))
+                }
             }
-            keyboard::Key::Named(keyboard::key::Named::ArrowRight) => Some(
-                Message::ArrowKey(ArrowDirection::Right, modifiers.shift()),
-            ),
+            keyboard::Key::Named(keyboard::key::Named::ArrowRight) => {
+                if modifiers.command() || modifiers.control() {
+                    Some(Message::WordRight(modifiers.shift()))
+                } else {
+                    Some(Message::ArrowKey(ArrowDirection::Right, modifiers.shift()))
+                }
+            }
             keyboard::Key::Named(keyboard::key::Named::PageUp) => {
                 Some(Message::PageUp)
             }
@@ -1689,6 +1329,7 @@ impl CodeEditor {
             // This handles edge cases where text field is not populated
             _ => {
                 if !modifiers.control()
+                    && !modifiers.command()
                     && !modifiers.alt()
                     && let keyboard::Key::Character(c) = key
                     && !c.is_empty()
@@ -1696,7 +1337,7 @@ impl CodeEditor {
                     return c
                         .chars()
                         .next()
-                        .map(|ch| self.printable_input_message(ch))
+                        .map(Message::CharacterInput)
                         .map(|msg| Action::publish(msg).and_capture());
                 }
                 None
@@ -1713,10 +1354,7 @@ impl CodeEditor {
     ///
     /// # Arguments
     ///
-    /// * `key` - The keyboard key that was pressed (base key, no modifiers applied)
-    /// * `modified_key` - The key with all modifiers applied except Ctrl; used
-    ///   for character shortcuts so they work on layouts where the glyph needs
-    ///   Shift (e.g. `/` on French AZERTY)
+    /// * `key` - The keyboard key that was pressed
     /// * `modifiers` - The keyboard modifiers (Ctrl, Shift, Alt, etc.)
     /// * `text` - Optional text content from the keyboard event
     /// * `bounds` - The rectangle bounds of the canvas widget (unused in this implementation)
@@ -1728,7 +1366,6 @@ impl CodeEditor {
     fn handle_keyboard_event(
         &self,
         key: &keyboard::Key,
-        modified_key: &keyboard::Key,
         modifiers: &keyboard::Modifiers,
         text: &Option<iced::advanced::graphics::core::SmolStr>,
         _bounds: Rectangle,
@@ -1749,9 +1386,7 @@ impl CodeEditor {
         }
 
         // Try keyboard shortcuts first
-        if let Some(action) =
-            self.handle_keyboard_shortcuts(key, modified_key, modifiers)
-        {
+        if let Some(action) = self.handle_keyboard_shortcuts(key, modifiers) {
             return Some(action);
         }
 
@@ -1800,7 +1435,8 @@ impl CodeEditor {
             return None;
         }
 
-        folding::is_line_fold_header(&self.buffer, visual_line.logical_line)
+        let regions = self.foldable_regions();
+        folding::is_fold_header(&regions, visual_line.logical_line)
             .then_some(visual_line.logical_line)
     }
 
@@ -1832,30 +1468,22 @@ impl CodeEditor {
 
                     // Alt+Click: add a new cursor at the clicked position
                     if self.modifiers.get().alt() {
-                        let message = if self.vim_enabled {
-                            Message::MouseClick(position)
-                        } else {
-                            Message::AltClick(position)
-                        };
-                        return Action::publish(message).and_capture();
+                        return Action::publish(Message::AltClick(position))
+                            .and_capture();
                     }
 
-                    let click_count = self.classify_click(position);
-                    match click_count {
-                        2 => Action::publish(Message::DoubleClick(position))
-                            .and_capture(),
-                        3 => Action::publish(Message::TripleClick(position))
-                            .and_capture(),
-                        // Don't capture the event so it can bubble up for focus management
-                        // This implements focus event propagation through the widget hierarchy
-                        _ => Action::publish(Message::MouseClick(position)),
-                    }
+                    let count = self.classify_click(position);
+                    let msg = match count {
+                        2 => Message::DoubleClick(position),
+                        3 => Message::TripleClick(position),
+                        _ => Message::MouseClick(position),
+                    };
+                    Action::publish(msg)
                 })
-            }
-            mouse::Event::ButtonPressed(mouse::Button::Right) => {
-                cursor.position_in(bounds).map(|position| {
-                    Action::publish(Message::ContextMenuRequested(position))
-                        .and_capture()
+                .or_else(|| {
+                    // Clicking outside the editor blurs it (releases the caret).
+                    self.has_canvas_focus
+                        .then(|| Action::publish(Message::CanvasFocusLost))
                 })
             }
             mouse::Event::CursorMoved { .. } => {
@@ -1904,9 +1532,6 @@ impl CodeEditor {
         // This prevents focus stealing where IME events meant for other widgets
         // are incorrectly processed by this editor during focus transitions
         if !self.has_focus() || self.focus_locked {
-            return None;
-        }
-        if self.vim_enabled && self.vim_state.mode() != super::VimMode::Insert {
             return None;
         }
 
@@ -2049,17 +1674,40 @@ impl canvas::Program<Message> for CodeEditor {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
+        // Font metrics may have been computed before the configured font was
+        // loaded into the renderer's font system (e.g. editors built during
+        // application boot measure against a fallback font). Re-measure here
+        // and redraw if the live value diverges from the cached one, so token
+        // x-offsets always match the font actually used for rendering.
+        let fresh_char_width = self.measure_single_char_width("a");
+        let fresh_full_char_width = self.measure_single_char_width("汉");
+        let live_char_width =
+            if fresh_char_width.is_finite() && fresh_char_width > 0.0 {
+                fresh_char_width
+            } else {
+                self.char_width
+            };
+        let live_full_char_width = if fresh_full_char_width.is_finite()
+            && fresh_full_char_width > 0.0
+        {
+            fresh_full_char_width
+        } else {
+            self.full_char_width
+        };
+        if (live_char_width - self.char_width).abs() > 0.01
+            || (live_full_char_width - self.full_char_width).abs() > 0.01
+        {
+            self.content_cache.clear();
+            self.overlay_cache.clear();
+        }
+
         let visual_lines: Rc<Vec<VisualLine>> =
             self.visual_lines_cached(bounds.width);
 
-        // Prefer the tracked viewport height once a real Scrolled event has
-        // confirmed it, but fall back to the real per-frame layout bounds
-        // before that — `viewport_height` starts out as a construction-time
-        // placeholder (see its field doc) that has no relationship to this
-        // editor's actual rendered size, and trusting it here is what used
-        // to make a freshly restored/constructed editor render blank (or
-        // with a wrong line window) until the user happened to scroll it.
-        let effective_viewport_height = if self.viewport_metrics_confirmed {
+        // Prefer the tracked viewport height when available, but fall back to
+        // the current bounds during initial layout when viewport metrics have
+        // not been populated yet.
+        let effective_viewport_height = if self.viewport_height > 0.0 {
             self.viewport_height
         } else {
             bounds.height
@@ -2089,12 +1737,6 @@ impl canvas::Program<Message> for CodeEditor {
         let visual_lines_for_content = visual_lines.clone();
         let content_geometry =
             self.content_cache.draw(renderer, bounds.size(), |frame| {
-                // Bound sequential syntect catch-up work for this frame. This
-                // keeps a deep jump or a cache truncation in a huge file from
-                // blocking the UI while parsing every preceding line.
-                self.highlight_lines_remaining
-                    .set(super::HIGHLIGHT_LINES_PER_FRAME);
-
                 // syntect initialization is relatively expensive; keep it global.
                 let syntax_set = SYNTAX_SET.get_or_init(|| {
                     #[cfg(feature = "two-face")]
@@ -2112,7 +1754,7 @@ impl canvas::Program<Message> for CodeEditor {
                 let bg = self.style.background;
                 let bg_is_dark = bg.r * 0.299 + bg.g * 0.587 + bg.b * 0.114 < 0.5;
                 let preferred: &[&str] = if let Some(name) = &self.style.syntax_theme_name {
-                    std::slice::from_ref(name)
+                    &[name]
                 } else if bg_is_dark {
                     &["base16-mocha.dark", "base16-ocean.dark", "Solarized (dark)"]
                 } else {
@@ -2143,8 +1785,8 @@ impl canvas::Program<Message> for CodeEditor {
                     gutter_width: self.gutter_width(),
                     line_height: self.line_height,
                     font_size: self.font_size,
-                    full_char_width: self.full_char_width,
-                    char_width: self.char_width,
+                    full_char_width: live_full_char_width,
+                    char_width: live_char_width,
                     font: self.font,
                     horizontal_scroll_offset: self.horizontal_scroll_offset,
                 };
@@ -2208,8 +1850,8 @@ impl canvas::Program<Message> for CodeEditor {
                     gutter_width: self.gutter_width(),
                     line_height: self.line_height,
                     font_size: self.font_size,
-                    full_char_width: self.full_char_width,
-                    char_width: self.char_width,
+                    full_char_width: live_full_char_width,
+                    char_width: live_char_width,
                     font: self.font,
                     horizontal_scroll_offset: self.horizontal_scroll_offset,
                 };
@@ -2264,19 +1906,13 @@ impl canvas::Program<Message> for CodeEditor {
             }
             Event::Keyboard(keyboard::Event::KeyPressed {
                 key,
-                modified_key,
                 modifiers,
                 text,
                 ..
             }) => {
                 self.modifiers.set(*modifiers);
                 self.handle_keyboard_event(
-                    key,
-                    modified_key,
-                    modifiers,
-                    text,
-                    bounds,
-                    &cursor,
+                    key, modifiers, text, bounds, &cursor,
                 )
             }
             Event::Keyboard(keyboard::Event::KeyReleased {
@@ -2292,30 +1928,6 @@ impl canvas::Program<Message> for CodeEditor {
                 self.handle_ime_event(ime_event, bounds, &cursor)
             }
             _ => None,
-        }
-    }
-
-    /// Uses the text-selection cursor over the editable code area.
-    ///
-    /// The gutter keeps the default cursor, except for an interactive fold
-    /// chevron. Checking the cursor against `bounds` is important because a
-    /// canvas program's interaction can otherwise remain active out of bounds.
-    fn mouse_interaction(
-        &self,
-        _state: &Self::State,
-        bounds: Rectangle,
-        cursor: mouse::Cursor,
-    ) -> mouse::Interaction {
-        let Some(position) = cursor.position_in(bounds) else {
-            return mouse::Interaction::default();
-        };
-
-        if self.fold_header_at_point(position).is_some() {
-            mouse::Interaction::Pointer
-        } else if position.x >= self.gutter_width() {
-            mouse::Interaction::Text
-        } else {
-            mouse::Interaction::default()
         }
     }
 }
@@ -2360,164 +1972,6 @@ mod tests {
     use super::*;
     use crate::canvas_editor::{CHAR_WIDTH, FONT_SIZE, compare_floats};
     use std::cmp::Ordering;
-
-    fn editor_mouse_interaction(
-        editor: &CodeEditor,
-        bounds: Rectangle,
-        cursor: mouse::Cursor,
-    ) -> mouse::Interaction {
-        canvas::Program::<Message>::mouse_interaction(
-            editor,
-            &(),
-            bounds,
-            cursor,
-        )
-    }
-
-    #[test]
-    fn test_vim_navigation_keyboard_route_uses_dedicated_message() {
-        let mut editor = CodeEditor::new("abc", "txt").with_vim_enabled(true);
-
-        assert!(matches!(
-            editor.printable_input_message('l'),
-            Message::VimKey('l')
-        ));
-
-        let _ = editor.vim_state.parse_key('i');
-        assert!(matches!(
-            editor.printable_input_message('x'),
-            Message::CharacterInput('x')
-        ));
-
-        editor.set_vim_enabled(false);
-        assert!(matches!(
-            editor.printable_input_message('x'),
-            Message::CharacterInput('x')
-        ));
-
-        editor.set_vim_enabled(true);
-        let key = keyboard::Key::Character("r".into());
-        let message = editor
-            .handle_keyboard_shortcuts(&key, &key, &keyboard::Modifiers::CTRL)
-            .map(|action| action.into_inner().0);
-        assert!(matches!(message, Some(Some(Message::Redo))));
-    }
-
-    #[test]
-    fn test_vim_command_line_routes_enter_and_backspace() {
-        let mut editor = CodeEditor::new("abc", "txt").with_vim_enabled(true);
-        editor.request_focus();
-        editor.has_canvas_focus = true;
-        editor.focus_locked = false;
-        let _ = editor.vim_state.parse_key('/');
-
-        let backspace = editor
-            .handle_character_input(
-                &keyboard::Key::Named(keyboard::key::Named::Backspace),
-                &keyboard::Modifiers::NONE,
-                None,
-            )
-            .map(|action| action.into_inner().0);
-        assert!(matches!(backspace, Some(Some(Message::VimKey('\u{8}')))));
-
-        let enter = editor
-            .handle_character_input(
-                &keyboard::Key::Named(keyboard::key::Named::Enter),
-                &keyboard::Modifiers::NONE,
-                None,
-            )
-            .map(|action| action.into_inner().0);
-        assert!(matches!(enter, Some(Some(Message::VimKey('\n')))));
-    }
-
-    #[test]
-    fn test_vim_cursor_rendering_insert_uses_bar() {
-        let mut editor = CodeEditor::new("a", "txt").with_vim_enabled(true);
-        let _ = editor.vim_state.parse_key('i');
-
-        let size = editor.cursor_size_for_position((0, 0));
-
-        assert_eq!(compare_floats(size.width, 2.0), Ordering::Equal);
-        assert_eq!(
-            compare_floats(size.height, editor.line_height() - 4.0),
-            Ordering::Equal
-        );
-    }
-
-    #[test]
-    fn test_vim_cursor_rendering_normal_uses_ascii_block() {
-        let editor = CodeEditor::new("a", "txt").with_vim_enabled(true);
-
-        let size = editor.cursor_size_for_position((0, 0));
-
-        assert_eq!(
-            compare_floats(size.width, editor.char_width()),
-            Ordering::Equal
-        );
-    }
-
-    #[test]
-    fn test_vim_cursor_rendering_normal_uses_cjk_width() {
-        let editor = CodeEditor::new("汉", "txt").with_vim_enabled(true);
-
-        let size = editor.cursor_size_for_position((0, 0));
-
-        assert_eq!(
-            compare_floats(size.width, editor.full_char_width()),
-            Ordering::Equal
-        );
-    }
-
-    #[test]
-    fn test_vim_cursor_rendering_empty_line_has_visible_block() {
-        let editor = CodeEditor::new("", "txt").with_vim_enabled(true);
-
-        let size = editor.cursor_size_for_position((0, 0));
-
-        assert_eq!(
-            compare_floats(size.width, editor.char_width()),
-            Ordering::Equal
-        );
-        assert!(size.width > 2.0);
-    }
-
-    #[test]
-    fn test_mouse_interaction_uses_text_cursor_in_editable_area() {
-        let editor = CodeEditor::new("fn main() {}", "rs");
-        let bounds = Rectangle::new(Point::ORIGIN, Size::new(800.0, 600.0));
-        let cursor = mouse::Cursor::Available(Point::new(
-            editor.gutter_width() + 10.0,
-            10.0,
-        ));
-
-        assert_eq!(
-            editor_mouse_interaction(&editor, bounds, cursor),
-            mouse::Interaction::Text
-        );
-    }
-
-    #[test]
-    fn test_mouse_interaction_keeps_default_cursor_in_gutter_and_outside() {
-        let editor = CodeEditor::new("fn main() {}", "rs");
-        let bounds = Rectangle::new(Point::ORIGIN, Size::new(800.0, 600.0));
-
-        assert_eq!(
-            editor_mouse_interaction(
-                &editor,
-                bounds,
-                mouse::Cursor::Available(Point::new(5.0, 10.0)),
-            ),
-            mouse::Interaction::default()
-        );
-        assert_eq!(
-            editor_mouse_interaction(
-                &editor,
-                bounds,
-                mouse::Cursor::Available(Point::new(900.0, 10.0)),
-            ),
-            mouse::Interaction::default()
-        );
-    }
 
     #[test]
     fn test_calculate_segment_geometry_ascii() {
@@ -2757,400 +2211,5 @@ mod tests {
 
         // Test inverted range
         assert_eq!(validate_selection_indices(content, 3, 0), None);
-    }
-
-    #[test]
-    fn test_highlight_line_spans_covers_full_line() {
-        let syntax_set = SyntaxSet::load_defaults_newlines();
-        let syntax = syntax_set.find_syntax_plain_text();
-        let theme = syntect::highlighting::Theme::default();
-
-        let line = "fn main() {}";
-        let spans = highlight_line_spans(line, syntax, &theme, &syntax_set);
-
-        assert!(!spans.is_empty(), "expected at least one span");
-        let combined: String =
-            spans.iter().map(|(_, text)| text.as_str()).collect();
-        assert_eq!(combined, line, "spans must cover the entire line");
-    }
-
-    #[test]
-    fn test_highlighted_line_cached_reuses_until_invalidated() {
-        let editor = CodeEditor::new("fn main() {}\nlet x = 1;", "rs");
-        let syntax_set = SyntaxSet::load_defaults_newlines();
-        let syntax = syntax_set.find_syntax_plain_text();
-        let theme = syntect::highlighting::Theme::default();
-
-        let first =
-            editor.highlighted_line_cached(0, syntax, &theme, &syntax_set);
-        let second =
-            editor.highlighted_line_cached(0, syntax, &theme, &syntax_set);
-        assert!(
-            Rc::ptr_eq(&first, &second),
-            "a cached line should be reused as the same Rc"
-        );
-
-        editor.invalidate_highlight_from(0);
-        let third =
-            editor.highlighted_line_cached(0, syntax, &theme, &syntax_set);
-        assert!(
-            !Rc::ptr_eq(&first, &third),
-            "invalidation should force the line to be recomputed"
-        );
-    }
-
-    #[test]
-    fn test_select_all_delete_paste_reflects_new_content_in_highlight_cache() {
-        let mut editor = CodeEditor::new("{\"a\": 1}", "json");
-        editor.request_focus();
-        editor.has_canvas_focus = true;
-        editor.focus_locked = false;
-
-        let syntax_set = SyntaxSet::load_defaults_newlines();
-        let syntax = syntax_set
-            .find_syntax_by_extension("json")
-            .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
-        let theme = syntect::highlighting::Theme::default();
-
-        // Prime the cache exactly like a real render would.
-        let _ = editor.highlighted_line_cached(0, syntax, &theme, &syntax_set);
-
-        let _ = editor.update(&Message::SelectAll);
-        let _ = editor.update(&Message::DeleteSelection);
-        let _ = editor.update(&Message::Paste("{\"b\": 2}".to_string()));
-
-        let spans = editor.highlighted_line_cached(0, syntax, &theme, &syntax_set);
-        let combined: String =
-            spans.iter().map(|(_, text)| text.as_str()).collect();
-
-        assert_eq!(editor.buffer.line(0), "{\"b\": 2}");
-        assert_eq!(combined, editor.buffer.line(0));
-        assert!(spans.len() > 1, "expected multiple syntax-highlighted spans, not a single flat fallback span");
-    }
-
-    #[test]
-    fn test_edit_resets_stale_scroll_window_so_content_stays_visible() {
-        // Build a long document and simulate having scrolled deep into it,
-        // which sets a non-trivial `cache_window_start_line..cache_window_end_line`
-        // (see `handle_scrolled_msg`). Nothing resets that window on edits —
-        // only another Scrolled message does.
-        let long_content: String =
-            (0..20).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
-        let mut editor = CodeEditor::new(&long_content, "txt");
-        editor.request_focus();
-        editor.has_canvas_focus = true;
-        editor.focus_locked = false;
-
-        // Simulate a scroll deep into the 20-line document.
-        editor.cache_window_start_line = 10;
-        editor.cache_window_end_line = 18;
-
-        // Now select-all, delete, and type much shorter content (like
-        // clearing a request body and typing a new one).
-        let _ = editor.update(&Message::SelectAll);
-        let _ = editor.update(&Message::DeleteSelection);
-        let _ = editor.update(&Message::CharacterInput('x'));
-        let _ = editor.update(&Message::CharacterInput('y'));
-        let _ = editor.update(&Message::CharacterInput('z'));
-        assert_eq!(editor.buffer.line(0), "xyz");
-
-        // Replicate exactly the windowing logic `draw()` uses to pick which
-        // visual lines to actually render.
-        let visual_lines = editor.visual_lines_cached(800.0);
-        let (start_idx, end_idx) =
-            if editor.cache_window_end_line > editor.cache_window_start_line {
-                let s = editor.cache_window_start_line.min(visual_lines.len());
-                let e = editor.cache_window_end_line.min(visual_lines.len());
-                (s, e)
-            } else {
-                (0, visual_lines.len())
-            };
-
-        assert!(
-            start_idx < end_idx && end_idx <= visual_lines.len() && start_idx < visual_lines.len(),
-            "render window ({start_idx}..{end_idx}) does not cover any of the \
-             {} actual visual line(s) after the document shrank — the typed \
-             text would render as blank",
-            visual_lines.len()
-        );
-    }
-
-    #[test]
-    fn test_fresh_editor_select_all_delete_type_renders_correctly() {
-        // No manual window tampering here at all — this is a brand-new
-        // editor exactly as `make_code_editor` builds one in rustman, that
-        // has never been scrolled.
-        let mut editor = CodeEditor::new(
-            "{\n  \"a\": 1,\n  \"b\": 2\n}",
-            "json",
-        );
-        editor.set_font(iced::Font::MONOSPACE);
-        editor.set_font_size(12.0, true);
-        editor.set_line_height(18.5);
-        editor.request_focus();
-        editor.has_canvas_focus = true;
-        editor.focus_locked = false;
-
-        let _ = editor.update(&Message::SelectAll);
-        let _ = editor.update(&Message::Delete);
-        let _ = editor.update(&Message::CharacterInput('x'));
-        let _ = editor.update(&Message::CharacterInput('y'));
-        let _ = editor.update(&Message::CharacterInput('z'));
-
-        let visual_lines = editor.visual_lines_cached(800.0);
-        let (start_idx, end_idx) =
-            if editor.cache_window_end_line > editor.cache_window_start_line {
-                let s = editor.cache_window_start_line.min(visual_lines.len());
-                let e = editor.cache_window_end_line.min(visual_lines.len());
-                (s, e)
-            } else {
-                (0, visual_lines.len())
-            };
-
-        assert_eq!(editor.buffer.line(0), "xyz");
-        assert!(start_idx < end_idx, "render range is empty!");
-    }
-
-    #[test]
-    fn test_edit_clamps_stale_viewport_scroll_after_document_shrinks() {
-        // Simulate having auto-scrolled deep into a longer document (the
-        // cursor was down near line 19 of 20, so `scroll_to_cursor` would
-        // have pushed `viewport_scroll` down accordingly) before clearing it.
-        let long_content: String =
-            (0..20).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
-        let mut editor = CodeEditor::new(&long_content, "txt");
-        editor.set_line_height(18.5);
-        editor.request_focus();
-        editor.has_canvas_focus = true;
-        editor.focus_locked = false;
-
-        editor.viewport_height = 200.0;
-        editor.viewport_scroll = 300.0; // deep into the 20-line document
-
-        let _ = editor.update(&Message::SelectAll);
-        let _ = editor.update(&Message::DeleteSelection);
-        let _ = editor.update(&Message::CharacterInput('x'));
-        let _ = editor.update(&Message::CharacterInput('y'));
-        let _ = editor.update(&Message::CharacterInput('z'));
-        assert_eq!(editor.buffer.line(0), "xyz");
-
-        let visual_lines = editor.visual_lines_cached(editor.viewport_width);
-        let first_visible_line =
-            (editor.viewport_scroll / editor.line_height).floor() as usize;
-
-        assert!(
-            first_visible_line < visual_lines.len(),
-            "viewport_scroll ({}) still points past the document's only \
-             {} visual line(s) after it shrank — the typed text would \
-             render as blank",
-            editor.viewport_scroll,
-            visual_lines.len()
-        );
-    }
-
-    #[test]
-    fn test_select_all_delete_type_preserves_syntax_highlighting() {
-        use crate::theme::Style;
-
-        // Mirror rustman's real setup as closely as possible: real font,
-        // real line height, real theme with a named syntax theme override.
-        let mut editor = CodeEditor::new("{\"a\": 1}", "json");
-        editor.set_font(iced::Font::MONOSPACE);
-        editor.set_font_size(12.0, true);
-        editor.set_line_height(18.5);
-        editor.request_focus();
-        editor.has_canvas_focus = true;
-        editor.focus_locked = false;
-
-        let style = Style {
-            background: Color::from_rgb(0.1, 0.1, 0.1),
-            text_color: Color::WHITE,
-            gutter_background: Color::from_rgb(0.1, 0.1, 0.1),
-            gutter_border: Color::from_rgb(0.2, 0.2, 0.2),
-            line_number_color: Color::from_rgb(0.5, 0.5, 0.5),
-            scrollbar_background: Color::TRANSPARENT,
-            scroller_color: Color::from_rgb(0.5, 0.5, 0.5),
-            current_line_highlight: Color::from_rgba(1.0, 1.0, 1.0, 0.1),
-            whitespace_color: Color::from_rgba(1.0, 1.0, 1.0, 0.4),
-            selection_color: Color::from_rgba(0.3, 0.5, 0.8, 0.3),
-            syntax_theme_name: Some("base16-mocha.dark"),
-        };
-        editor.set_theme(style);
-
-        let syntax_set = SYNTAX_SET.get_or_init(SyntaxSet::load_defaults_newlines);
-        let theme_set = THEME_SET.get_or_init(ThemeSet::load_defaults);
-        eprintln!(
-            "does 'base16-mocha.dark' exist in default theme set? {}",
-            theme_set.themes.contains_key("base16-mocha.dark")
-        );
-        let syntax = syntax_set
-            .find_syntax_by_extension("json")
-            .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
-        let bg = editor.style.background;
-        let bg_is_dark = bg.r * 0.299 + bg.g * 0.587 + bg.b * 0.114 < 0.5;
-        let preferred: &[&str] = if let Some(name) = &editor.style.syntax_theme_name {
-            std::slice::from_ref(name)
-        } else if bg_is_dark {
-            &["base16-mocha.dark", "base16-ocean.dark", "Solarized (dark)"]
-        } else {
-            &["InspiredGitHub", "Solarized (light)"]
-        };
-        let syntax_theme = preferred
-            .iter()
-            .find_map(|name| theme_set.themes.get(*name))
-            .or_else(|| theme_set.themes.values().next())
-            .unwrap();
-
-        // Prime cache like a real render.
-        let _ = editor.highlighted_line_cached(0, syntax, syntax_theme, syntax_set);
-
-        let _ = editor.update(&Message::SelectAll);
-        let _ = editor.update(&Message::Delete);
-        let _ = editor.update(&Message::CharacterInput('{'));
-        let _ = editor.update(&Message::CharacterInput('"'));
-        let _ = editor.update(&Message::CharacterInput('a'));
-        let _ = editor.update(&Message::CharacterInput('"'));
-        let _ = editor.update(&Message::CharacterInput(':'));
-        let _ = editor.update(&Message::CharacterInput('1'));
-        let _ = editor.update(&Message::CharacterInput('}'));
-
-        let spans = editor.highlighted_line_cached(0, syntax, syntax_theme, syntax_set);
-        let colors: std::collections::HashSet<_> =
-            spans.iter().map(|(c, _)| format!("{:?}", c)).collect();
-        eprintln!(
-            "buffer={:?} span_count={} distinct_colors={} spans={:?}",
-            editor.buffer.line(0),
-            spans.len(),
-            colors.len(),
-            spans
-        );
-
-        assert_eq!(editor.buffer.line(0), "{\"a\":1}");
-        assert!(
-            colors.len() > 1,
-            "expected multiple distinct colors (real syntax highlighting), got only {} distinct color(s): {:?}",
-            colors.len(),
-            spans
-        );
-    }
-
-    #[test]
-    fn test_highlight_budget_uses_plain_fallback_without_scanning_to_target() {
-        let editor = CodeEditor::new("zero\none\ntwo\nthree\nfour", "txt");
-        let syntax_set = SyntaxSet::load_defaults_newlines();
-        let syntax = syntax_set.find_syntax_plain_text();
-        let theme = syntect::highlighting::Theme::default();
-        editor.highlight_lines_remaining.set(2);
-
-        let spans =
-            editor.highlighted_line_cached(4, syntax, &theme, &syntax_set);
-        let combined: String =
-            spans.iter().map(|(_, text)| text.as_str()).collect();
-
-        assert_eq!(combined, "four");
-        assert_eq!(
-            editor
-                .highlight_cache
-                .borrow()
-                .as_ref()
-                .map(super::super::HighlightCache::valid_len),
-            Some(2)
-        );
-        assert_eq!(editor.highlight_lines_remaining.get(), 0);
-    }
-
-    #[test]
-    fn test_highlighted_line_cached_handles_multiline_comments() {
-        let syntax_set = SyntaxSet::load_defaults_newlines();
-        let syntax = syntax_set
-            .find_syntax_by_extension("rs")
-            .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
-        let theme = ThemeSet::load_defaults()
-            .themes
-            .get("base16-ocean.dark")
-            .cloned()
-            .unwrap_or_default();
-
-        // Line index 2 ("still inside") sits within a `/* ... */` block.
-        let code = "let a = 1;\n/* open\nstill inside\n*/\nlet b = 2;";
-        let editor = CodeEditor::new(code, "rs");
-
-        // Sequential highlighting resumes inside the block comment.
-        let sequential =
-            editor.highlighted_line_cached(2, syntax, &theme, &syntax_set);
-        // Independent highlighting wrongly treats the line as ordinary code.
-        let independent = highlight_line_spans(
-            editor.buffer.line(2),
-            syntax,
-            &theme,
-            &syntax_set,
-        );
-
-        let sequential_color = sequential.first().map(|(color, _)| *color);
-        let independent_color = independent.first().map(|(color, _)| *color);
-        assert!(sequential_color.is_some());
-        assert!(independent_color.is_some());
-        assert_ne!(
-            sequential_color, independent_color,
-            "a line inside a block comment must be colored as a comment"
-        );
-    }
-
-    #[test]
-    fn test_expand_tabs_visible_spaces() {
-        assert_eq!(expand_tabs_visible("a b", 4), "a·b");
-        assert_eq!(expand_tabs_visible("  x  ", 4), "··x··");
-    }
-
-    #[test]
-    fn test_expand_tabs_visible_tabs() {
-        // tab_width = 4: '\t' → '→' + 3 × '·'
-        assert_eq!(expand_tabs_visible("\t", 4), "→···");
-        assert_eq!(expand_tabs_visible("a\tb", 4), "a→···b");
-    }
-
-    #[test]
-    fn test_expand_tabs_visible_no_whitespace() {
-        assert_eq!(expand_tabs_visible("hello", 4), "hello");
-    }
-
-    #[test]
-    fn test_split_whitespace_segments_mixed() {
-        let segs = split_whitespace_segments("a·b");
-        assert_eq!(segs, vec![(false, "a"), (true, "·"), (false, "b")]);
-    }
-
-    #[test]
-    fn test_split_whitespace_segments_leading_ws() {
-        let segs = split_whitespace_segments("··x");
-        assert_eq!(segs, vec![(true, "··"), (false, "x")]);
-    }
-
-    #[test]
-    fn test_split_whitespace_segments_all_ws() {
-        let segs = split_whitespace_segments("···");
-        assert_eq!(segs, vec![(true, "···")]);
-    }
-
-    #[test]
-    fn test_split_whitespace_segments_empty() {
-        let segs = split_whitespace_segments("");
-        assert!(segs.is_empty());
-    }
-
-    #[test]
-    fn test_command_g_opens_goto_line_dialog() {
-        let editor = CodeEditor::new("one\ntwo", "rs");
-        let key = keyboard::Key::Character("g".into());
-
-        let message = editor
-            .handle_keyboard_shortcuts(
-                &key,
-                &key,
-                &keyboard::Modifiers::COMMAND,
-            )
-            .map(|action| action.into_inner().0);
-
-        assert!(matches!(message, Some(Some(Message::OpenGotoLine))));
     }
 }

@@ -49,14 +49,7 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
                     tokio::task::spawn_blocking(move || {
                         vcs::clone_repo(&url, &dest)?;
                         let collections = vcs::load_collections_from(&dest)?;
-                        let global_script = vcs::read_global_script(&dest);
-                        Ok::<RepoAdd, String>(RepoAdd {
-                            name,
-                            path: dest,
-                            remote_url: Some(url),
-                            collections,
-                            global_script,
-                        })
+                        Ok::<RepoAdd, String>(RepoAdd { name, path: dest, remote_url: Some(url), collections })
                     })
                     .await
                     .map_err(|e| e.to_string())
@@ -80,8 +73,7 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
                     tokio::task::spawn_blocking(move || {
                         let collections = vcs::load_collections_from(&path)?;
                         let remote_url = vcs::remote_url(&path);
-                        let global_script = vcs::read_global_script(&path);
-                        Ok::<RepoAdd, String>(RepoAdd { name, path, remote_url, collections, global_script })
+                        Ok::<RepoAdd, String>(RepoAdd { name, path, remote_url, collections })
                     })
                     .await
                     .map_err(|e| e.to_string())
@@ -91,11 +83,10 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
             );
         }
         GitMsg::RepoAdded(payload) => {
-            let RepoAddPayload { name, path, remote_url, collections, global_script } = *payload;
+            let RepoAddPayload { name, path, remote_url, collections } = *payload;
             let count = collections.len();
             let ids: Vec<String> = collections.iter().map(|(c, _)| c.id.clone()).collect();
             apply_sync(state, collections);
-            apply_global_script(state, global_script);
             let id = uuid::Uuid::new_v4().to_string();
             state.git_repos.push(GitRepo {
                 id: id.clone(),
@@ -141,8 +132,6 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
             let repo_path = active_path(state);
             let collections = collections_for_active(state);
             let requests = state.requests.clone();
-            let global_pre_request_script = state.global_pre_request_editor.text();
-            let global_test_script = state.global_test_editor.text();
             let identity = match vcs::resolve_identity(&repo_path) {
                 Some(id) => id,
                 None => {
@@ -156,13 +145,7 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
             state.git_commit_message.clear();
             state.git_busy = true;
             return blocking(move || {
-                vcs::write_working_tree(
-                    &repo_path,
-                    &collections,
-                    &requests,
-                    &global_pre_request_script,
-                    &global_test_script,
-                )?;
+                vcs::write_working_tree(&repo_path, &collections, &requests)?;
                 vcs::commit(&repo_path, &identity, &message)?;
                 Ok(format!("Committed as {} <{}>", identity.name, identity.email))
             });
@@ -213,8 +196,7 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
             return sync_task(repo_id, move || {
                 let summary = vcs::pull(&repo_path)?;
                 let collections = vcs::load_collections_from(&repo_path)?;
-                let global_script = vcs::read_global_script(&repo_path);
-                Ok((collections, global_script, format!("Pull: {summary}")))
+                Ok((collections, format!("Pull: {summary}")))
             });
         }
         GitMsg::SwitchBranch(name) => {
@@ -224,8 +206,7 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
             return sync_task(repo_id, move || {
                 vcs::checkout_branch(&repo_path, &name)?;
                 let collections = vcs::load_collections_from(&repo_path)?;
-                let global_script = vcs::read_global_script(&repo_path);
-                Ok((collections, global_script, format!("Switched to {name}")))
+                Ok((collections, format!("Switched to {name}")))
             });
         }
         GitMsg::AskRestore(id) => {
@@ -242,8 +223,7 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
             state.git_busy = true;
             return sync_task(repo_id, move || {
                 let collections = vcs::read_commit_collections(&repo_path, &id)?;
-                let global_script = vcs::read_commit_global_script(&repo_path, &id);
-                Ok((collections, global_script, format!("Restored {short}")))
+                Ok((collections, format!("Restored {short}")))
             });
         }
         GitMsg::ToggleDiff => {
@@ -273,7 +253,7 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
             });
         }
         GitMsg::Synced(payload) => {
-            let SyncPayload { repo_id, collections, label, global_script } = *payload;
+            let SyncPayload { repo_id, collections, label } = *payload;
             let ids: Vec<String> = collections.iter().map(|(c, _)| c.id.clone()).collect();
 
             let incoming: HashSet<&String> = ids.iter().collect();
@@ -284,7 +264,6 @@ pub(super) fn handle(state: &mut AppState, msg: GitMsg) -> Task<Message> {
             }
 
             apply_sync(state, collections);
-            apply_global_script(state, global_script);
             resync_open_tabs(state);
             if let Some(repo) = state.git_repos.iter_mut().find(|r| r.id == repo_id) {
                 repo.collection_ids = ids;
@@ -312,7 +291,6 @@ struct RepoAdd {
     path: PathBuf,
     remote_url: Option<String>,
     collections: Vec<(Collection, Vec<SavedRequest>)>,
-    global_script: Option<(String, String)>,
 }
 
 fn repo_added(res: Result<RepoAdd, String>) -> Message {
@@ -322,7 +300,6 @@ fn repo_added(res: Result<RepoAdd, String>) -> Message {
             path: add.path,
             remote_url: add.remote_url,
             collections: add.collections,
-            global_script: add.global_script,
         }))),
         Err(e) => Message::Git(GitMsg::Error(e)),
     }
@@ -362,23 +339,12 @@ fn refresh_task(state: &AppState) -> Task<Message> {
     let active = state.git_active_repo.clone();
     let active_collections = collections_for_active(state);
     let requests = state.requests.clone();
-    let global_pre_request_script = state.global_pre_request_editor.text();
-    let global_test_script = state.global_test_editor.text();
     Task::perform(
         async move {
-            tokio::task::spawn_blocking(move || {
-                load_view(
-                    repos,
-                    active,
-                    active_collections,
-                    requests,
-                    global_pre_request_script,
-                    global_test_script,
-                )
-            })
-            .await
-            .map_err(|e| e.to_string())
-            .and_then(|r| r)
+            tokio::task::spawn_blocking(move || load_view(repos, active, active_collections, requests))
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|r| r)
         },
         |res| match res {
             Ok(view) => Message::Git(GitMsg::Loaded(view)),
@@ -392,8 +358,6 @@ fn load_view(
     active: String,
     active_collections: Vec<Collection>,
     requests: std::collections::HashMap<String, Vec<SavedRequest>>,
-    global_pre_request_script: String,
-    global_test_script: String,
 ) -> Result<Box<GitView>, String> {
     let mut summaries = Vec::new();
     let mut status = None;
@@ -401,13 +365,7 @@ fn load_view(
     let mut log = Vec::new();
     for repo in &repos {
         if repo.id == active {
-            let _ = vcs::write_working_tree(
-                &repo.path,
-                &active_collections,
-                &requests,
-                &global_pre_request_script,
-                &global_test_script,
-            );
+            let _ = vcs::write_working_tree(&repo.path, &active_collections, &requests);
         }
         match vcs::status(&repo.path) {
             Ok(st) => {
@@ -454,11 +412,9 @@ where
     )
 }
 
-type SyncResult = (Vec<(Collection, Vec<SavedRequest>)>, Option<(String, String)>, String);
-
 fn sync_task<F>(repo_id: String, op: F) -> Task<Message>
 where
-    F: FnOnce() -> Result<SyncResult, String> + Send + 'static,
+    F: FnOnce() -> Result<(Vec<(Collection, Vec<SavedRequest>)>, String), String> + Send + 'static,
 {
     Task::perform(
         async move {
@@ -468,11 +424,10 @@ where
                 .and_then(|r| r)
         },
         move |res| match res {
-            Ok((collections, global_script, label)) => Message::Git(GitMsg::Synced(Box::new(SyncPayload {
+            Ok((collections, label)) => Message::Git(GitMsg::Synced(Box::new(SyncPayload {
                 repo_id: repo_id.clone(),
                 collections,
                 label,
-                global_script,
             }))),
             Err(e) => Message::Git(GitMsg::Error(e)),
         },
@@ -559,16 +514,6 @@ fn apply_sync(state: &mut AppState, collections: Vec<(Collection, Vec<SavedReque
         }
         state.requests.insert(collection.id.clone(), requests);
     }
-}
-
-/// Applies a repo's saved global script (if it has one) to live app state —
-/// leaves the current global script alone if the repo has none saved, same
-/// as `apply_sync` only ever adds/updates collections rather than wiping
-/// ones a different repo owns.
-fn apply_global_script(state: &mut AppState, global_script: Option<(String, String)>) {
-    let Some((pre_request, test)) = global_script else { return };
-    state.global_pre_request_editor = iced::widget::text_editor::Content::with_text(&pre_request);
-    state.global_test_editor = iced::widget::text_editor::Content::with_text(&test);
 }
 
 #[cfg(test)]

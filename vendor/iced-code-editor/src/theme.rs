@@ -19,8 +19,6 @@ pub struct Style {
     pub scroller_color: Color,
     /// Highlight color for the current line where cursor is located
     pub current_line_highlight: Color,
-    /// Color for visible whitespace characters (spaces as `·`, tabs as `→`)
-    pub whitespace_color: Color,
     /// Background color of selected text
     pub selection_color: Color,
     /// Preferred syntect syntax highlighting theme name.
@@ -131,12 +129,6 @@ pub fn from_iced_theme(theme: &iced::Theme) -> Style {
         if is_dark { 0.15 } else { 0.25 },
     );
 
-    let whitespace_color = if is_dark {
-        dim_color(text_color, 0.65)
-    } else {
-        blend_colors(text_color, background, 0.65)
-    };
-
     // Text selection: primary color wash
     let selection_color = with_alpha(
         palette.primary.weak.color,
@@ -152,7 +144,6 @@ pub fn from_iced_theme(theme: &iced::Theme) -> Style {
         scrollbar_background,
         scroller_color,
         current_line_highlight,
-        whitespace_color,
         selection_color,
         syntax_theme_name: None,
     }

@@ -14,26 +14,16 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
         (ResponseTab::Body, "Body"),
         (ResponseTab::Headers, "Headers"),
         (ResponseTab::Cookies, "Cookies"),
-        (ResponseTab::Tests, "Tests"),
     ];
 
     let btns: Vec<Element<Message>> = tabs
         .iter()
         .map(|(t, label)| {
             let active = &tab.active_response_tab == t;
-            let (badge, dot) = if *t == ResponseTab::Tests && !tab.test_results.is_empty() {
-                let failed = tab.test_results.iter().any(|r| !r.passed);
-                (
-                    Some(tab.test_results.len()),
-                    Some(if failed { Palette::ERROR } else { Palette::SUCCESS }),
-                )
-            } else {
-                (None, None)
-            };
             pill_tab(
                 label,
-                badge,
-                dot,
+                None,
+                None,
                 active,
                 Message::Response(ResponseMsg::TabSelected(t.clone())),
             )

@@ -11,9 +11,8 @@ use web_time::Instant;
 
 use super::measure_text_width;
 
-use super::vim::VimMotion;
 use super::wrapping::{VisualLine, WrappingCalculator};
-use super::{ArrowDirection, CodeEditor, Message, cursor_set};
+use super::{ArrowDirection, CodeEditor, Message};
 use crate::text_buffer::TextBuffer;
 
 /// Computes the next logical `(line, col)` position for a cursor at `pos` moving in `direction`.
@@ -87,261 +86,6 @@ fn compute_next_position(
 }
 
 impl CodeEditor {
-    /// Clamps a logical position to a character on which Normal/Visual mode can
-    /// land. Non-empty lines use their final character as the maximum column;
-    /// empty lines retain column zero.
-    pub(crate) fn vim_normal_position(
-        &self,
-        position: (usize, usize),
-    ) -> (usize, usize) {
-        let line = position.0.min(self.buffer.line_count().saturating_sub(1));
-        let line_len = self.buffer.line_len(line);
-        let max_col = line_len.saturating_sub(1);
-        (line, position.1.min(max_col))
-    }
-
-    fn vim_position_after(&self, position: (usize, usize)) -> (usize, usize) {
-        let line_len = self.buffer.line_len(position.0);
-        if line_len == 0 {
-            if position.0 + 1 < self.buffer.line_count() {
-                (position.0 + 1, 0)
-            } else {
-                position
-            }
-        } else {
-            (position.0, (position.1 + 1).min(line_len))
-        }
-    }
-
-    /// Projects an inclusive Vim Visual selection into the editor's half-open
-    /// cursor selection representation.
-    pub(crate) fn apply_vim_visual_selection(
-        &mut self,
-        anchor: (usize, usize),
-        active: (usize, usize),
-        linewise: bool,
-    ) {
-        let anchor = self.vim_normal_position(anchor);
-        let active = self.vim_normal_position(active);
-        let cursor = if linewise {
-            let start_line = anchor.0.min(active.0);
-            let end_line = anchor.0.max(active.0);
-            let end = if end_line + 1 < self.buffer.line_count() {
-                (end_line + 1, 0)
-            } else {
-                (end_line, self.buffer.line_len(end_line))
-            };
-            cursor_set::Cursor { position: end, anchor: Some((start_line, 0)) }
-        } else if active >= anchor {
-            cursor_set::Cursor {
-                position: self.vim_position_after(active),
-                anchor: Some(anchor),
-            }
-        } else {
-            cursor_set::Cursor {
-                position: active,
-                anchor: Some(self.vim_position_after(anchor)),
-            }
-        };
-        self.cursors.set_single(cursor.position);
-        self.cursors.primary_mut().anchor = cursor.anchor;
-        self.overlay_cache.clear();
-    }
-
-    /// Resolves one Vim motion from a character position, including counted
-    /// visible-line movement and Unicode-aware word boundaries.
-    pub(crate) fn vim_motion_target(
-        &self,
-        start: (usize, usize),
-        motion: VimMotion,
-        count: usize,
-    ) -> (usize, usize) {
-        let mut position = self.vim_normal_position(start);
-        let count = count.max(1);
-
-        match motion {
-            VimMotion::Left => {
-                position.1 = position.1.saturating_sub(count);
-            }
-            VimMotion::Right => {
-                let max_col =
-                    self.buffer.line_len(position.0).saturating_sub(1);
-                position.1 = position.1.saturating_add(count).min(max_col);
-            }
-            VimMotion::Up | VimMotion::Down => {
-                let direction = if motion == VimMotion::Up {
-                    ArrowDirection::Up
-                } else {
-                    ArrowDirection::Down
-                };
-                let visual_lines =
-                    self.visual_lines_cached(self.viewport_width);
-                for _ in 0..count {
-                    let Some(next) = compute_next_position(
-                        position,
-                        direction,
-                        &self.buffer,
-                        &visual_lines,
-                    ) else {
-                        break;
-                    };
-                    position = self.vim_normal_position(next);
-                }
-            }
-            VimMotion::WordForward
-            | VimMotion::WordBackward
-            | VimMotion::WordEnd => {
-                for _ in 0..count {
-                    position = self.vim_word_motion(position, motion);
-                }
-            }
-            VimMotion::LineStart => position.1 = 0,
-            VimMotion::FirstNonBlank => {
-                position.1 = self
-                    .buffer
-                    .line(position.0)
-                    .chars()
-                    .position(|ch| !ch.is_whitespace())
-                    .unwrap_or(0);
-            }
-            VimMotion::LineEnd => {
-                position.1 = self.buffer.line_len(position.0).saturating_sub(1);
-            }
-            VimMotion::DocumentStart => {
-                let line = count
-                    .saturating_sub(1)
-                    .min(self.buffer.line_count().saturating_sub(1));
-                position = (line, 0);
-            }
-            VimMotion::DocumentEnd => {
-                let line = if count > 1 {
-                    count
-                        .saturating_sub(1)
-                        .min(self.buffer.line_count().saturating_sub(1))
-                } else {
-                    self.buffer.line_count().saturating_sub(1)
-                };
-                position = (line, 0);
-            }
-        }
-
-        self.vim_normal_position(position)
-    }
-
-    fn vim_word_motion(
-        &self,
-        start: (usize, usize),
-        motion: VimMotion,
-    ) -> (usize, usize) {
-        #[derive(Clone, Copy, PartialEq, Eq)]
-        enum Class {
-            Space,
-            Word,
-            Punctuation,
-        }
-
-        fn class(ch: char) -> Class {
-            if ch.is_whitespace() {
-                Class::Space
-            } else if ch.is_alphanumeric() || ch == '_' {
-                Class::Word
-            } else {
-                Class::Punctuation
-            }
-        }
-
-        let mut chars = Vec::new();
-        for line in 0..self.buffer.line_count() {
-            chars.extend(
-                self.buffer
-                    .line(line)
-                    .chars()
-                    .enumerate()
-                    .map(|(col, ch)| ((line, col), ch)),
-            );
-            if line + 1 < self.buffer.line_count() {
-                chars.push(((line, self.buffer.line_len(line)), '\n'));
-            }
-        }
-        if chars.is_empty() {
-            return (0, 0);
-        }
-
-        let insertion =
-            chars.partition_point(|(position, _)| *position < start);
-        let exact = insertion < chars.len() && chars[insertion].0 == start;
-
-        match motion {
-            VimMotion::WordForward => {
-                let mut index = insertion;
-                if exact {
-                    let current_class = class(chars[index].1);
-                    if current_class == Class::Space {
-                        while index < chars.len()
-                            && class(chars[index].1) == Class::Space
-                        {
-                            index += 1;
-                        }
-                    } else {
-                        while index < chars.len()
-                            && class(chars[index].1) == current_class
-                        {
-                            index += 1;
-                        }
-                        while index < chars.len()
-                            && class(chars[index].1) == Class::Space
-                        {
-                            index += 1;
-                        }
-                    }
-                }
-                chars[index.min(chars.len() - 1)].0
-            }
-            VimMotion::WordBackward => {
-                let mut index = insertion.saturating_sub(1);
-                while index > 0 && class(chars[index].1) == Class::Space {
-                    index -= 1;
-                }
-                let target_class = class(chars[index].1);
-                while index > 0 && class(chars[index - 1].1) == target_class {
-                    index -= 1;
-                }
-                chars[index].0
-            }
-            VimMotion::WordEnd => {
-                let mut index = insertion.min(chars.len() - 1);
-                if exact {
-                    let current_class = class(chars[index].1);
-                    if current_class != Class::Space
-                        && index + 1 < chars.len()
-                        && class(chars[index + 1].1) == current_class
-                    {
-                        while index + 1 < chars.len()
-                            && class(chars[index + 1].1) == current_class
-                        {
-                            index += 1;
-                        }
-                        return chars[index].0;
-                    }
-                    index = (index + 1).min(chars.len() - 1);
-                }
-                while index + 1 < chars.len()
-                    && class(chars[index].1) == Class::Space
-                {
-                    index += 1;
-                }
-                let target_class = class(chars[index].1);
-                while index + 1 < chars.len()
-                    && class(chars[index + 1].1) == target_class
-                {
-                    index += 1;
-                }
-                chars[index].0
-            }
-            _ => start,
-        }
-    }
-
     /// Sets the cursor position to the specified line and column.
     ///
     /// This method ensures the new position is within the bounds of the text buffer.
@@ -480,28 +224,6 @@ impl CodeEditor {
         }
     }
 
-    /// Classifies a left-button press as a single/double/triple click.
-    ///
-    /// Consecutive presses count up as long as each one lands within 400ms
-    /// otherwise the count resets to 1. Counts
-    /// wrap back to 1 after 3, so a fourth rapid click starts a fresh
-    /// single/double/triple cycle rather than being silently ignored.
-    pub(crate) fn classify_click(&self, position: Point) -> u8 {
-        let now = Instant::now();
-        let count = match self.last_click.get() {
-            Some((time, pos, count))
-                if now.duration_since(time)
-                    < std::time::Duration::from_millis(400)
-                    && pos.distance(position) < 6.0 =>
-            {
-                if count >= 3 { 1 } else { count + 1 }
-            }
-            _ => 1,
-        };
-        self.last_click.set(Some((now, position, count)));
-        count
-    }
-
     /// Returns a scroll command to make the cursor visible.
     pub(crate) fn scroll_to_cursor(&self) -> Task<Message> {
         // Reuse memoized wrapping result so repeated scroll computations do not
@@ -600,18 +322,11 @@ impl CodeEditor {
         Task::batch([vertical_task, h_task])
     }
 
-    /// Moves every cursor to a new line computed by `map_line`, clamping each
-    /// cursor's column to the new line's length, then merges overlapping
-    /// cursors and invalidates the overlay cache.
-    ///
-    /// Shared by [`page_up`](Self::page_up) and [`page_down`](Self::page_down).
-    ///
-    /// # Arguments
-    ///
-    /// * `map_line` - Maps a cursor's current line to its target line.
-    fn move_cursors_by_line(&mut self, map_line: impl Fn(usize) -> usize) {
+    /// Moves all cursors up by one page (approximately viewport height).
+    pub(crate) fn page_up(&mut self) {
+        let lines_per_page = (self.viewport_height / self.line_height) as usize;
         for cursor in self.cursors.as_mut_slice() {
-            let new_line = map_line(cursor.position.0);
+            let new_line = cursor.position.0.saturating_sub(lines_per_page);
             let line_len = self.buffer.line_len(new_line);
             cursor.position = (new_line, cursor.position.1.min(line_len));
         }
@@ -619,17 +334,17 @@ impl CodeEditor {
         self.overlay_cache.clear();
     }
 
-    /// Moves all cursors up by one page (approximately viewport height).
-    pub(crate) fn page_up(&mut self) {
-        let lines_per_page = (self.viewport_height / self.line_height) as usize;
-        self.move_cursors_by_line(|line| line.saturating_sub(lines_per_page));
-    }
-
     /// Moves all cursors down by one page (approximately viewport height).
     pub(crate) fn page_down(&mut self) {
         let lines_per_page = (self.viewport_height / self.line_height) as usize;
         let max_line = self.buffer.line_count().saturating_sub(1);
-        self.move_cursors_by_line(|line| (line + lines_per_page).min(max_line));
+        for cursor in self.cursors.as_mut_slice() {
+            let new_line = (cursor.position.0 + lines_per_page).min(max_line);
+            let line_len = self.buffer.line_len(new_line);
+            cursor.position = (new_line, cursor.position.1.min(line_len));
+        }
+        self.cursors.sort_and_merge();
+        self.overlay_cache.clear();
     }
 
     /// Handles mouse drag for text selection.

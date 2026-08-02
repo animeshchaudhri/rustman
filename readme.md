@@ -34,7 +34,7 @@ This is not a startup and I am not trying to sell you anything. It is a tool I w
 | WebSocket support | Yes | Yes | No |
 | Git for collections | Yes (local + remote) | No | Yes |
 | Command palette | Yes | Yes | Yes |
-| Pre/post scripts | Yes (own Rust language, not JS) | Yes | Yes |
+| Pre/post scripts | UI present, runner WIP | Yes | Yes |
 | Large response viewer | Yes | No | No |
 
 ## Features
@@ -45,7 +45,6 @@ This is not a startup and I am not trying to sell you anything. It is a tool I w
 - **Code editor for body and response.** A syntax highlighted, line numbered editor (the vendored iced-code-editor backed by syntect) for the request body and the response, with full text selection.
 - **File upload.** multipart/form-data with a real file picker. The file's bytes go to the server with a Content-Type guessed from the extension.
 - **All common auth types.** Bearer, Basic, API Key (header or query), Cookie, and JWT (HS256).
-- **Scripting.** Pre-request and test scripts run on a custom Rust scripting language — see below.
 - **Environment variables.** `{{variable}}` substitution from the active environment, applied to the URL, headers, query params, and the JSON or Text body.
 - **Collections and history.** Organize requests and replay them from history. Local SQLite is the source of truth.
 - **Git for collections.** A built in Source Control panel. Commit collections (they are stored as JSON), browse the log, restore any commit back into the app, make and switch branches, see the working diff, and juggle several repos. Clone, fetch, pull, and push go through your system git, so they use the SSH keys and logins you already have. SQLite stays the source of truth and git sits on top.
@@ -55,22 +54,16 @@ This is not a startup and I am not trying to sell you anything. It is a tool I w
 - **Multiple request tabs.** Work on a few requests at once.
 - **Session persistence.** Your open tabs come back next launch.
 - **Self update.** A built in updater (self-replace) grabs and swaps in new releases.
-- **Global default timeout.** One Settings-panel value applied to every request, persisted across restarts.
-
-## Scripting
-
-![Rustman Scripting](public/rustman-scripting.png)
-
-Pre-request and test scripts run on **rustman-engine**, a small scripting language built from scratch in Rust for this app — not JavaScript, no `pm.*` API, no embedded runtime. A test script's assertions land in a **Tests** tab with a selectable, copyable **Console** for anything you `print(...)`. A **Global Scripts** pair (Settings panel) runs before every request's own script and can be overridden by it, so common setup doesn't need copy-pasting into every request.
-
-Full grammar, built-ins, and a copy-pasteable **LLM prompt** that writes scripts for you: [animeshchaudhri.github.io/rustman/scripting.html](https://animeshchaudhri.github.io/rustman/scripting.html).
+- **Pre and post request scripts.** The editors are in the UI but nothing runs them yet. The test results and console panels are wired and stay empty until the runner ships.
 
 ## What works and what does not
 
 I would rather be straight with you than oversell. A few things are half done right now.
 
+- **Scripts (pre-request and test) are UI only.** You can write and save script text but nothing runs it. It does not touch the outgoing request, and the test results and console panels never fill in. A JavaScript runner is on the way.
 - **Environment variables use the active environment only.** Substitution pulls from the one active environment and hits the URL, headers, query params, and the JSON or Text body. It does not touch auth fields (tokens, keys, passwords) or form-data fields. There are no collection, global, or dynamic (`{{$guid}}`) variables, and it resolves in a single non-recursive pass. With no environment active, `{{var}}` goes out as written.
 - **Git commits are manual, and the store is two way.** No commit on save yet, but the git store does read back into the app. Restore loads a commit's collections over your current state after it asks you. Clone, fetch, pull, and push shell out to your system git. SQLite is still the source of truth.
+- **Per-request timeout is fixed at 30s.** Not configurable per request yet.
 
 ## Download
 
@@ -124,20 +117,18 @@ cargo run
 - **Collection version control.** git2 (vendored libgit2 and OpenSSL) for local commits, plus your system git for remotes.
 - **Code editor and highlighting.** The vendored [iced-code-editor](https://github.com/LuDog71FR/iced-code-editor) widget backed by syntect.
 - **Self update.** self-replace.
-- **Scripting.** [rustman-engine](vendor/rustman-engine), a small custom scripting language (own vendored crate, not JS/QuickJS) for pre-request/test scripts.
+- **Scripting.** Nothing yet. A runner is planned.
 
 ## Documentation
 
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) walks through building from source, the toolchain, the module layout, and how persistence works.
 - [docs/GIT_GUI_PLAN.md](docs/GIT_GUI_PLAN.md) covers where the git store is today and where it is going.
-- [docs/scripting.md](docs/scripting.md) (or the live version at [animeshchaudhri.github.io/rustman/scripting.html](https://animeshchaudhri.github.io/rustman/scripting.html)) is the full scripting language reference and LLM prompt.
 
 ## Thanks
 
-Rustman vendors two things under `vendor/`, so a copy of the source lives right in this repo instead of pulling from crates.io.
+Rustman vendors one dependency, which means a copy of its source lives right in this repo (under `vendor/`) and builds from there instead of from crates.io. That way I can pin it and tweak it without waiting on a release.
 
-- **[iced-code-editor](https://github.com/LuDog71FR/iced-code-editor)** by **LuDog71** is the syntax highlighted, line numbered editor behind the request body and the response viewer. It lives in [`vendor/iced-code-editor`](vendor/iced-code-editor) and it is MIT licensed, patched locally so it can be pinned and tweaked without waiting on a release. Thank you for building it.
-- **[rustman-engine](vendor/rustman-engine)** is the scripting language behind pre-request/test scripts — not a third-party crate, this one's written for Rustman itself and lives here because it isn't published to crates.io.
+- **[iced-code-editor](https://github.com/LuDog71FR/iced-code-editor)** by **LuDog71** is the syntax highlighted, line numbered editor behind the request body and the response viewer. It lives in [`vendor/iced-code-editor`](vendor/iced-code-editor) and it is MIT licensed. Thank you for building it.
 
 And the projects this whole thing stands on, [iced](https://github.com/iced-rs/iced), [reqwest](https://github.com/seanmonstar/reqwest), [tokio](https://github.com/tokio-rs/tokio), [syntect](https://github.com/trishume/syntect), [rusqlite](https://github.com/rusqlite/rusqlite), and [git2-rs](https://github.com/rust-lang/git2-rs).
 
