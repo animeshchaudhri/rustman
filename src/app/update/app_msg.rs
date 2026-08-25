@@ -7,6 +7,13 @@ use crate::jobs::JobKind;
 use crate::message::{AppMsg, FormatTarget, Message};
 use crate::services::storage;
 
+/// Largest binary response, in bytes, we will try to render a rich preview for.
+///
+/// The PDF and spreadsheet paths both decode the entire document in one go, so
+/// an oversized download would tie up a blocking worker and can exhaust memory.
+/// Past this the UI shows the plain "too large to preview" note instead.
+const PREVIEW_BYTE_LIMIT: usize = 32 * 1024 * 1024;
+
 pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
     match msg {
         AppMsg::HttpResponse { generation, result } => {
@@ -122,6 +129,20 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                         t.viewer_processing = false;
                     }
                     let kind = result.response.binary_preview_kind();
+                    // `Other` has no richer preview, so decide that before
+                    // cloning the raw bytes — an image or archive download used
+                    // to copy its whole payload here only to reach the
+                    // `Other => Task::none()` arm below and drop it again.
+                    if matches!(kind, crate::domain::response::BinaryPreviewKind::Other) {
+                        return Task::none();
+                    }
+                    // Rendering a preview must not be attempted for payloads
+                    // large enough to stall or exhaust memory: pdfium and the
+                    // spreadsheet parser both decode the whole document, and a
+                    // huge download would freeze the UI thread's job pool.
+                    if result.response.body_size > PREVIEW_BYTE_LIMIT {
+                        return Task::none();
+                    }
                     let Some(bytes) = result.response.binary_data.clone() else {
                         return Task::none();
                     };
@@ -298,10 +319,27 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 return Task::none();
             }
 
-            let html = tab.response.as_ref().map(|r| r.body.clone()).unwrap_or_default();
+            // The body is shared, not copied: this runs on a repeating timer,
+            // so cloning a multi-megabyte HTML string here (twice — once for
+            // the message, once inside the `map` closure) burned real time and
+            // allocator pressure on every tick.
+            let html: std::sync::Arc<str> = tab
+                .response
+                .as_ref()
+                .map(|r| std::sync::Arc::from(r.body.as_str()))
+                .unwrap_or_else(|| std::sync::Arc::from(""));
+            let ui_scale = state.ui_scale;
             return crate::ui::widgets::bounds_probe::find(crate::ui::response::body::HTML_PANEL_ID)
                 .map(move |bounds| {
-                    Message::App(AppMsg::HtmlPanelBounds { bounds, html: html.clone() })
+                    Message::App(AppMsg::HtmlPanelBounds {
+                        // iced reports bounds in its own scaled space; `wry`
+                        // expects window-logical pixels. Convert here so the
+                        // native child window lands in the right place at any
+                        // UI zoom (this is what broke HTML preview on scaled
+                        // Windows displays).
+                        bounds: crate::services::webview::scaled_bounds(bounds, ui_scale),
+                        html: html.clone(),
+                    })
                 });
         }
         AppMsg::HtmlPanelBounds { bounds, html } => {
@@ -312,7 +350,7 @@ pub(super) fn handle(state: &mut AppState, msg: AppMsg) -> Task<Message> {
                 return Task::none();
             }
             return iced::window::latest().and_then(move |id| {
-                crate::services::webview::ensure_created(id, bounds, html.clone())
+                crate::services::webview::ensure_created(id, bounds, html.to_string())
             });
         }
         AppMsg::Formatted { generation, tab_id, target, text } => {

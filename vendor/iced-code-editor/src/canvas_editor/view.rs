@@ -17,6 +17,16 @@ use super::wrapping::{self, WrappingCalculator};
 use super::{CodeEditor, GUTTER_WIDTH, Message};
 use std::rc::Rc;
 
+/// Width of the editor's vertical scrollbar and its thumb, in pixels.
+///
+/// Deliberately wider than iced's 10 px default: the thumb's *length* shrinks
+/// with document size and iced floors it at 2 px, so width is the only
+/// dimension left to make the control hittable on a long body.
+const SCROLLBAR_WIDTH: f32 = 12.0;
+
+/// Gap between the scrollbar and the content it scrolls.
+const SCROLLBAR_MARGIN: f32 = 2.0;
+
 impl CodeEditor {
     /// Calculates visual lines and canvas height for the editor.
     ///
@@ -46,21 +56,56 @@ impl CodeEditor {
     ) -> impl Fn(&iced::Theme, scrollable::Status) -> scrollable::Style {
         let scrollbar_bg = self.style.scrollbar_background;
         let scroller_color = self.style.scroller_color;
+        let text_color = self.style.text_color;
 
-        move |_theme, _status| scrollable::Style {
+        move |_theme, status| {
+            // Make the rail visible while the pointer is on/near it.
+            //
+            // iced lets a click anywhere on the rail jump to that position
+            // (`grab_y_scroller` treats an off-thumb press as "centre the thumb
+            // here"), which is the only usable way to navigate a long document
+            // whose thumb has collapsed to a couple of pixels. That only helps
+            // if the rail can be *seen*, and the host style leaves its
+            // background fully transparent — so surface it on interaction.
+            let (is_hovered, is_dragged) = match status {
+                scrollable::Status::Hovered { is_vertical_scrollbar_hovered, .. } => {
+                    (is_vertical_scrollbar_hovered, false)
+                }
+                scrollable::Status::Dragged { is_vertical_scrollbar_dragged, .. } => {
+                    (true, is_vertical_scrollbar_dragged)
+                }
+                _ => (false, false),
+            };
+
+            // A faint track so the clickable column is discoverable.
+            let rail_bg = if is_hovered || is_dragged {
+                Color { a: 0.10, ..text_color }
+            } else {
+                scrollbar_bg
+            };
+            // And a firmer thumb, since a short thumb needs the contrast most.
+            let thumb = if is_dragged {
+                Color { a: 0.95, ..scroller_color }
+            } else if is_hovered {
+                Color { a: 0.80, ..scroller_color }
+            } else {
+                scroller_color
+            };
+
+            scrollable::Style {
             container: container::Style {
                 background: Some(Background::Color(Color::TRANSPARENT)),
                 ..container::Style::default()
             },
             vertical_rail: scrollable::Rail {
-                background: Some(scrollbar_bg.into()),
+                background: Some(rail_bg.into()),
                 border: Border {
                     radius: 4.0.into(),
                     width: 0.0,
                     color: Color::TRANSPARENT,
                 },
                 scroller: scrollable::Scroller {
-                    background: scroller_color.into(),
+                    background: thumb.into(),
                     border: Border {
                         radius: 4.0.into(),
                         width: 0.0,
@@ -91,6 +136,7 @@ impl CodeEditor {
                 shadow: Shadow::default(),
                 icon: Color::TRANSPARENT,
             },
+            }
         }
     }
 
@@ -115,6 +161,21 @@ impl CodeEditor {
             .id(self.scrollable_id.clone())
             .width(Length::Fill)
             .height(Length::Fill)
+            .direction(scrollable::Direction::Vertical(
+                // A wide enough rail to actually hit with a pointer.
+                //
+                // iced sizes the thumb as `rail_height * (viewport / content)`
+                // and floors it at just 2 px, so with a long document the thumb
+                // collapses to a 2 px sliver that is impossible to grab (a
+                // 10,000-line body in a 400 px panel computes to ~2 px; the
+                // accessible minimum for a pointer target is ~24 px). The width
+                // is the one part of that the host can control, so make the bar
+                // a comfortable target and keep it clear of the content.
+                scrollable::Scrollbar::new()
+                    .width(SCROLLBAR_WIDTH)
+                    .scroller_width(SCROLLBAR_WIDTH)
+                    .margin(SCROLLBAR_MARGIN),
+            ))
             .on_scroll(Message::Scrolled)
             .style(self.create_scrollable_style())
     }

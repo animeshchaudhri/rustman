@@ -123,6 +123,9 @@ pub fn view(tab: &RequestTabState) -> Element<'_, Message> {
     scrollable(col)
         .width(Length::Fill)
         .height(Length::Fill)
+        .direction(iced::widget::scrollable::Direction::Vertical(
+            crate::ui::theme::grabbable_scrollbar(),
+        ))
         .style(crate::ui::theme::thin_scrollbar)
         .into()
 }

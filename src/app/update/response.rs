@@ -12,10 +12,24 @@ pub(super) fn handle(state: &mut AppState, msg: ResponseMsg) -> Task<Message> {
         }
         ResponseMsg::CopyBody => {
             let tab = state.tabs.active_tab();
-            let mut body = tab.response_editor.content();
-            if body.is_empty() {
-                body = tab.response.as_ref().map(|r| r.body.clone()).unwrap_or_default();
-            }
+            // Prefer the real response body over the editor's content: for a
+            // large response the editor only holds a clamped prefix (see
+            // `set_viewer_content`), and copying that would silently hand back
+            // truncated data. The editor is the fallback, since it is what holds
+            // the pretty-printed form the user is actually looking at.
+            let body = match tab.response.as_ref() {
+                Some(resp) if !resp.body.is_empty() && tab.response_truncated_bytes.is_some() => {
+                    resp.body.clone()
+                }
+                _ => {
+                    let editor_text = tab.response_editor.content();
+                    if editor_text.is_empty() {
+                        tab.response.as_ref().map(|r| r.body.clone()).unwrap_or_default()
+                    } else {
+                        editor_text
+                    }
+                }
+            };
             state.status_message = Some("Copied!".to_owned());
             return clipboard::write::<Message>(body);
         }

@@ -232,6 +232,9 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
     scrollable(col)
         .height(Length::Fill)
+        .direction(iced::widget::scrollable::Direction::Vertical(
+            crate::ui::theme::grabbable_scrollbar(),
+        ))
         .style(crate::ui::theme::thin_scrollbar)
         .into()
 }

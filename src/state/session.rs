@@ -17,6 +17,18 @@ pub struct AppSession {
     pub global_pre_request_script: String,
     #[serde(default)]
     pub global_test_script: String,
+    /// Accept invalid/self-signed TLS certificates (issue #40).
+    #[serde(default)]
+    pub tls_accept_invalid_certs: bool,
+    /// Offer only HTTP/1.1, avoiding servers that break on an h2 ALPN offer.
+    #[serde(default)]
+    pub tls_http1_only: bool,
+    /// Pin the handshake to TLS 1.2.
+    #[serde(default)]
+    pub tls_force_tls12: bool,
+    /// Pin the handshake to TLS 1.3.
+    #[serde(default)]
+    pub tls_force_tls13: bool,
 }
 
 fn default_timeout_ms() -> u64 { 30_000 }

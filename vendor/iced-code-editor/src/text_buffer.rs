@@ -223,6 +223,59 @@ impl TextBuffer {
         line_str.replace_range(start_byte..end_byte, new_text);
     }
 
+    /// Deletes the character range `start..end`, where each bound is a
+    /// `(line, column)` pair, in one operation.
+    ///
+    /// Callers previously deleted a multi-line range by invoking
+    /// `delete_forward` once per character. Each of those re-scans the target
+    /// line to map a char index to a byte index and, at a line boundary, merges
+    /// two lines by copying one into the other — so clearing a large selection
+    /// (as Select-All + Paste does) cost hundreds of milliseconds on the UI
+    /// thread for a multi-megabyte document. Splicing the surviving prefix and
+    /// suffix together and dropping the whole span of intervening lines at once
+    /// makes it proportional to the number of lines removed instead of the
+    /// number of characters.
+    pub fn delete_range(
+        &mut self,
+        start: (usize, usize),
+        end: (usize, usize),
+    ) {
+        let line_count = self.line_count();
+        if start >= end || start.0 >= line_count {
+            return;
+        }
+        let end = (end.0.min(line_count.saturating_sub(1)), end.1);
+
+        if start.0 == end.0 {
+            // Single line: one splice.
+            let len = end.1.saturating_sub(start.1);
+            self.replace_range(start.0, start.1, len, "");
+            return;
+        }
+
+        // Multi-line: keep the head of the first line and the tail of the last,
+        // join them, then remove every line in between (plus the last line).
+        let tail: String = {
+            let last = self.line(end.0);
+            last.chars().skip(end.1).collect()
+        };
+
+        if let Some(first) = self.line_mut(start.0) {
+            let keep = char_to_byte_index(first, start.1);
+            first.truncate(keep);
+            first.push_str(&tail);
+        }
+
+        // `line_mut` left the gap directly after `start.0`, so the lines to drop
+        // are exactly the next `end.0 - start.0` entries after the gap.
+        let to_remove = end.0 - start.0;
+        for _ in 0..to_remove {
+            if self.lines_after.pop().is_none() {
+                break;
+            }
+        }
+    }
+
     /// Returns the entire buffer content as a single string.
     #[must_use]
     #[allow(clippy::inherent_to_string)]
@@ -457,5 +510,114 @@ mod tests {
         assert_eq!(buffer.line_range_to_string(1, 3), "one\ntwo\n");
         assert_eq!(buffer.line_range_to_string(2, 4), "two\nthree");
         assert_eq!(buffer.line_range_to_string(99, 100), "");
+    }
+
+    // ── delete_range ──────────────────────────────────────────────────────
+    //
+    // This replaced a loop of per-character `delete_forward` calls, so its
+    // equivalence with that behaviour is what these pin down.
+
+    #[test]
+    fn delete_range_within_one_line() {
+        let mut buffer = TextBuffer::new("hello world");
+        buffer.delete_range((0, 5), (0, 11));
+        assert_eq!(buffer.to_string(), "hello");
+    }
+
+    #[test]
+    fn delete_range_joins_first_and_last_line() {
+        let mut buffer = TextBuffer::new("one\ntwo\nthree\nfour");
+        // From the middle of line 0 to the middle of line 2.
+        buffer.delete_range((0, 1), (2, 2));
+        assert_eq!(buffer.to_string(), "oree\nfour");
+        assert_eq!(buffer.line_count(), 2);
+    }
+
+    #[test]
+    fn delete_range_can_clear_the_whole_buffer() {
+        let text = "alpha\nbeta\ngamma";
+        let mut buffer = TextBuffer::new(text);
+        let last = buffer.line_count() - 1;
+        let last_len = buffer.line_len(last);
+        buffer.delete_range((0, 0), (last, last_len));
+        assert_eq!(buffer.to_string(), "");
+        assert_eq!(buffer.line_count(), 1);
+    }
+
+    #[test]
+    fn delete_range_handles_multibyte_text() {
+        let mut buffer = TextBuffer::new("héllo wörld\nsécond líne");
+        buffer.delete_range((0, 6), (1, 7));
+        assert_eq!(buffer.to_string(), "héllo líne");
+    }
+
+    #[test]
+    fn delete_range_ignores_empty_and_inverted_ranges() {
+        let mut buffer = TextBuffer::new("keep\nthis");
+        buffer.delete_range((0, 2), (0, 2));
+        buffer.delete_range((1, 3), (0, 1));
+        buffer.delete_range((99, 0), (100, 0));
+        assert_eq!(buffer.to_string(), "keep\nthis");
+    }
+
+    /// Deleting a whole line span must leave the lines *around* it intact —
+    /// the bulk path removes entries either side of the gap, so an off-by-one
+    /// here would silently eat a neighbour.
+    /// Deleting a whole line span must leave the lines around it intact — the
+    /// bulk path drops entries next to the gap, so an off-by-one here would
+    /// silently eat a neighbouring line.
+    #[test]
+    fn delete_range_preserves_surrounding_lines() {
+        let mut buffer = TextBuffer::new("a\nb\nc\nd\ne");
+        // Start of line 1 to start of line 3: "b" and "c" (and their newlines)
+        // go, and line 3's text is spliced onto the now-empty line 1.
+        buffer.delete_range((1, 0), (3, 0));
+
+        assert_eq!(buffer.to_string(), "a\nd\ne");
+        assert_eq!(buffer.line_count(), 3);
+        assert_eq!(buffer.line(0), "a");
+        assert_eq!(buffer.line(1), "d");
+        assert_eq!(buffer.line(2), "e");
+    }
+
+    /// Cross-check the bulk path against the per-character `delete_forward`
+    /// loop it replaced, over a spread of ranges.
+    #[test]
+    fn delete_range_matches_per_character_deletion() {
+        let text = "alpha\nbrävo\ncharlie\ndelta\necho";
+        let ranges = [
+            ((0, 0), (0, 3)),
+            ((0, 2), (1, 3)),
+            ((1, 0), (3, 0)),
+            ((0, 5), (1, 0)),
+            ((2, 4), (4, 2)),
+        ];
+
+        for (start, end) in ranges {
+            let mut bulk = TextBuffer::new(text);
+            bulk.delete_range(start, end);
+
+            // Reference: delete one character at a time, as the old code did.
+            let mut reference = TextBuffer::new(text);
+            let mut count = 0;
+            if start.0 == end.0 {
+                count += end.1 - start.1;
+            } else {
+                count += reference.line_len(start.0) - start.1 + 1;
+                for line in (start.0 + 1)..end.0 {
+                    count += reference.line_len(line) + 1;
+                }
+                count += end.1;
+            }
+            for _ in 0..count {
+                reference.delete_forward(start.0, start.1);
+            }
+
+            assert_eq!(
+                bulk.to_string(),
+                reference.to_string(),
+                "bulk delete disagreed for {start:?}..{end:?}"
+            );
+        }
     }
 }

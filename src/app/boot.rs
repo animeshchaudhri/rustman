@@ -54,13 +54,20 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
     let mut default_timeout_ms = 30_000u64;
     let mut global_pre_request_script = String::new();
     let mut global_test_script = String::new();
+    let mut tls_options = crate::services::http::TlsOptions::default();
     if let Some(sess) = session {
         theme_idx = sess.theme_idx;
         default_timeout_ms = sess.default_timeout_ms;
         global_pre_request_script = sess.global_pre_request_script.clone();
         global_test_script = sess.global_test_script.clone();
+        tls_options = crate::services::http::TlsOptions {
+            accept_invalid_certs: sess.tls_accept_invalid_certs,
+            http1_only: sess.tls_http1_only,
+            force_tls12: sess.tls_force_tls12,
+            force_tls13: sess.tls_force_tls13,
+        };
         crate::ui::theme::Palette::set_theme_idx(theme_idx);
-        use crate::state::tabs::{body_syntax, make_code_editor, RequestTabState};
+        use crate::state::tabs::{body_syntax_for, make_code_editor, RequestTabState};
         let restored: Vec<RequestTabState> = sess
             .tabs
             .into_iter()
@@ -75,7 +82,8 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
                 t.headers = snap.headers;
                 t.params = params;
                 t.body_type = snap.body_type.clone();
-                t.body_editor = make_code_editor(&snap.body, body_syntax(&snap.body_type));
+                t.body_editor =
+                    make_code_editor(&snap.body, body_syntax_for(&snap.body_type, &snap.body));
                 t.form_fields = snap.form_fields;
                 t.auth_type = snap.auth_type;
                 t.bearer_token = snap.bearer_token;
@@ -94,13 +102,6 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
                 t.saved_as = snap.saved_as;
                 t.active_request_tab = snap.active_request_tab;
                 t.active_response_tab = snap.active_response_tab;
-                // A freshly restored editor's viewport metrics start unset
-                // and only ever get corrected by a real Scrolled event — on
-                // an app relaunch (as opposed to a same-session paste/import,
-                // which the editor gets to render at least once with a real
-                // viewport before restoring more content into it) that can
-                // mean it renders blank or with stale geometry until the
-                // user happens to scroll it. Force a clean first render.
                 t.body_editor.invalidate_render_cache();
                 t.response_editor.invalidate_render_cache();
                 t.pre_request_editor.invalidate_render_cache();
@@ -185,6 +186,8 @@ pub(crate) fn init() -> (AppState, Task<Message>) {
         global_pre_request_editor: iced::widget::text_editor::Content::with_text(&global_pre_request_script),
         global_test_editor: iced::widget::text_editor::Content::with_text(&global_test_script),
         global_scripts_modal_open: false,
+        tls_options,
+        session_dirty: false,
     };
 
     let avatar_task = Task::perform(

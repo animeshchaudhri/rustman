@@ -374,17 +374,33 @@ impl Command for InsertTextCommand {
         buffer: &mut TextBuffer,
         cursor: &mut (usize, usize),
     ) {
+        // Insert one whole segment per line rather than one character at a time.
+        //
+        // The previous loop called `insert_char` for every character, and each
+        // of those re-scans the target line to turn a char index into a byte
+        // index. That made a large paste quadratic in line length with roughly
+        // one call per character: replacing a 2.7MB / 90k-line JSON body cost
+        // ~840ms on the UI thread (versus ~48ms to rebuild the buffer from
+        // scratch), which is the freeze seen after pressing Format. Splitting on
+        // '\n' and inserting each line's text in a single `replace_range` call
+        // removes both the per-character overhead and the rescanning.
         let mut current_line = self.line;
         let mut current_col = self.col;
 
-        for ch in self.text.chars() {
-            if ch == '\n' {
-                buffer.insert_newline(current_line, current_col);
-                current_line += 1;
-                current_col = 0;
-            } else {
-                buffer.insert_char(current_line, current_col, ch);
-                current_col += 1;
+        let mut segments = self.text.split('\n');
+        if let Some(first) = segments.next()
+            && !first.is_empty()
+        {
+            buffer.replace_range(current_line, current_col, 0, first);
+            current_col += first.chars().count();
+        }
+        for segment in segments {
+            buffer.insert_newline(current_line, current_col);
+            current_line += 1;
+            current_col = 0;
+            if !segment.is_empty() {
+                buffer.replace_range(current_line, 0, 0, segment);
+                current_col = segment.chars().count();
             }
         }
 
@@ -497,29 +513,13 @@ impl Command for DeleteRangeCommand {
             return;
         }
 
-        // Calculate how many characters to delete
-        let mut chars_to_delete = 0;
-        if self.start.0 == self.end.0 {
-            // Single line: just delete the characters between start and end
-            chars_to_delete = self.end.1 - self.start.1;
-        } else {
-            // Multi-line: calculate total characters including newlines
-            // First line: from start.1 to end of line
-            chars_to_delete += buffer.line_len(self.start.0) - self.start.1 + 1; // +1 for newline
-
-            // Middle lines: entire lines
-            for line_idx in (self.start.0 + 1)..self.end.0 {
-                chars_to_delete += buffer.line_len(line_idx) + 1; // +1 for newline
-            }
-
-            // Last line: from 0 to end.1
-            chars_to_delete += self.end.1;
-        }
-
-        // Delete all characters forward from start position
-        for _ in 0..chars_to_delete {
-            buffer.delete_forward(self.start.0, self.start.1);
-        }
+        // One bulk splice rather than one `delete_forward` per character.
+        //
+        // The per-character loop this replaces re-scanned the line and merged
+        // lines pairwise for every single character, so clearing a large
+        // selection (which Select-All + Paste does on every Format) blocked the
+        // UI thread for ~515ms on a 2.7MB / 90k-line body.
+        buffer.delete_range(self.start, self.end);
 
         *cursor = self.start;
     }

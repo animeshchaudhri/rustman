@@ -57,7 +57,7 @@ pub const THEMES: &[ThemeSpec] = &[
         accent: Color::from_rgb(0.541, 0.478, 1.000),
         hover: Color::from_rgb(0.102, 0.110, 0.161),
         chrome: Color::from_rgb(0.031, 0.035, 0.055),
-        syntax_theme: Some("base16-mocha.dark"),
+        syntax_theme: Some("base16-eighties.dark"),
     },
     ThemeSpec {
         name: "Amber",
@@ -93,7 +93,7 @@ pub const THEMES: &[ThemeSpec] = &[
         accent: Color::from_rgb(0.557, 0.420, 0.965),
         hover: Color::from_rgb(0.125, 0.133, 0.160),
         chrome: Color::from_rgb(0.040, 0.043, 0.053),
-        syntax_theme: Some("base16-mocha.dark"),
+        syntax_theme: Some("base16-ocean.dark"),
     },
     ThemeSpec {
         name: "Nord",
@@ -111,7 +111,7 @@ pub const THEMES: &[ThemeSpec] = &[
         accent: Color::from_rgb(0.533, 0.753, 0.816),
         hover: Color::from_rgb(0.200, 0.224, 0.263),
         chrome: Color::from_rgb(0.122, 0.137, 0.163),
-        syntax_theme: Some("base16-mocha.dark"),
+        syntax_theme: Some("base16-ocean.dark"),
     },
     ThemeSpec {
         name: "Dracula",
@@ -129,7 +129,7 @@ pub const THEMES: &[ThemeSpec] = &[
         accent: Color::from_rgb(1.000, 0.475, 0.776),
         hover: Color::from_rgb(0.220, 0.230, 0.290),
         chrome: Color::from_rgb(0.125, 0.133, 0.173),
-        syntax_theme: Some("base16-mocha.dark"),
+        syntax_theme: Some("base16-eighties.dark"),
     },
     ThemeSpec {
         name: "Solarized",
@@ -169,6 +169,29 @@ pub const THEMES: &[ThemeSpec] = &[
     },
 ];
 
+/// Width used for interactive scrollbars, in pixels.
+///
+/// Wider than iced's 10 px default on purpose. iced computes the thumb length as
+/// rail_length * (viewport / content) and floors it at 2 px, so a long list or a
+/// big response body collapses the thumb into an unhittable sliver (a
+/// 10,000-line body in a 400 px panel works out to ~2 px, against roughly 24 px
+/// for a comfortable pointer target). The length is out of the host's hands, so
+/// the width is made generous and the rail is kept clickable -- iced jumps to
+/// wherever the rail is pressed, which is the practical way to move around a
+/// document whose thumb has collapsed to a sliver.
+pub const SCROLLBAR_WIDTH: f32 = 12.0;
+
+/// A scrollbar sized for pointer and trackpad use.
+///
+/// Pair with `thin_scrollbar`; see `SCROLLBAR_WIDTH` for why the iced default
+/// width is not enough on long content.
+pub fn grabbable_scrollbar() -> iced::widget::scrollable::Scrollbar {
+    iced::widget::scrollable::Scrollbar::new()
+        .width(SCROLLBAR_WIDTH)
+        .scroller_width(SCROLLBAR_WIDTH)
+        .margin(1)
+}
+
 pub fn thin_scrollbar(
     _theme: &iced::Theme,
     status: iced::widget::scrollable::Status,
@@ -178,10 +201,13 @@ pub fn thin_scrollbar(
     // Hidden at rest (content scrolls fine with the wheel without a
     // persistent bar sitting there); appears clearly on hover/drag so it's
     // still easy to find and grab when you actually want to drag it.
-    let alpha = if dragging { 0.90 } else if hovered { 0.60 } else { 0.0 };
+    let alpha = if dragging { 0.95 } else if hovered { 0.75 } else { 0.0 };
     let s = Palette::text_subtle();
     let scroller = Color { r: s.r, g: s.g, b: s.b, a: alpha };
-    let rail_bg = Color { r: 0.5, g: 0.5, b: 0.5, a: if hovered || dragging { 0.06 } else { 0.0 } };
+    // A visible track on interaction: the whole rail is a click target (iced
+    // jumps to the pressed position), which is what makes a collapsed thumb
+    // navigable -- but only if the user can see where to click.
+    let rail_bg = Color { r: 0.5, g: 0.5, b: 0.5, a: if hovered || dragging { 0.14 } else { 0.0 } };
     let rail = iced::widget::scrollable::Rail {
         background: Some(iced::Background::Color(rail_bg)),
         border: iced::Border::default(),

@@ -12,6 +12,14 @@ use crate::{
 
 
 pub fn view<'a>(tab: &'a RequestTabState, env: Option<&'a crate::domain::environment::AppEnvironment>) -> Element<'a, Message> {
+    // A ws:// or wss:// URL is not an HTTP request: there is no method, no
+    // cURL export and no variable-expansion preview for it. Decided up front so
+    // the whole bar can be built consistently — the HTTP method picker used to
+    // be baked into the URL pill unconditionally, so a WebSocket URL showed the
+    // "WS" badge *and* a pointless "GET" dropdown right next to it, and picking
+    // a method there silently mutated state that is never sent.
+    let ws_mode = tab.is_websocket();
+
     let methods: Vec<&str> = HttpMethod::all().iter().map(|m| m.as_str()).collect();
 
     let color = method_color(&tab.method);
@@ -59,38 +67,48 @@ pub fn view<'a>(tab: &'a RequestTabState, env: Option<&'a crate::domain::environ
             ..Default::default()
         });
 
-    // One rounded pill holding method + URL — the app's hero input.
-    let url_pill = container(
-        row![method_picker, inner_divider, url_input].align_y(Alignment::Center),
-    )
-    .style(url_pill_style)
-    .width(Length::Fill);
+    // One rounded pill holding method + URL — the app's hero input. In
+    // WebSocket mode the method picker and its divider are dropped entirely
+    // (the "WS" badge to the left of the pill already says what this is).
+    let pill_row = if ws_mode {
+        row![url_input]
+    } else {
+        row![method_picker, inner_divider, url_input]
+    };
+    let url_pill = container(pill_row.align_y(Alignment::Center))
+        .style(url_pill_style)
+        .width(Length::Fill);
 
     let curl_btn = button(icons::curl().size(11).color(Palette::text_subtle()))
         .on_press(Message::Request(RequestMsg::ExportCurl))
         .style(iced::widget::button::text)
         .padding([5, 6]);
 
-    let ws_mode = tab.is_websocket();
-
     let action_btn: Element<Message> = if ws_mode {
         ws_action_button(tab)
     } else if tab.is_loading {
-        button(
-            row![text("Abort").size(TEXT_SM)]
-                .align_y(Alignment::Center)
-                .spacing(4),
+        // Same fixed height as Send, so the bar doesn't resize when a request
+        // starts or finishes.
+        crate::ui::widgets::centered_button::centered_button(
+            text("Abort").size(TEXT_SM),
+            crate::ui::widgets::centered_button::BUTTON_HEIGHT,
+            18.0,
         )
         .on_press(Message::Request(RequestMsg::Abort))
         .style(abort_button)
-        .padding([8, 18])
         .into()
     } else {
-        button(text("Send").size(TEXT_MD).color(Color::WHITE))
-            .on_press(Message::Request(RequestMsg::Send))
-            .style(send_button)
-            .padding([8, 20])
-            .into()
+        // Centred in a fixed height: iced's button puts content at the top
+        // padding edge with no vertical centering, so a padding-only button
+        // sits visibly off-centre (issue #29).
+        crate::ui::widgets::centered_button::centered_button(
+            text("Send").size(TEXT_MD).color(Color::WHITE),
+            crate::ui::widgets::centered_button::BUTTON_HEIGHT,
+            20.0,
+        )
+        .on_press(Message::Request(RequestMsg::Send))
+        .style(send_button)
+        .into()
     };
 
     let mut bar = row![].spacing(6).align_y(Alignment::Center).padding([6, 10]);

@@ -25,6 +25,16 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
     }
 
     if resp.is_binary {
+        // An oversized binary download has no bytes kept in memory at all, so
+        // there is nothing to build a preview from. Say that plainly rather
+        // than falling through to a preview that can never appear.
+        if resp.body_stored && resp.binary_data.is_none() {
+            return binary_view_with_note(
+                resp,
+                "This download is too large to preview in the app. \
+                 The response completed successfully — only the in-app preview is skipped.",
+            );
+        }
         return match &tab.response_preview {
             ResponsePreview::Spreadsheet(Ok(sheet)) => spreadsheet_view(sheet),
             ResponsePreview::Spreadsheet(Err(err)) => binary_view_with_note(resp, err),
@@ -38,11 +48,30 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
     }
     // Either not HTML, or it is but the embedded webview couldn't attach on
     // this platform/configuration (e.g. no child-window support under
-    // native Wayland) — fall through to the plain text/source view below.
+    // native Wayland) — fall through to the plain text/source view below,
+    // with a banner explaining why (the underlying error used to go only to
+    // stderr, which a windowed build has no console for).
+    let webview_note: Option<String> = resp
+        .is_html()
+        .then(crate::services::webview::last_error)
+        .flatten();
+
+    let size_note: Element<Message> = match tab.response_truncated_bytes {
+        Some(full_len) => text(format!(
+            " · showing first {} of {} (full body still copied/saved)",
+            human_bytes(tab.response_editor_bytes()),
+            human_bytes(full_len),
+        ))
+        .size(TEXT_XS)
+        .color(Palette::WARNING)
+        .into(),
+        None => Space::new().into(),
+    };
 
     let toolbar = container(
         row![
             text(format!("{} lines", tab.response_viewer_lines)).size(TEXT_XS).color(Palette::text_subtle()),
+            size_note,
             Space::new().width(Length::Fill),
             button(
                 row![
@@ -81,10 +110,37 @@ pub fn view(tab: &RequestTabState, spinner_frame: u32) -> Element<'_, Message> {
             .map(|m| Message::Response(ResponseMsg::ViewerEdited(m)))
     };
 
-    column![toolbar, body]
-        .spacing(0)
-        .height(Length::Fill)
-        .into()
+    let mut panel = column![].spacing(0).height(Length::Fill);
+    if let Some(note) = webview_note {
+        panel = panel.push(preview_unavailable_banner(&note));
+    }
+    panel.push(toolbar).push(body).into()
+}
+
+/// Shown above the raw-source fallback when the embedded HTML preview could not
+/// be created, so the user knows the source view is a fallback and why.
+fn preview_unavailable_banner(reason: &str) -> Element<'static, Message> {
+    container(
+        column![
+            text("HTML preview unavailable — showing source")
+                .size(TEXT_SM)
+                .color(Palette::WARNING),
+            text(reason.to_owned()).size(TEXT_XS).color(Palette::text_subtle()),
+        ]
+        .spacing(2),
+    )
+    .padding([6, 12])
+    .width(Length::Fill)
+    .style(|_| container::Style {
+        background: Some(Background::Color(Palette::warning_soft())),
+        border: Border {
+            color: Palette::WARNING,
+            width: 1.0,
+            radius: 6.0.into(),
+        },
+        ..Default::default()
+    })
+    .into()
 }
 
 /// Id of the placeholder container reserving screen space for the embedded
@@ -103,6 +159,17 @@ fn html_view() -> Element<'static, Message> {
     .center_x(Length::Fill)
     .center_y(Length::Fill)
     .into()
+}
+
+/// Formats a byte count as a short human-readable size.
+fn human_bytes(bytes: usize) -> String {
+    if bytes < 1024 {
+        format!("{bytes} B")
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    }
 }
 
 /// A keyboard-key chip: bordered, mono font, slight bottom "keycap" shadow.
@@ -306,8 +373,7 @@ fn pdf_view(preview: &PdfPreviewState) -> Element<'static, Message> {
 }
 
 fn loading_view<'a>(spinner_frame: u32) -> Element<'a, Message> {
-    let f = spinner_frame as f32;
-    let art = donut(f * 0.04, f * 0.023);
+    let art = spinner_frame_art(spinner_frame);
 
     container(
         column![
@@ -327,6 +393,34 @@ fn loading_view<'a>(spinner_frame: u32) -> Element<'a, Message> {
     .center_x(Length::Fill)
     .center_y(Length::Fill)
     .into()
+}
+
+/// Number of pre-rendered spinner frames that are cycled while a request runs.
+///
+/// `donut` is a little software raytracer: its `theta`/`phi` loops run ~52,000
+/// iterations with a `sin_cos` each. It used to be recomputed from scratch on the
+/// UI thread for every frame at 30fps, competing for CPU with the very request it
+/// was reporting on. The animation depends only on the frame counter, so the
+/// frames are rendered once and reused.
+const SPINNER_FRAMES: usize = 60;
+
+/// Returns the pre-rendered art for `spinner_frame`, building the set on first
+/// use.
+fn spinner_frame_art(spinner_frame: u32) -> &'static str {
+    use std::sync::OnceLock;
+    static FRAMES: OnceLock<Vec<String>> = OnceLock::new();
+
+    let frames = FRAMES.get_or_init(|| {
+        (0..SPINNER_FRAMES)
+            .map(|i| {
+                let f = i as f32;
+                donut(f * 0.04, f * 0.023)
+            })
+            .collect()
+    });
+
+    // `SPINNER_FRAMES` is non-zero, so the modulo is always in range.
+    frames[(spinner_frame as usize) % SPINNER_FRAMES].as_str()
 }
 
 fn donut(a: f32, b: f32) -> String {
