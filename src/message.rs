@@ -325,7 +325,9 @@ pub enum AppMsg {
     },
 
     HtmlPreviewTick,
-    HtmlPanelBounds { bounds: iced::Rectangle, html: String },
+    /// `html` is shared rather than owned: this message is produced on a
+    /// repeating timer, and copying a large HTML body every tick was pure waste.
+    HtmlPanelBounds { bounds: iced::Rectangle, html: std::sync::Arc<str> },
     PdfPagePreviewReady {
         generation: u64,
         tab_id: String,
@@ -362,6 +364,17 @@ pub enum SettingsMsg {
     GlobalTestScriptEdited(iced::widget::text_editor::Action),
     OpenGlobalScriptsModal,
     CloseGlobalScriptsModal,
+    /// Toggle one of the TLS/connection workarounds (issue #40).
+    TlsOptionToggled(TlsOption),
+}
+
+/// The individual TLS/connection settings, for `SettingsMsg::TlsOptionToggled`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TlsOption {
+    AcceptInvalidCerts,
+    Http1Only,
+    ForceTls12,
+    ForceTls13,
 }
 
 // ── Auto-update ───────────────────────────────────────────────────────────────

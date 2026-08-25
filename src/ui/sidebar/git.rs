@@ -137,15 +137,22 @@ fn repo_card(state: &AppState) -> Element<'_, Message> {
         .style(crate::ui::styles::field_input);
 
     let commit_btn = button(
-        row![
-            text("\u{2713}").size(11).color(Color::WHITE),
-            text(" Commit").size(11).color(Color::WHITE),
-        ]
-        .align_y(iced::Alignment::Center),
+        container(
+            row![
+                text("\u{2713}").size(11).color(Color::WHITE),
+                text(" Commit").size(11).color(Color::WHITE),
+            ]
+            .align_y(iced::Alignment::Center),
+        )
+        .center_x(Length::Fill)
+        .center_y(Length::Fill),
     )
     .on_press_maybe(if can_commit { Some(Message::Git(GitMsg::Commit)) } else { None })
     .style(commit_style)
-    .padding([6, 14])
+    // Fixed height + vertically centred content: iced places button content at
+    // the top padding edge and adds no centering of its own (issue #29).
+    .height(Length::Fixed(crate::ui::widgets::centered_button::BUTTON_HEIGHT))
+    .padding([0, 14])
     .width(Length::Fill);
 
     // Sync row
@@ -340,10 +347,18 @@ fn history_card(state: &AppState) -> Element<'_, Message> {
     let filtered: Vec<_> = if search.is_empty() {
         state.git_log.iter().take(40).collect()
     } else {
+        // `contains_ignore_ascii_case`-style matching without allocating a
+        // lowercase copy of every commit message and id on every redraw (this
+        // runs for the whole log, each frame, while the search box has text).
         let q = search.to_lowercase();
-        state.git_log.iter().filter(|c| {
-            c.message.to_lowercase().contains(&q) || c.id.to_lowercase().contains(&q)
-        }).take(40).collect()
+        state
+            .git_log
+            .iter()
+            .filter(|c| {
+                contains_ignore_case(&c.message, &q) || contains_ignore_case(&c.id, &q)
+            })
+            .take(40)
+            .collect()
     };
 
     let search_input = row![
@@ -365,11 +380,17 @@ fn history_card(state: &AppState) -> Element<'_, Message> {
             container(text("No commits yet").size(11).color(Palette::text_subtle())).padding([2, 0]),
         );
     } else {
+        // Read the clock once per frame instead of twice per row.
+        // `date_label` and `time_ago` each called `Utc::now()`, so a 40-commit
+        // history made 80 clock syscalls on every single redraw. One shared
+        // "now" is also more consistent: every row is dated against the same
+        // instant.
+        let now = chrono::Utc::now();
         let mut last_date_group = String::new();
         for (i, commit) in filtered.iter().enumerate() {
             let hash: String = commit.id.chars().take(7).collect();
             let when = chrono::DateTime::from_timestamp(commit.timestamp, 0);
-            let date_group = date_label(&when);
+            let date_group = date_label(&when, now);
             let is_last = i == filtered.len() - 1;
             let msg_first_line = commit.message.trim().lines().next().unwrap_or("").to_owned();
             let id = commit.id.clone();
@@ -391,17 +412,11 @@ fn history_card(state: &AppState) -> Element<'_, Message> {
                         .width(14)
                         .align_x(iced::alignment::Horizontal::Center),
                     column![
-                        text(if msg_first_line.len() > 50 {
-                            format!("{}...", &msg_first_line[..47])
-                        } else {
-                            msg_first_line
-                        })
-                        .size(11)
-                        .color(Palette::text()),
+                        text(truncate_chars(&msg_first_line, 50)).size(11).color(Palette::text()),
                     ]
                     .width(Length::Fill),
                     text(hash).size(8).color(Palette::accent()).font(MONO),
-                    text(format!(" \u{00B7} {}", time_ago(commit.timestamp)))
+                    text(format!(" \u{00B7} {}", time_ago(commit.timestamp, now)))
                         .size(8)
                         .color(Palette::text_subtle()),
                     icon_btn("\u{21BB}", Message::Git(GitMsg::AskRestore(id))),
@@ -526,6 +541,46 @@ fn pretty_name(state: &AppState, path: &str) -> String {
         .unwrap_or_else(|| path.to_owned())
 }
 
+/// Truncates to at most `max` **characters**, appending an ellipsis.
+///
+/// This must not slice by byte index. `str` indexing is byte-based, so
+/// `&msg[..47]` panics whenever byte 47 falls inside a multi-byte UTF-8
+/// sequence — i.e. for any commit message containing an emoji, CJK text or an
+/// accented character. The crate is built with `panic = "abort"`, so that was
+/// an instant, unrecoverable crash of the whole app triggered purely by
+/// *rendering* the Git panel.
+fn truncate_chars(text: &str, max: usize) -> String {
+    let mut chars = text.chars();
+    let head: String = chars.by_ref().take(max).collect();
+    if chars.next().is_some() {
+        format!("{head}...")
+    } else {
+        head
+    }
+}
+
+/// Case-insensitive substring test that allocates nothing.
+///
+/// `needle` must already be lowercase. Used for the commit-history filter, which
+/// otherwise built a fresh lowercase `String` for every commit message and id on
+/// every frame the search box was non-empty.
+///
+/// Matching is ASCII-case-insensitive: commit hashes are ASCII, and for message
+/// text this is the same trade-off `str::eq_ignore_ascii_case` makes. Non-ASCII
+/// still matches exactly, so nothing becomes unsearchable.
+fn contains_ignore_case(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    let hay = haystack.as_bytes();
+    let ndl = needle.as_bytes();
+    if ndl.len() > hay.len() {
+        return false;
+    }
+    hay.windows(ndl.len())
+        .any(|window| window.eq_ignore_ascii_case(ndl))
+}
+
 fn count_badge(n: usize) -> Element<'static, Message> {
     container(text(n.to_string()).size(9).color(Palette::text()))
         .style(|_| container::Style {
@@ -556,9 +611,13 @@ fn badge(state: &str) -> Element<'static, Message> {
     .into()
 }
 
-fn date_label(when: &Option<chrono::DateTime<chrono::Utc>>) -> String {
+/// `now` is passed in so the caller can read the clock once per frame rather
+/// than once per rendered row.
+fn date_label(
+    when: &Option<chrono::DateTime<chrono::Utc>>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> String {
     let Some(dt) = when else { return "Unknown".to_owned() };
-    let now = chrono::Utc::now();
     if dt.date_naive() == now.date_naive() {
         "Today".to_owned()
     } else if dt.date_naive() == (now - chrono::Duration::days(1)).date_naive() {
@@ -568,9 +627,9 @@ fn date_label(when: &Option<chrono::DateTime<chrono::Utc>>) -> String {
     }
 }
 
-fn time_ago(timestamp: i64) -> String {
+/// `now` is passed in for the same reason as `date_label`.
+fn time_ago(timestamp: i64, now: chrono::DateTime<chrono::Utc>) -> String {
     let Some(dt) = chrono::DateTime::from_timestamp(timestamp, 0) else { return "".to_owned() };
-    let now = chrono::Utc::now();
     let diff = now - dt;
     let secs = diff.num_seconds();
     if secs < 60 { return format!("{secs}s"); }
@@ -609,11 +668,15 @@ fn commit_style(_t: &iced::Theme, status: iced::widget::button::Status) -> iced:
 }
 
 fn primary_button(label: &str, msg: Message) -> Element<'static, Message> {
-    button(text(label.to_owned()).size(11).color(Color::WHITE))
-        .on_press(msg)
-        .style(primary_style)
-        .padding([5, 10])
-        .into()
+    use crate::ui::widgets::centered_button::{centered_button, BUTTON_HEIGHT_SM};
+    centered_button(
+        text(label.to_owned()).size(11).color(Color::WHITE),
+        BUTTON_HEIGHT_SM,
+        10.0,
+    )
+    .on_press(msg)
+    .style(primary_style)
+    .into()
 }
 
 fn primary_style(_t: &iced::Theme, status: iced::widget::button::Status) -> iced::widget::button::Style {
@@ -631,7 +694,12 @@ fn primary_style(_t: &iced::Theme, status: iced::widget::button::Status) -> iced
 }
 
 fn ghost_button(label: &str, msg: Message) -> Element<'static, Message> {
-    button(text(label.to_owned()).size(11).color(Palette::text()))
+    use crate::ui::widgets::centered_button::{centered_button, BUTTON_HEIGHT_SM};
+    centered_button(
+        text(label.to_owned()).size(11).color(Palette::text()),
+        BUTTON_HEIGHT_SM,
+        8.0,
+    )
         .on_press(msg)
         .style(|_t, status| {
             let hovered = matches!(status, iced::widget::button::Status::Hovered);
@@ -646,7 +714,9 @@ fn ghost_button(label: &str, msg: Message) -> Element<'static, Message> {
                 ..Default::default()
             }
         })
-        .padding([4, 8])
+        // No .padding() here: `centered_button` already sets the horizontal
+        // padding and a zero vertical padding, and a later call would override
+        // both and reintroduce the off-centre label.
         .into()
 }
 
@@ -694,5 +764,85 @@ fn repo_row_style(status: iced::widget::button::Status, active: bool) -> iced::w
             radius: 4.0.into(),
         },
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{contains_ignore_case, truncate_chars};
+
+    #[test]
+    fn search_matches_case_insensitively() {
+        assert!(contains_ignore_case("Fix: Handle NULL input", "null"));
+        assert!(contains_ignore_case("Fix: Handle NULL input", "fix"));
+        assert!(contains_ignore_case("ABCDEF0123", "abcdef"));
+        assert!(contains_ignore_case("anything", ""));
+    }
+
+    #[test]
+    fn search_rejects_non_matches() {
+        assert!(!contains_ignore_case("fix: typo", "feature"));
+        assert!(!contains_ignore_case("short", "much longer needle"));
+    }
+
+    /// Must agree with the previous `to_lowercase().contains()` implementation
+    /// on ASCII input, which is what commit hashes and most messages are.
+    #[test]
+    fn search_agrees_with_the_lowercase_implementation() {
+        let cases = [
+            ("Merge pull request #35 from dev", "merge"),
+            ("Merge pull request #35 from dev", "DEV"),
+            ("a1b2c3d4e5", "C3D4"),
+            ("nothing here", "zzz"),
+        ];
+        for (haystack, needle) in cases {
+            let needle_lower = needle.to_lowercase();
+            assert_eq!(
+                contains_ignore_case(haystack, &needle_lower),
+                haystack.to_lowercase().contains(&needle_lower),
+                "mismatch for {haystack:?} / {needle:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn truncate_leaves_short_text_alone() {
+        assert_eq!(truncate_chars("fix: typo", 50), "fix: typo");
+    }
+
+    #[test]
+    fn truncate_adds_ellipsis_past_the_limit() {
+        let long = "a".repeat(60);
+        let out = truncate_chars(&long, 50);
+        assert_eq!(out.chars().count(), 53); // 50 + "..."
+        assert!(out.ends_with("..."));
+    }
+
+    #[test]
+    fn truncate_at_exact_limit_has_no_ellipsis() {
+        let exact = "b".repeat(50);
+        assert_eq!(truncate_chars(&exact, 50), exact);
+    }
+
+    /// The crash this replaced: slicing `&text[..47]` panics when byte 47 is
+    /// not a char boundary. With `panic = "abort"` that killed the whole app
+    /// just by drawing the Git panel.
+    #[test]
+    fn truncate_does_not_panic_on_multibyte_text() {
+        for text in [
+            "🎉".repeat(60),
+            "日本語のコミットメッセージ".repeat(8),
+            "café ".repeat(20),
+            "🚀 fix: ünïcödé commit with emoji 🎉 and more text to overflow".to_owned(),
+        ] {
+            let out = truncate_chars(&text, 50);
+            assert!(out.chars().count() <= 53);
+        }
+    }
+
+    #[test]
+    fn truncate_keeps_characters_intact() {
+        let out = truncate_chars(&"🎉".repeat(60), 50);
+        assert_eq!(out.chars().filter(|c| *c == '🎉').count(), 50);
     }
 }

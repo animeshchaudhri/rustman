@@ -44,6 +44,33 @@ pub(super) fn handle(state: &mut AppState, msg: SettingsMsg) -> Task<Message> {
         SettingsMsg::CloseGlobalScriptsModal => {
             state.global_scripts_modal_open = false;
         }
+        SettingsMsg::TlsOptionToggled(option) => {
+            use crate::message::TlsOption;
+            let tls = &mut state.tls_options;
+            match option {
+                TlsOption::AcceptInvalidCerts => {
+                    tls.accept_invalid_certs = !tls.accept_invalid_certs;
+                }
+                TlsOption::Http1Only => tls.http1_only = !tls.http1_only,
+                // The two version pins are mutually exclusive: enabling one
+                // clears the other, since asking for both can never handshake.
+                TlsOption::ForceTls12 => {
+                    tls.force_tls12 = !tls.force_tls12;
+                    if tls.force_tls12 {
+                        tls.force_tls13 = false;
+                    }
+                }
+                TlsOption::ForceTls13 => {
+                    tls.force_tls13 = !tls.force_tls13;
+                    if tls.force_tls13 {
+                        tls.force_tls12 = false;
+                    }
+                }
+            }
+            // The client owns its TLS config and connection pool, so it must be
+            // rebuilt for the change to take effect on the next request.
+            state.invalidate_http_client();
+        }
     }
     Task::none()
 }

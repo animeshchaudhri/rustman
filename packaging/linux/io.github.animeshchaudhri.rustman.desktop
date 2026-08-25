@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Rustman
+GenericName=API Client
+Comment=Native API testing tool built with Rust and iced
+Exec=rustman %U
+TryExec=rustman
+Icon=io.github.animeshchaudhri.rustman
+Terminal=false
+Categories=Development;
+Keywords=API;REST;HTTP;WebSocket;testing;client;curl;
+StartupNotify=true
+StartupWMClass=io.github.animeshchaudhri.rustman

@@ -29,6 +29,7 @@ pub fn view(state: &crate::app::AppState) -> Element<'_, Message> {
     let appearance = card(build_appearance(state.theme_idx));
     let layout = card(build_layout(state.horizontal_layout));
     let request_defaults = card(build_request_defaults(&state.default_timeout_text));
+    let tls = card(build_tls(state.tls_options));
     let global_scripts = card(build_global_scripts(
         state.global_pre_request_editor.text().len(),
         state.global_test_editor.text().len(),
@@ -40,7 +41,7 @@ pub fn view(state: &crate::app::AppState) -> Element<'_, Message> {
     scrollable(
         column![
             header, profile, git_identity, appearance, layout, request_defaults,
-            global_scripts, updates, shortcuts, footer
+            tls, global_scripts, updates, shortcuts, footer
         ]
         .spacing(6)
         .padding(iced::Padding { top: 0.0, right: 8.0, bottom: 8.0, left: 8.0 }),
@@ -89,6 +90,68 @@ fn build_request_defaults(timeout_text: &str) -> Element<'static, Message> {
             .size(9).color(Palette::text_subtle()),
     ]
     .spacing(0)
+    .into()
+}
+
+/// TLS / connection workarounds for endpoints a default client cannot reach
+/// (issue #40: works in Chrome/curl, fails in Rustman with `os error 10054`).
+fn build_tls(options: crate::services::http::TlsOptions) -> Element<'static, Message> {
+    use crate::message::TlsOption;
+
+    column![
+        section_label("TLS & CONNECTION"),
+        tls_toggle(
+            "Send HTTP/1.1 only",
+            "Try this first. Rustman offers HTTP/2 in the handshake; some servers              close the connection instead of declining it (Windows: os error 10054).",
+            options.http1_only,
+            TlsOption::Http1Only,
+        ),
+        Space::new().height(6),
+        tls_toggle(
+            "Ignore certificate errors",
+            "Accepts self-signed, internal-CA and mismatched-hostname certificates.              Like curl -k — only use it for endpoints you trust.",
+            options.accept_invalid_certs,
+            TlsOption::AcceptInvalidCerts,
+        ),
+        Space::new().height(6),
+        tls_toggle(
+            "Force TLS 1.2",
+            "Pin the handshake to TLS 1.2, for servers that fail on 1.3.",
+            options.force_tls12,
+            TlsOption::ForceTls12,
+        ),
+        Space::new().height(6),
+        tls_toggle(
+            "Force TLS 1.3",
+            "Pin the handshake to TLS 1.3. Clears the 1.2 pin.",
+            options.force_tls13,
+            TlsOption::ForceTls13,
+        ),
+        Space::new().height(4),
+        text("Applies to the next request; existing connections are dropped.")
+            .size(9)
+            .color(Palette::text_subtle()),
+    ]
+    .spacing(0)
+    .into()
+}
+
+fn tls_toggle(
+    label: &'static str,
+    help: &'static str,
+    enabled: bool,
+    option: crate::message::TlsOption,
+) -> Element<'static, Message> {
+    column![
+        iced::widget::checkbox(enabled)
+            .label(label)
+            .on_toggle(move |_| Message::Settings(SettingsMsg::TlsOptionToggled(option)))
+            .size(15)
+            .text_size(12)
+            .style(crate::ui::styles::checkbox),
+        text(help).size(9).color(Palette::text_subtle()),
+    ]
+    .spacing(2)
     .into()
 }
 

@@ -19,36 +19,57 @@ use iced::window;
 use wry::dpi::{LogicalPosition, LogicalSize, Position, Size};
 use wry::{Rect, WebView, WebViewBuilder};
 
+/// How many times to attempt creation before giving up for good.
+///
+/// Creation can fail *transiently* — most importantly on Windows, where the
+/// WebView2 runtime may still be starting up (or installing) when the first
+/// HTML response arrives. Latching the very first failure forever meant one
+/// unlucky moment disabled HTML preview for the rest of the process, which is
+/// indistinguishable to the user from "the webview is broken". A small retry
+/// budget recovers from that while still bounding the cost on platforms that
+/// genuinely cannot host a child webview (e.g. native Wayland), where every
+/// attempt would otherwise be retried forever.
+const MAX_CREATION_ATTEMPTS: u32 = 5;
+
 thread_local! {
     static WEBVIEW: RefCell<Option<WebView>> = const { RefCell::new(None) };
     /// Tracks what's currently loaded so a periodic bounds/visibility sync
     /// doesn't reload (and reset scroll position / flash) on every tick.
     static LAST_HTML: RefCell<Option<String>> = const { RefCell::new(None) };
-    /// Set once creation fails (e.g. no child-window support under native
-    /// Wayland). Callers use this to fall back to a plain text/source view
-    /// instead of leaving a permanently-empty placeholder.
-    static CREATION_FAILED: Cell<bool> = const { Cell::new(false) };
+    /// Number of failed creation attempts so far.
+    static CREATION_ATTEMPTS: Cell<u32> = const { Cell::new(0) };
+    /// Why the last attempt failed, for reporting in the UI instead of only
+    /// to stderr (a GUI build on Windows has no console attached, so an
+    /// `eprintln!` there is invisible).
+    static LAST_ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
-/// Whether the embedded webview failed to attach (e.g. the platform doesn't
-/// support child windows in this configuration) — callers should fall back
-/// to a plain text preview instead of the (permanently empty) placeholder.
+/// Whether the embedded webview has permanently failed to attach — callers
+/// should fall back to a plain text preview instead of the (permanently empty)
+/// placeholder.
+///
+/// Only true once the retry budget is exhausted, so a transient failure (very
+/// common on Windows while WebView2 initialises) no longer disables preview.
 pub fn creation_failed() -> bool {
-    CREATION_FAILED.with(Cell::get)
+    CREATION_ATTEMPTS.with(Cell::get) >= MAX_CREATION_ATTEMPTS
+}
+
+/// The reason the last creation attempt failed, if any — shown in the preview
+/// panel so the failure is diagnosable without a console.
+pub fn last_error() -> Option<String> {
+    LAST_ERROR.with(|err| err.borrow().clone())
 }
 
 /// Ensures a webview exists (creating it on first call) and points it at
-/// `html`, positioned over `bounds` (logical pixels) and visible.
-///
-/// Must be called from within `iced::window::run`'s callback the *first*
-/// time (to get a native window handle to attach to); after that, updating
-/// content/bounds no longer needs the window handle at all — call
-/// `set_bounds`/`load_html`/`set_visible` directly instead.
+/// `html`, positioned over `bounds` (already scaled to physical-ish logical
+/// pixels by the caller — see `scaled_bounds`) and visible.
 fn create(window: &dyn window::Window, bounds: iced::Rectangle, html: &str) {
     let handle = match window.window_handle() {
         Ok(handle) => handle,
         Err(err) => {
-            eprintln!("failed to get native window handle for embedded webview: {err}");
+            let message = format!("no native window handle: {err}");
+            eprintln!("embedded webview: {message}");
+            record_failure(message);
             return;
         }
     };
@@ -61,19 +82,28 @@ fn create(window: &dyn window::Window, bounds: iced::Rectangle, html: &str) {
             Ok(webview) => {
                 *cell.borrow_mut() = Some(webview);
                 LAST_HTML.with(|last| *last.borrow_mut() = Some(html.to_owned()));
+                // A later success clears the record of earlier stumbles.
+                CREATION_ATTEMPTS.with(|attempts| attempts.set(0));
+                LAST_ERROR.with(|err| *err.borrow_mut() = None);
             }
             Err(err) => {
-                eprintln!("failed to create embedded webview: {err}");
-                CREATION_FAILED.with(|failed| failed.set(true));
+                let message = err.to_string();
+                eprintln!("failed to create embedded webview: {message}");
+                record_failure(message);
             }
         }
     });
 }
 
+fn record_failure(message: String) {
+    CREATION_ATTEMPTS.with(|attempts| attempts.set(attempts.get().saturating_add(1)));
+    LAST_ERROR.with(|err| *err.borrow_mut() = Some(message));
+}
+
 /// Returns a one-time `Task` that creates the webview if it doesn't exist
-/// yet. A no-op if it already exists, or if an earlier attempt already
-/// failed (see `creation_failed`) — no point retrying every tick once we
-/// know this platform/configuration can't attach a child webview.
+/// yet. A no-op if it already exists, or once the retry budget is spent (see
+/// `creation_failed`) — no point retrying every tick on a platform that
+/// cannot attach a child webview at all.
 pub fn ensure_created<Message: Send + 'static>(
     window_id: window::Id,
     bounds: iced::Rectangle,
@@ -125,9 +155,60 @@ pub fn set_visible(visible: bool) {
     });
 }
 
+
+pub fn scaled_bounds(bounds: iced::Rectangle, ui_scale: f64) -> iced::Rectangle {
+    let scale = if ui_scale.is_finite() && ui_scale > 0.0 {
+        ui_scale as f32
+    } else {
+        1.0
+    };
+    iced::Rectangle {
+        x: bounds.x * scale,
+        y: bounds.y * scale,
+        width: bounds.width * scale,
+        height: bounds.height * scale,
+    }
+}
+
 fn to_wry_rect(bounds: iced::Rectangle) -> Rect {
     Rect {
         position: Position::Logical(LogicalPosition::new(bounds.x as f64, bounds.y as f64)),
         size: Size::Logical(LogicalSize::new(bounds.width as f64, bounds.height as f64)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scaled_bounds_applies_app_scale_factor() {
+        let bounds = iced::Rectangle { x: 100.0, y: 50.0, width: 400.0, height: 300.0 };
+
+        let scaled = scaled_bounds(bounds, 1.5);
+
+        assert_eq!(scaled.x, 150.0);
+        assert_eq!(scaled.y, 75.0);
+        assert_eq!(scaled.width, 600.0);
+        assert_eq!(scaled.height, 450.0);
+    }
+
+    #[test]
+    fn scaled_bounds_is_identity_at_unit_scale() {
+        let bounds = iced::Rectangle { x: 10.0, y: 20.0, width: 30.0, height: 40.0 };
+
+        assert_eq!(scaled_bounds(bounds, 1.0), bounds);
+    }
+
+    #[test]
+    fn scaled_bounds_rejects_nonsense_scales() {
+        let bounds = iced::Rectangle { x: 10.0, y: 20.0, width: 30.0, height: 40.0 };
+
+        // A zero, negative or non-finite scale must not collapse the webview
+        // to nothing (which would look exactly like "it didn't open").
+        assert_eq!(scaled_bounds(bounds, 0.0), bounds);
+        assert_eq!(scaled_bounds(bounds, -2.0), bounds);
+        assert_eq!(scaled_bounds(bounds, f64::NAN), bounds);
+        assert_eq!(scaled_bounds(bounds, f64::INFINITY), bounds);
     }
 }

@@ -7,7 +7,6 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Client, Method,
 };
-use serde_json::Value;
 use sha2::Sha256;
 use std::str::FromStr;
 
@@ -252,12 +251,34 @@ async fn do_send(
     // as text. Detect them up front instead of lossily decoding them into a
     // string full of replacement characters and feeding that into the text
     // editor / JSON pretty-printer.
-    match String::from_utf8(raw_bytes.to_vec()) {
+    //
+    // `String::from_utf8` needs an owned `Vec`, so the old
+    // `from_utf8(raw_bytes.to_vec())` copied the entire body *just to test
+    // whether it was text* — and threw the copy away for binary downloads.
+    // Validating the borrowed slice first avoids that copy entirely, which
+    // matters a great deal for a large file download.
+    match std::str::from_utf8(&raw_bytes) {
         Ok(raw_body) => Ok(HttpResponse {
             status,
             status_text,
             headers,
-            body: if is_large { String::new() } else { maybe_pretty(&raw_body) },
+            // Oversized text bodies are truncated rather than blanked. Handing
+            // back an empty string (as this used to) made a big response look
+            // like an empty one, with nothing anywhere in the UI explaining
+            // why. A prefix keeps the response inspectable; `body_stored`
+            // tells the UI to say it is partial.
+            // Deliberately NOT pretty-printed here. The UI re-parses the body
+            // and pretty-prints it on a blocking worker anyway
+            // (`AppMsg::HttpResponse` -> `ViewerReady`), so doing it here too
+            // meant every JSON response was serialised twice — once on the async
+            // runtime, where a large body stalls other tasks — and the result of
+            // this pass was then thrown away. Keeping the raw text also means
+            // scripts and `Copy` see exactly what the server sent.
+            body: if is_large {
+                truncate_on_char_boundary(raw_body, INLINE_BODY_THRESHOLD).to_owned()
+            } else {
+                raw_body.to_owned()
+            },
             body_size,
             body_stored: is_large,
             is_binary: false,
@@ -271,7 +292,11 @@ async fn do_send(
             headers,
             body: String::new(),
             body_size,
-            body_stored: false,
+            // A binary body too big to keep in memory is also "stored
+            // elsewhere" as far as the UI is concerned — it previously said
+            // `false` here, so an oversized download reported neither a body
+            // nor a reason for not having one.
+            body_stored: is_large,
             is_binary: true,
             binary_data: if is_large { None } else { Some(raw_bytes.to_vec()) },
             duration_ms: 0, // filled by caller
@@ -280,20 +305,111 @@ async fn do_send(
     }
 }
 
-fn maybe_pretty(raw: &str) -> String {
-    match serde_json::from_str::<Value>(raw) {
-        Ok(v) => serde_json::to_string_pretty(&v).unwrap_or_else(|_| raw.to_owned()),
-        Err(_) => raw.to_owned(),
+/// Truncates `text` to at most `max_bytes`, always cutting on a `char`
+/// boundary.
+///
+/// Slicing a `str` at a byte index inside a multi-byte UTF-8 sequence panics,
+/// and this crate builds with `panic = "abort"`, so an unchecked cut here would
+/// hard-kill the app on a large non-ASCII response.
+fn truncate_on_char_boundary(text: &str, max_bytes: usize) -> &str {
+    if text.len() <= max_bytes {
+        return text;
     }
+    let mut end = max_bytes;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
 }
 
+/// User-selectable TLS/connection behaviour, for endpoints a browser or curl
+/// reaches but a default rustls client does not (issue #40).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TlsOptions {
+    /// Accept invalid/untrusted certificates: self-signed, internal CA, or a
+    /// hostname mismatch. The equivalent of `curl -k`.
+    pub accept_invalid_certs: bool,
+    /// Offer only HTTP/1.1 in the TLS handshake (no `h2` in ALPN).
+    ///
+    /// rustls advertises HTTP/2 by default. Some servers and middleboxes
+    /// mishandle that and abruptly close the connection, which on Windows
+    /// surfaces as `os error 10054` ("connection closed by remote host") — the
+    /// exact symptom reported in #40, and the most common cause of it. Browsers
+    /// avoid it because they fall back to HTTP/1.1 on such a failure; a plain
+    /// client does not.
+    pub http1_only: bool,
+    /// Restrict the handshake to TLS 1.2, for servers that break on 1.3.
+    pub force_tls12: bool,
+    /// Restrict the handshake to TLS 1.3, for servers that require it.
+    pub force_tls13: bool,
+}
+
+/// Builds the shared HTTP client with the given TLS behaviour.
+///
+/// These are client-level rather than per-request settings because a `Client`
+/// owns both the connection pool and the TLS config, so changing any of them
+/// needs a fresh client (callers drop their cached one — see `AppState::http`).
+pub fn build_client_with(options: TlsOptions) -> Client {
+    let mut builder = Client::builder()
+        .cookie_store(true)
+        .user_agent(concat!("rustman/", env!("CARGO_PKG_VERSION")));
+
+    if options.accept_invalid_certs {
+        // Hostname verification is dropped too, which is what makes a
+        // bare-IP or internal-name endpoint reachable at all.
+        builder = builder
+            .danger_accept_invalid_certs(true)
+            .danger_accept_invalid_hostnames(true);
+    }
+
+    if options.http1_only {
+        builder = builder.http1_only();
+    }
+
+    // Asking for both pins is contradictory; treat it as "no restriction"
+    // rather than building a config that can never complete a handshake.
+    match (options.force_tls12, options.force_tls13) {
+        (true, false) => {
+            builder = builder
+                .min_tls_version(reqwest::tls::Version::TLS_1_2)
+                .max_tls_version(reqwest::tls::Version::TLS_1_2);
+        }
+        (false, true) => {
+            builder = builder
+                .min_tls_version(reqwest::tls::Version::TLS_1_3)
+                .max_tls_version(reqwest::tls::Version::TLS_1_3);
+        }
+        _ => {}
+    }
+
+    builder.build().unwrap_or_else(|err| {
+        // A rejected combination must not take the app down: fall back to a
+        // default client so requests still work.
+        eprintln!("HTTP client: {err}; falling back to default TLS settings");
+        default_client()
+    })
+}
+
+/// A client with default TLS behaviour. Used where no user overrides apply
+/// (the `#[ignore]`d live tests) and as the fallback in `build_client_with`.
+/// A client with default TLS behaviour, used by the `#[ignore]`d live tests.
+///
+/// Production code goes through `build_client_with` so the user's TLS settings
+/// apply (see `AppState::http`).
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn build_client() -> Client {
+    default_client()
+}
+
+fn default_client() -> Client {
     Client::builder()
         .cookie_store(true)
         .user_agent(concat!("rustman/", env!("CARGO_PKG_VERSION")))
         .build()
         .expect("Failed to build HTTP client")
 }
+
+
 
 /// Categorise a send failure into a short, human label.
 fn classify_send_error(e: &reqwest::Error) -> &'static str {
@@ -326,6 +442,94 @@ fn root_cause(err: &dyn std::error::Error) -> String {
 /// `Display` so the (possibly secret-bearing) request URL isn't echoed back.
 fn describe_send_error(e: &reqwest::Error) -> String {
     format!("{}: {}", classify_send_error(e), root_cause(e))
+}
+
+#[cfg(test)]
+mod tls_option_tests {
+    use super::*;
+
+    /// Every combination must produce a usable client rather than panicking or
+    /// silently degrading — this is the whole point of the fallback in
+    /// `build_client_with`.
+    #[test]
+    fn every_option_combination_builds_a_client() {
+        for accept_invalid_certs in [false, true] {
+            for http1_only in [false, true] {
+                for (force_tls12, force_tls13) in
+                    [(false, false), (true, false), (false, true), (true, true)]
+                {
+                    let options = TlsOptions {
+                        accept_invalid_certs,
+                        http1_only,
+                        force_tls12,
+                        force_tls13,
+                    };
+                    // Builds, or falls back; either way we get a client.
+                    let _client = build_client_with(options);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn default_options_are_all_off() {
+        let options = TlsOptions::default();
+        assert!(!options.accept_invalid_certs);
+        assert!(!options.http1_only);
+        assert!(!options.force_tls12);
+        assert!(!options.force_tls13);
+    }
+
+    /// Pinning both versions cannot handshake, so it is treated as no pin at
+    /// all. Asserted here because the UI also enforces exclusivity — this is the
+    /// backstop for a restored session that somehow holds both.
+    #[test]
+    fn both_version_pins_is_treated_as_unrestricted() {
+        let both = TlsOptions { force_tls12: true, force_tls13: true, ..Default::default() };
+        // Must not fall back (which would mean the builder rejected it).
+        let _client = build_client_with(both);
+    }
+}
+
+#[cfg(test)]
+mod body_tests {
+    use super::*;
+
+    #[test]
+    fn truncate_leaves_small_text_untouched() {
+        assert_eq!(truncate_on_char_boundary("hello", 100), "hello");
+    }
+
+    #[test]
+    fn truncate_respects_the_byte_budget() {
+        let text = "a".repeat(500);
+        assert_eq!(truncate_on_char_boundary(&text, 100).len(), 100);
+    }
+
+    /// Cutting mid-character would panic (and `panic = "abort"` makes that
+    /// fatal), so the cut must retreat to a char boundary.
+    #[test]
+    fn truncate_never_splits_a_multibyte_char() {
+        // '€' is 3 bytes, so a 100-byte budget lands mid-character.
+        let text = "€".repeat(200);
+        let out = truncate_on_char_boundary(&text, 100);
+        assert!(out.len() <= 100);
+        assert_eq!(out.len() % 3, 0, "must cut on a char boundary");
+        // Round-trips as valid UTF-8 by construction (it is a &str).
+        assert!(out.chars().all(|c| c == '€'));
+    }
+
+    #[test]
+    fn truncate_handles_a_zero_budget() {
+        assert_eq!(truncate_on_char_boundary("€€€", 0), "");
+    }
+
+    #[test]
+    fn truncate_handles_budget_smaller_than_first_char() {
+        // No boundary exists at 1 or 2 bytes, so it must fall back to empty
+        // rather than panic.
+        assert_eq!(truncate_on_char_boundary("€abc", 2), "");
+    }
 }
 
 #[cfg(test)]

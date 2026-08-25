@@ -105,10 +105,13 @@ pub fn items(state: &AppState) -> Vec<PaletteItem> {
         if i == state.tabs.active {
             continue;
         }
-        let label = format!("{} {}", tab.method.as_str(), if tab.url.is_empty() { &tab.title } else { &tab.url });
+        // A WebSocket tab has no HTTP method; label it "WS" to match the tab
+        // strip and URL bar rather than showing a method that is never sent.
+        let method_label = if tab.is_websocket() { "WS" } else { tab.method.as_str() };
+        let label = format!("{} {}", method_label, if tab.url.is_empty() { &tab.title } else { &tab.url });
         if matches(&label) {
             items.push(PaletteItem {
-                method: tab.method.as_str().to_owned(),
+                method: method_label.to_owned(),
                 name: tab.title.clone(),
                 url: tab.url.clone(),
                 source: "Open Tab".to_owned(),
@@ -160,6 +163,8 @@ fn method_color(method: &str) -> Color {
         "PUT" => Palette::PUT,
         "PATCH" => Palette::PATCH,
         "DELETE" => Palette::DELETE,
+        // WebSocket entries use the accent, matching the WS chip elsewhere.
+        "WS" => Palette::accent(),
         _ => Palette::HEAD,
     }
 }

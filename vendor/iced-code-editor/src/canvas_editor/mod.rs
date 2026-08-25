@@ -332,6 +332,26 @@ pub(crate) const CACHE_WINDOW_MARGIN_MULTIPLIER: usize = 2;
 /// as later content redraws advance the cached parser state.
 pub(crate) const HIGHLIGHT_LINES_PER_FRAME: usize = 2_000;
 
+/// Wall-clock budget for sequential syntect catch-up within a single draw.
+///
+/// A *line count* alone cannot bound frame time: highlighting one line of JSON
+/// costs ~0.008ms in a release build but ~0.08ms in a debug build, so the
+/// 2,000-line budget above is ~17ms in release and ~157ms in debug — the latter
+/// is roughly 6fps, i.e. a visible freeze. Cost also varies hugely with syntax
+/// and line length, so no fixed line count is safe across both.
+///
+/// This caps the *time* instead, and `HIGHLIGHT_LINES_PER_FRAME` remains as a
+/// cheap upper bound so the clock is not consulted on every single line. 8ms
+/// keeps a frame inside a 60fps budget while still making steady progress.
+pub(crate) const HIGHLIGHT_TIME_PER_FRAME: std::time::Duration =
+    std::time::Duration::from_millis(8);
+
+/// How many lines to parse between clock checks.
+///
+/// Reading the clock per line would itself be measurable; 64 lines is well under
+/// the time budget even in a debug build.
+pub(crate) const HIGHLIGHT_CLOCK_CHECK_INTERVAL: usize = 64;
+
 /// Compares two floating point numbers with a small epsilon tolerance.
 ///
 /// # Arguments
@@ -574,6 +594,12 @@ pub struct CodeEditor {
     /// Remaining syntax lines that may be parsed during the current content
     /// render. `usize::MAX` keeps direct non-render uses (notably tests) uncapped.
     pub(crate) highlight_lines_remaining: Cell<usize>,
+    /// Set when a draw exhausted its highlight budget with lines still pending.
+    ///
+    /// Drives a follow-up redraw so sequential syntect catch-up continues across
+    /// frames instead of stopping at the first budget exhaustion (which left
+    /// large documents permanently unhighlighted past that point).
+    pub(crate) highlight_catch_up_pending: Cell<bool>,
     /// Topmost logical line touched by the cursors/selections before the
     /// current edit, captured at the top of `update()`.
     ///
@@ -1032,6 +1058,7 @@ impl CodeEditor {
             visual_lines_cache: RefCell::new(None),
             highlight_cache: RefCell::new(None),
             highlight_lines_remaining: Cell::new(usize::MAX),
+            highlight_catch_up_pending: Cell::new(false),
             pre_edit_line: 0,
             pre_edit_last_line: 0,
         };
@@ -2406,6 +2433,68 @@ impl CodeEditor {
         &self.syntax
     }
 
+    /// Changes the syntax used for highlighting, keeping the buffer, cursor,
+    /// selection and undo history untouched.
+    ///
+    /// Needed by hosts whose language choice can change after construction — a
+    /// body-type picker switching from Text to JSON, for example. Without this
+    /// the only way to re-language an editor was to rebuild it, which discards
+    /// the undo history and cursor position, so hosts understandably did not do
+    /// it and the content simply stopped being highlighted.
+    ///
+    /// A no-op when the syntax is unchanged. Otherwise the highlight cache is
+    /// dropped (it is keyed by syntax) and the render caches invalidated, so the
+    /// next frame re-tokenizes the document under the new language.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use iced_code_editor::CodeEditor;
+    ///
+    /// let mut editor = CodeEditor::new("some text", "txt");
+    /// editor.set_syntax("json");
+    /// assert_eq!(editor.syntax(), "json");
+    /// ```
+    /// Whether the buffer opens and closes with matching JSON-ish brackets.
+    ///
+    /// Scans only the first and last non-empty lines, so it is cheap enough to
+    /// call on every keystroke — unlike `content()`, which copies the whole
+    /// document. Hosts use it to pick a syntax that follows what the buffer
+    /// actually holds.
+    pub fn looks_structural(&self) -> bool {
+        let line_count = self.buffer.line_count();
+        let first = (0..line_count)
+            .map(|i| self.buffer.line(i).trim())
+            .find(|line| !line.is_empty());
+        let last = (0..line_count)
+            .rev()
+            .map(|i| self.buffer.line(i).trim())
+            .find(|line| !line.is_empty());
+
+        match (first, last) {
+            (Some(first), Some(last)) => matches!(
+                (first.as_bytes().first(), last.as_bytes().last()),
+                (Some(b'{'), Some(b'}')) | (Some(b'['), Some(b']'))
+            ),
+            _ => false,
+        }
+    }
+
+    pub fn set_syntax(&mut self, syntax: impl Into<String>) {
+        let syntax = syntax.into();
+        if self.syntax == syntax {
+            return;
+        }
+        self.syntax = syntax;
+        // The highlight cache records which syntax produced it; drop it so the
+        // whole document is re-tokenized under the new language.
+        *self.highlight_cache.borrow_mut() = None;
+        self.highlight_lines_remaining.set(usize::MAX);
+        self.highlight_catch_up_pending.set(false);
+        self.content_cache.clear();
+        self.overlay_cache.clear();
+    }
+
     /// Opens the search dialog programmatically.
     ///
     /// This is useful when wiring your own UI button instead of relying on
@@ -2616,6 +2705,20 @@ impl CodeEditor {
         self.has_canvas_focus = false;
         self.show_cursor = false;
         self.ime_preedit = None;
+        // Also stand down the process-wide focused-editor slot, so a host that
+        // programmatically moves focus away cannot leave this editor's id
+        // installed there. `has_canvas_focus = false` already stops keyboard
+        // handling; this keeps `is_focused()` (which drives the IME layer)
+        // truthful too.
+        FOCUSED_EDITOR_ID
+            .compare_exchange(
+                self.editor_id,
+                0,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            )
+            .ok();
+        self.overlay_cache.clear();
     }
 
     /// Resets the focus lock state.
@@ -2743,6 +2846,15 @@ impl CodeEditor {
     /// The returned `Rc<Vec<VisualLine>>` is cheap to clone and allows multiple
     /// rendering passes (content + overlay layers) to share the same computed
     /// layout without extra allocation.
+    /// Test-only: number of wrapped visual lines for a given viewport width.
+    ///
+    /// Exposed so benchmarks/tests can measure the wrapping cost that layout
+    /// pays on the UI thread.
+    #[doc(hidden)]
+    pub fn visual_line_count_for_test(&self, viewport_width: f32) -> usize {
+        self.visual_lines_cached(viewport_width).len()
+    }
+
     pub(crate) fn visual_lines_cached(
         &self,
         viewport_width: f32,

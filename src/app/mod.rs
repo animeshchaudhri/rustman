@@ -93,6 +93,12 @@ pub struct AppState {
     /// from a summary card in the Settings panel — the two script editors
     /// need real room, more than the sidebar can spare).
     pub global_scripts_modal_open: bool,
+    /// TLS/connection overrides for endpoints a default client can't reach
+    /// (self-signed certs, HTTP/2-hostile servers, TLS-version pinning).
+    /// See `services::http::TlsOptions` and issue #40.
+    pub tls_options: crate::services::http::TlsOptions,
+
+    pub session_dirty: bool,
 }
 
 /// State machine for the self-update flow.
@@ -116,9 +122,22 @@ impl AppState {
 
     /// Lazily build the HTTP client on first use so that TLS cert loading does
     /// not block the initial render.
+    ///
+    /// The client is cached because it owns the connection pool. It is built
+    /// from `tls_options`, so any change there must call
+    /// `invalidate_http_client` — otherwise a new setting would silently have
+    /// no effect until restart.
     pub(crate) fn http(&self) -> &reqwest::Client {
+        let options = self.tls_options;
         self.http_client
-            .get_or_init(|| crate::services::http::build_client())
+            .get_or_init(|| crate::services::http::build_client_with(options))
+    }
+
+    /// Drops the cached HTTP client so the next request picks up new
+    /// `tls_options`. Also clears the pool, which is intended: connections
+    /// negotiated under the old TLS settings must not be reused.
+    pub(crate) fn invalidate_http_client(&mut self) {
+        self.http_client = OnceCell::new();
     }
 
     /// Whether a code editor that's *currently on screen* has keyboard
@@ -161,10 +180,26 @@ impl AppState {
     }
 }
 
+/// Reverse-DNS application id, and the basename of the installed
+/// `.desktop` file (`packaging/linux/io.github.animeshchaudhri.rustman.desktop`).
+///
+/// On Wayland this is the *only* way a window gets an icon: the compositor
+/// ignores the pixel buffer set via `window::Settings::icon` (that is an X11 /
+/// Windows mechanism) and instead looks up an installed icon by matching the
+/// app id against a `.desktop` file. With this unset — it defaults to an empty
+/// string — Rustman showed the generic placeholder icon in the dock, task
+/// switcher and window list on every Wayland desktop (GNOME, KDE, Sway).
+pub const APP_ID: &str = "io.github.animeshchaudhri.rustman";
+
 pub fn run() -> iced::Result {
     let window = iced::window::Settings {
         size: Size::new(1280.0, 800.0),
         icon: app_icon(),
+        #[cfg(target_os = "linux")]
+        platform_specific: iced::window::settings::PlatformSpecific {
+            application_id: APP_ID.to_owned(),
+            ..Default::default()
+        },
         ..iced::window::Settings::default()
     };
     iced::application(boot::init, update::update, view)
@@ -190,12 +225,18 @@ fn view(state: &AppState) -> Element<'_, Message> {
     crate::ui::layout::view(state)
 }
 
-fn app_icon() -> Option<iced::window::Icon> {
-    let bytes = include_bytes!("../../public/icon.png");
-    let image = image::load_from_memory(bytes).ok()?;
-    let rgba = image.to_rgba8();
-    let width = rgba.width();
-    let height = rgba.height();
 
-    iced::window::icon::from_rgba(rgba.into_raw(), width, height).ok()
+fn app_icon() -> Option<iced::window::Icon> {
+    const ICON_BYTES: &[u8] = include_bytes!("../../public/icon.png");
+
+    match iced::window::icon::from_file_data(
+        ICON_BYTES,
+        Some(image::ImageFormat::Png),
+    ) {
+        Ok(icon) => Some(icon),
+        Err(err) => {
+            eprintln!("app icon: could not build an icon from public/icon.png: {err}");
+            None
+        }
+    }
 }

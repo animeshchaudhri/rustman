@@ -17,7 +17,23 @@ mod updater;
 mod ws;
 
 pub(crate) fn update(state: &mut AppState, message: Message) -> Task<Message> {
+
+    let marks_dirty = !matches!(
+        message,
+        Message::App(
+            crate::message::AppMsg::AutoSaveSession
+                | crate::message::AppMsg::Noop
+                | crate::message::AppMsg::SpinnerTick
+                | crate::message::AppMsg::HtmlPreviewTick
+                | crate::message::AppMsg::HtmlPanelBounds { .. }
+        )
+    );
+
     let task = dispatch(state, message);
+
+    if marks_dirty {
+        state.session_dirty = true;
+    }
     task
 }
 

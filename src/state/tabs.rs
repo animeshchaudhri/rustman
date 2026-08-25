@@ -85,6 +85,10 @@ pub struct RequestTabState {
     pub body_indent_tabs: bool,
     pub response_editor: CodeEditor,
     pub response_viewer_lines: usize,
+    /// `Some(full_len)` when the body shown in `response_editor` is only a
+    /// prefix of the real response body (see `set_viewer_content`), so the UI
+    /// can say so instead of silently showing partial data.
+    pub response_truncated_bytes: Option<usize>,
     pub viewer_processing: bool,
     pub parsed_json: Option<serde_json::Value>,
     pub response_preview: ResponsePreview,
@@ -191,6 +195,7 @@ impl RequestTabState {
             body_indent_tabs: false,
             response_editor: make_code_editor("", "txt"),
             response_viewer_lines: 0,
+            response_truncated_bytes: None,
             viewer_processing: false,
             parsed_json: None,
             response_preview: ResponsePreview::default(),
@@ -271,13 +276,30 @@ impl RequestTabState {
     }
 
     pub fn set_viewer_content(&mut self, text: &str, is_json: bool) {
-        self.response_viewer_lines = text.lines().count().max(1);
+        // Very large bodies must not go into the editor verbatim.
+        //
+        // The editor keeps one `VisualLine` per wrapped segment and sizes its
+        // canvas at `total_visual_lines * line_height`. A 10 MB pretty-printed
+        // JSON body is ~260k lines, i.e. a multi-million-pixel canvas and a
+        // full re-wrap of every line on each layout change — which is what made
+        // the editor freeze (or render blank) on large responses. Showing a
+        // bounded prefix keeps the viewer responsive; the full body is still
+        // intact in `response.body` for copy/save.
+        let (display, truncated_at) = clamp_for_viewer(text);
+        self.response_truncated_bytes = truncated_at;
+        self.response_viewer_lines = display.lines().count().max(1);
         let syntax = if is_json { "json" } else { "txt" };
-        self.response_editor = make_code_editor(text, syntax);
+        self.response_editor = make_code_editor(display, syntax);
+    }
+
+    /// Byte length of what the response editor is actually showing (which may
+    /// be a clamped prefix of the real body — see `set_viewer_content`).
+    pub fn response_editor_bytes(&self) -> usize {
+        self.response_editor.content().len()
     }
 
     pub fn reset_body_editor(&mut self, text: &str) {
-        let syntax = body_syntax(&self.body_type);
+        let syntax = body_syntax_for(&self.body_type, text);
         let indent = if self.body_indent_tabs {
             iced_code_editor::IndentStyle::Tab
         } else {
@@ -295,14 +317,34 @@ impl RequestTabState {
             self.reset_body_editor(&text);
             return iced::Task::none();
         }
+        // This path deliberately keeps the existing editor so the change stays
+        // undoable — which also means it keeps the editor's *construction-time*
+        // syntax. Re-evaluate it against the incoming text, or replacing a text
+        // body with JSON (Format, curl import, a script setting the body) would
+        // leave it tokenized as plain text.
+        self.body_editor
+            .set_syntax(body_syntax_for(&self.body_type, &text));
         let _ = self.body_editor.update(&iced_code_editor::Message::SelectAll);
         self.body_editor.update(&iced_code_editor::Message::Paste(text))
     }
 
+    /// Re-applies the current palette to **every** code editor this tab owns.
+    ///
+    /// All four must be included. This used to re-theme only `body_editor` and
+    /// `response_editor`, so after a theme change the two Scripts-tab editors
+    /// kept rendering with the previous palette — wrong background, gutter and
+    /// selection colours — until the app was restarted and they were rebuilt
+    /// from the persisted theme (issue #38).
     pub fn sync_editor_themes(&mut self) {
         let style = crate::ui::theme::Palette::code_editor_style();
-        self.body_editor.set_theme(style);
-        self.response_editor.set_theme(style);
+        for editor in [
+            &mut self.body_editor,
+            &mut self.response_editor,
+            &mut self.pre_request_editor,
+            &mut self.test_editor,
+        ] {
+            editor.set_theme(style);
+        }
     }
 
 
@@ -320,7 +362,7 @@ impl RequestTabState {
         tab.headers = req.headers.clone();
         tab.params = params;
         tab.body_type = req.body_type.clone();
-        tab.body_editor = make_code_editor(&req.body, body_syntax(&req.body_type));
+        tab.body_editor = make_code_editor(&req.body, body_syntax_for(&req.body_type, &req.body));
         tab.form_fields = req.form_data_fields.clone();
         tab.auth_type = req.auth_type.clone();
         tab.bearer_token = req.bearer_token.clone();
@@ -341,12 +383,95 @@ impl RequestTabState {
     }
 }
 
+/// Largest response body, in bytes, shown verbatim in the response editor.
+///
+/// Beyond this the viewer shows a prefix. The editor's cost is linear in the
+/// number of wrapped visual lines (it holds one `VisualLine` per segment and
+/// makes its canvas `lines * line_height` tall), so an unbounded body turns
+/// into a multi-million-pixel canvas and a full re-wrap per layout change.
+/// 2 MB is roughly 50k lines of pretty JSON — big enough to be useful, small
+/// enough to stay interactive.
+pub const VIEWER_BYTE_LIMIT: usize = 2 * 1024 * 1024;
+
+/// Hard cap on visual lines fed to the editor, independent of byte size.
+///
+/// A body can be small in bytes yet have a pathological line count (e.g. a
+/// minified file of a million newlines), which costs layout time per line
+/// regardless of total size.
+pub const VIEWER_LINE_LIMIT: usize = 50_000;
+
+/// Returns the slice of `text` safe to display, plus `Some(full_len)` when it
+/// had to be shortened.
+///
+/// Always cuts on a `char` boundary — slicing a `str` by a byte index that
+/// lands inside a multi-byte UTF-8 sequence panics, and with `panic = "abort"`
+/// that would take the whole app down on any non-ASCII response.
+pub fn clamp_for_viewer(text: &str) -> (&str, Option<usize>) {
+    let full_len = text.len();
+
+    // Byte budget first: find the largest char boundary at or below the limit.
+    let mut end = if full_len > VIEWER_BYTE_LIMIT {
+        let mut candidate = VIEWER_BYTE_LIMIT;
+        while candidate > 0 && !text.is_char_boundary(candidate) {
+            candidate -= 1;
+        }
+        candidate
+    } else {
+        full_len
+    };
+
+    // Then the line budget, within whatever the byte budget already allowed.
+    if let Some((offset, _)) = text[..end]
+        .char_indices()
+        .filter(|(_, c)| *c == '\n')
+        .nth(VIEWER_LINE_LIMIT)
+    {
+        end = offset;
+    }
+
+    if end == full_len {
+        (text, None)
+    } else {
+        (&text[..end], Some(full_len))
+    }
+}
+
 /// Syntax token for a given body type.
 pub fn body_syntax(body_type: &BodyType) -> &'static str {
     match body_type {
         BodyType::Json => "json",
         _ => "txt",
     }
+}
+
+/// Syntax token for a body, preferring what the content actually looks like.
+///
+/// The declared body type is often out of step with the buffer: a request saved
+/// or imported with type `None`/`Text` frequently holds JSON, and until the user
+/// happens to flip the picker it would be tokenized as plain text — pasted JSON
+/// showing up with no highlighting at all. Sniffing the content means
+/// highlighting follows what is really there, while the declared type still
+/// decides how the request is *sent*.
+pub fn body_syntax_for(body_type: &BodyType, content: &str) -> &'static str {
+    if body_syntax(body_type) == "json" || looks_like_json(content) {
+        "json"
+    } else {
+        "txt"
+    }
+}
+
+/// Cheap structural check for JSON: does the text start with `{`/`[` and end
+/// with the matching bracket?
+///
+/// Deliberately not a full parse — this runs while the user is mid-edit, when
+/// the body is usually *invalid* JSON, and it should still be highlighted as
+/// JSON. Only the outermost shape is considered.
+pub fn looks_like_json(content: &str) -> bool {
+    let trimmed = content.trim();
+    matches!(
+        (trimmed.as_bytes().first(), trimmed.as_bytes().last()),
+        (Some(b'{'), Some(b'}')) | (Some(b'['), Some(b']'))
+    )
 }
 
 /// Create a themed CodeEditor for the given content and syntax.
@@ -511,6 +636,134 @@ impl From<&RequestTabState> for TabSnapshot {
             active_request_tab: t.active_request_tab.clone(),
             active_response_tab: t.active_response_tab.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod body_syntax_tests {
+    use super::*;
+
+    #[test]
+    fn declared_json_always_wins() {
+        assert_eq!(body_syntax_for(&BodyType::Json, ""), "json");
+        assert_eq!(body_syntax_for(&BodyType::Json, "not json at all"), "json");
+    }
+
+    /// The reported bug: JSON pasted into a body whose declared type is not JSON
+    /// must still be highlighted as JSON.
+    #[test]
+    fn json_content_is_detected_regardless_of_declared_type() {
+        for body_type in [BodyType::None, BodyType::Text] {
+            assert_eq!(
+                body_syntax_for(&body_type, r#"{"name": "value"}"#),
+                "json",
+                "object body should highlight as json"
+            );
+            assert_eq!(
+                body_syntax_for(&body_type, "[1, 2, 3]"),
+                "json",
+                "array body should highlight as json"
+            );
+            assert_eq!(
+                body_syntax_for(&body_type, "  \n {\"a\": 1} \n "),
+                "json",
+                "surrounding whitespace must not defeat detection"
+            );
+        }
+    }
+
+    #[test]
+    fn plain_text_stays_plain() {
+        assert_eq!(body_syntax_for(&BodyType::Text, "hello world"), "txt");
+        assert_eq!(body_syntax_for(&BodyType::None, ""), "txt");
+        assert_eq!(body_syntax_for(&BodyType::Text, "key=value&x=1"), "txt");
+    }
+
+    /// Detection is structural, not a parse: a half-typed body is still JSON as
+    /// far as highlighting is concerned, which is the common case while editing.
+    #[test]
+    fn incomplete_json_is_still_treated_as_json() {
+        assert!(looks_like_json("{\"a\": }"));
+        assert!(looks_like_json("{,,}"));
+        // But an unclosed body genuinely has no closing bracket yet.
+        assert!(!looks_like_json("{\"a\": 1"));
+    }
+
+    /// Replacing the body (Format, curl import, scripts) must re-language the
+    /// editor, since that path keeps the existing editor for undo history.
+    #[test]
+    fn replacing_body_text_updates_the_editor_syntax() {
+        let mut tab = RequestTabState::new();
+        tab.body_type = BodyType::Text;
+        tab.reset_body_editor("plain text here");
+        assert_eq!(tab.body_editor.syntax(), "txt");
+
+        let _ = tab.replace_body_text(r#"{"now": "json"}"#.to_owned());
+
+        assert_eq!(
+            tab.body_editor.syntax(),
+            "json",
+            "a JSON replacement should switch the editor to json"
+        );
+    }
+}
+
+#[cfg(test)]
+mod viewer_clamp_tests {
+    use super::*;
+
+    #[test]
+    fn small_bodies_are_shown_in_full() {
+        let text = "{\"a\": 1}";
+        let (shown, truncated) = clamp_for_viewer(text);
+        assert_eq!(shown, text);
+        assert_eq!(truncated, None);
+    }
+
+    #[test]
+    fn oversized_bodies_are_clamped_and_reported() {
+        let text = "x".repeat(VIEWER_BYTE_LIMIT + 5_000);
+        let (shown, truncated) = clamp_for_viewer(&text);
+        assert!(shown.len() <= VIEWER_BYTE_LIMIT);
+        assert_eq!(truncated, Some(text.len()));
+    }
+
+    /// Cutting at a byte offset inside a multi-byte character would panic, and
+    /// `panic = "abort"` makes that fatal.
+    #[test]
+    fn clamping_never_splits_a_character() {
+        // 3 bytes each, so the byte limit lands mid-character.
+        let text = "€".repeat(VIEWER_BYTE_LIMIT);
+        let (shown, truncated) = clamp_for_viewer(&text);
+        assert!(truncated.is_some());
+        assert!(shown.chars().all(|c| c == '€'));
+    }
+
+    /// A body can be modest in bytes yet have a pathological line count, which
+    /// costs layout time per line regardless of total size.
+    #[test]
+    fn line_count_is_capped_independently_of_byte_size() {
+        let text = "\n".repeat(VIEWER_LINE_LIMIT * 2);
+        assert!(text.len() < VIEWER_BYTE_LIMIT, "stays under the byte budget");
+
+        let (shown, truncated) = clamp_for_viewer(&text);
+
+        assert_eq!(truncated, Some(text.len()));
+        assert!(shown.lines().count() <= VIEWER_LINE_LIMIT + 1);
+    }
+
+    #[test]
+    fn set_viewer_content_records_truncation() {
+        let mut tab = RequestTabState::new();
+
+        tab.set_viewer_content("small", false);
+        assert_eq!(tab.response_truncated_bytes, None);
+
+        let huge = "y".repeat(VIEWER_BYTE_LIMIT + 1_000);
+        tab.set_viewer_content(&huge, false);
+        assert_eq!(tab.response_truncated_bytes, Some(huge.len()));
+        // The editor must hold only the clamped prefix, not the whole body.
+        assert!(tab.response_editor.content().len() <= VIEWER_BYTE_LIMIT);
     }
 }
 

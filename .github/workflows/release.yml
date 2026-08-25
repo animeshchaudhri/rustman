@@ -103,7 +103,20 @@ jobs:
         run: cargo build --release
 
       - name: Package binary
-        run: tar czf rustman-linux-x86_64.tar.gz -C target/release rustman
+        # Ship the desktop entry, icon and installer alongside the binary. A
+        # bare binary has no icon anywhere in a Linux desktop: Wayland
+        # compositors resolve a window's icon by matching its app id against an
+        # installed .desktop file, and X11 launchers need one too. Users ran
+        # Rustman with the generic placeholder icon because the tarball had
+        # nothing to install.
+        run: |
+          mkdir -p dist/rustman
+          cp target/release/rustman dist/rustman/
+          cp public/icon.png dist/rustman/
+          cp packaging/linux/io.github.animeshchaudhri.rustman.desktop dist/rustman/
+          cp packaging/linux/install-desktop-entry.sh dist/rustman/
+          chmod +x dist/rustman/install-desktop-entry.sh dist/rustman/rustman
+          tar czf rustman-linux-x86_64.tar.gz -C dist rustman
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2

@@ -8,6 +8,12 @@ use iced::{Color, Event, Point, Rectangle, Size, Theme, keyboard};
 use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::OnceLock;
+// Matches the crate's platform handling in `mod.rs`: `std::time::Instant` panics
+// on wasm, so the web build uses `web_time`.
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{
     HighlightIterator, HighlightState, Highlighter, Style, ThemeSet,
@@ -150,6 +156,56 @@ fn color_from_style(style: Style) -> Color {
     )
 }
 
+/// Perceptual luminance (ITU-R BT.601), used only to compare contrast.
+fn luminance(color: Color) -> f32 {
+    color.r * 0.299 + color.g * 0.587 + color.b * 0.114
+}
+
+/// Minimum luminance separation before a token counts as unreadable.
+const MIN_CONTRAST: f32 = 0.12;
+
+/// Converts a syntect style into a foreground color that is actually **legible
+/// against `editor_bg`**.
+///
+/// This exists because syntect themes express some scopes as a *background*
+/// highlight rather than a foreground one. The base16 themes render
+/// `invalid.illegal` as "foreground = the theme's background colour, background
+/// = red" — a red block with knocked-out text. Taking only `style.foreground`
+/// (as the plain conversion above does) and painting it onto the editor's own
+/// background therefore produced text in the background colour: **invisible**.
+///
+/// That is why a JSON body appeared to lose its text while it was still
+/// syntactically incomplete — every keystroke of a half-typed string or an
+/// unmatched brace marks the rest of the line `invalid.illegal`, so it silently
+/// vanished until the syntax became valid again.
+///
+/// Resolution order:
+/// 1. If the foreground already contrasts with the editor background, use it.
+/// 2. Otherwise fall back to the style's *background* colour, which the theme
+///    picked to stand out (so invalid tokens read as red, which is what the
+///    highlight meant) — provided that contrasts.
+/// 3. Otherwise use the editor's plain text colour, which is legible by
+///    definition. Text is never lost.
+fn readable_color_from_style(style: Style, editor_bg: Color, text_color: Color) -> Color {
+    let bg_luminance = luminance(editor_bg);
+
+    let foreground = color_from_style(style);
+    if (luminance(foreground) - bg_luminance).abs() >= MIN_CONTRAST {
+        return foreground;
+    }
+
+    let highlight = Color::from_rgb(
+        f32::from(style.background.r) / 255.0,
+        f32::from(style.background.g) / 255.0,
+        f32::from(style.background.b) / 255.0,
+    );
+    if (luminance(highlight) - bg_luminance).abs() >= MIN_CONTRAST {
+        return highlight;
+    }
+
+    text_color
+}
+
 /// Tokenizes a full logical line into colored spans using syntect.
 ///
 /// The returned spans cover the entire line in order, each pairing an iced
@@ -179,9 +235,33 @@ pub fn highlight_line_spans(
         .highlight_line(line, syntax_set)
         .unwrap_or_else(|_| vec![(Style::default(), line)]);
 
+    // Contrast-check against the theme's own background, for the same reason
+    // the rendering path does (see `readable_color_from_style`): a scope styled
+    // as a background highlight would otherwise yield text the colour of the
+    // background.
+    let theme_bg = theme.settings.background.map_or(Color::BLACK, |bg| {
+        Color::from_rgb(
+            f32::from(bg.r) / 255.0,
+            f32::from(bg.g) / 255.0,
+            f32::from(bg.b) / 255.0,
+        )
+    });
+    let theme_fg = theme.settings.foreground.map_or(Color::WHITE, |fg| {
+        Color::from_rgb(
+            f32::from(fg.r) / 255.0,
+            f32::from(fg.g) / 255.0,
+            f32::from(fg.b) / 255.0,
+        )
+    });
+
     ranges
         .into_iter()
-        .map(|(style, text)| (color_from_style(style), text.to_string()))
+        .map(|(style, text)| {
+            (
+                readable_color_from_style(style, theme_bg, theme_fg),
+                text.to_string(),
+            )
+        })
         .collect()
 }
 
@@ -460,8 +540,24 @@ impl CodeEditor {
             .saturating_sub(1)
             .min(target);
         let mut result = None;
+        // Stop early if this frame's time budget runs out, even if the line
+        // budget hasn't. A line count cannot bound frame time (see
+        // `HIGHLIGHT_TIME_PER_FRAME`), and blowing through it is what made a
+        // large body freeze the whole window rather than colour in gradually.
+        let deadline = Instant::now() + super::HIGHLIGHT_TIME_PER_FRAME;
+        let mut parsed_this_frame = 0usize;
+        let mut stopped_early = false;
         if lines_to_parse > 0 {
             for index in cache.valid_len()..=parse_end {
+                // Checking every line would make the clock itself measurable.
+                if parsed_this_frame > 0
+                    && parsed_this_frame % super::HIGHLIGHT_CLOCK_CHECK_INTERVAL == 0
+                    && Instant::now() >= deadline
+                {
+                    stopped_early = true;
+                    break;
+                }
+                parsed_this_frame += 1;
                 // syntect's `_newlines` syntaxes expect a trailing '\n' for correct
                 // end-of-line context handling; the stored buffer line has none.
                 let mut line = self.buffer.line(index).to_string();
@@ -481,7 +577,18 @@ impl CodeEditor {
                     if text.is_empty() {
                         None
                     } else {
-                        Some((color_from_style(style), text.to_string()))
+                        // Must be contrast-checked: themes encode "invalid"
+                        // scopes as a background highlight with the foreground
+                        // knocked out to the theme background, which would
+                        // render as invisible text on this editor's background.
+                        Some((
+                            readable_color_from_style(
+                                style,
+                                self.style.background,
+                                self.style.text_color,
+                            ),
+                            text.to_string(),
+                        ))
                     }
                 })
                 .collect();
@@ -497,9 +604,25 @@ impl CodeEditor {
                 }
             }
         }
+        // Charge only what was actually parsed: bailing out on the time budget
+        // must not consume the rest of the line budget.
         self.highlight_lines_remaining.set(
-            self.highlight_lines_remaining.get().saturating_sub(lines_to_parse),
+            self.highlight_lines_remaining.get().saturating_sub(parsed_this_frame),
         );
+
+        // Note whether this line had to give up because the per-frame budget ran
+        // out, so the caller can schedule another frame to carry on.
+        //
+        // Without that, catch-up stalls permanently: the budget is only refilled
+        // inside `content_cache.draw`, which runs solely when the content layer
+        // is dirty. Highlighting is sequential (line N needs lines 0..=N parsed),
+        // so opening a large body and scrolling past ~`HIGHLIGHT_LINES_PER_FRAME`
+        // left every deeper line falling through to the plain-text fallback
+        // below, with nothing to ever dirty the cache again — the file simply
+        // stayed unhighlighted.
+        if stopped_early || lines_to_parse < missing_lines {
+            self.highlight_catch_up_pending.set(true);
+        }
 
         result.or_else(|| cache.spans(logical_line)).unwrap_or_else(|| {
             Rc::new(vec![(
@@ -843,6 +966,30 @@ impl CodeEditor {
     /// * `ctx` - Rendering context containing visual lines and metrics
     /// * `start` - Selection start (line, col)
     /// * `end` - Selection end (line, col), must be >= start
+    /// The half-open range of visual-line indices this frame is drawing.
+    ///
+    /// Mirrors the window `draw` computes for the content layer, so overlay
+    /// elements (selection, search hits) can skip rows that are scrolled out of
+    /// view instead of emitting geometry for the whole document.
+    fn visible_line_window(&self, ctx: &RenderContext) -> (usize, usize) {
+        let total = ctx.visual_lines.len();
+        if self.cache_window_end_line > self.cache_window_start_line {
+            return (
+                self.cache_window_start_line.min(total),
+                self.cache_window_end_line.min(total),
+            );
+        }
+
+        let effective_height = if self.viewport_metrics_confirmed {
+            self.viewport_height
+        } else {
+            ctx.line_height * 64.0
+        };
+        let first = (self.viewport_scroll / self.line_height).floor() as usize;
+        let count = (effective_height / self.line_height).ceil() as usize + 2;
+        (first.min(total), (first + count).min(total))
+    }
+
     fn draw_single_selection(
         &self,
         frame: &mut canvas::Frame,
@@ -878,13 +1025,22 @@ impl CodeEditor {
                         selection_color,
                     );
                 } else {
-                    // Selection spans multiple visual lines (same logical line)
+                    // Selection spans multiple visual lines (same logical line).
+                    // Clamped to the visible window for the same reason as the
+                    // multi-line case below: a single very long wrapped line can
+                    // still produce far more segments than fit on screen.
+                    let (window_start, window_end) = self.visible_line_window(ctx);
+                    let first = start_v.max(window_start);
+                    let last = end_v.min(window_end.saturating_sub(1));
+                    if first > last {
+                        return;
+                    }
                     for (v_idx, vl) in ctx
                         .visual_lines
                         .iter()
                         .enumerate()
-                        .skip(start_v)
-                        .take(end_v - start_v + 1)
+                        .skip(first)
+                        .take(last - first + 1)
                     {
                         let sel_start_col = if v_idx == start_v {
                             start.1
@@ -919,12 +1075,29 @@ impl CodeEditor {
             );
 
             if let (Some(start_v), Some(end_v)) = (start_visual, end_visual) {
+                // Only draw the visual lines that are actually on screen.
+                //
+                // This used to iterate every selected visual line. Selecting all
+                // of a large document (Ctrl+A on a 90k-line body) therefore
+                // queued ~90,000 rectangles per frame — in the *overlay* layer,
+                // which is redrawn on every cursor blink and every mouse move —
+                // so the window froze even though the copy itself is fast.
+                // Anything outside the viewport cannot be seen, so clamping to
+                // the drawn window is visually identical and bounds the work to
+                // the number of visible rows.
+                let (window_start, window_end) = self.visible_line_window(ctx);
+                let first = start_v.max(window_start);
+                let last = end_v.min(window_end.saturating_sub(1));
+                if first > last {
+                    return;
+                }
+
                 for (v_idx, vl) in ctx
                     .visual_lines
                     .iter()
                     .enumerate()
-                    .skip(start_v)
-                    .take(end_v - start_v + 1)
+                    .skip(first)
+                    .take(last - first + 1)
                 {
                     let sel_start_col =
                         if vl.logical_line == start.0 && v_idx == start_v {
@@ -1812,7 +1985,32 @@ impl CodeEditor {
     ) -> Option<Action<Message>> {
         match event {
             mouse::Event::ButtonPressed(mouse::Button::Left) => {
-                cursor.position_in(bounds).map(|position| {
+                // A press that lands outside this editor means focus is moving
+                // elsewhere (another editor, a text_input, a button...).
+                //
+                // This must be handled explicitly. iced 0.14 delivers keyboard
+                // events to *every* widget in the tree (column/row do not check
+                // `shell.is_event_captured()` between siblings), so each widget
+                // has to decide for itself whether a key belongs to it. A
+                // `text_input` does that correctly by clearing its own focus on
+                // any click outside its bounds. This editor tracks focus in a
+                // process-global `FOCUSED_EDITOR_ID` plus `has_canvas_focus`,
+                // and nothing ever cleared them for a click that landed on some
+                // other widget — so once the user had clicked an editor, it kept
+                // reporting `has_focus() == true` forever and *also* consumed
+                // every keystroke meant for whatever input the user later
+                // focused (and every Ctrl+C/X/A). Defocusing here is what keeps
+                // "one click, one focused widget" true across widget kinds.
+                //
+                // The event is deliberately NOT captured: this is a passive
+                // observation of a click aimed at another widget, which must
+                // still receive it.
+                let Some(position) = cursor.position_in(bounds) else {
+                    return self.has_canvas_focus.then(|| {
+                        Action::publish(Message::CanvasFocusLost)
+                    });
+                };
+                Some(position).map(|position| {
                     // Clicking a fold chevron toggles the block instead of
                     // moving the caret.
                     if let Some(header) = self.fold_header_at_point(position) {
@@ -1859,21 +2057,52 @@ impl CodeEditor {
                 })
             }
             mouse::Event::CursorMoved { .. } => {
-                cursor.position_in(bounds).map(|position| {
-                    if self.is_dragging {
-                        // Handle mouse drag for selection only when cursor is within bounds
+                // While dragging, the pointer must be tracked even once it
+                // leaves the editor's bounds.
+                //
+                // `position_in` returns `None` outside `bounds`, so gating the
+                // drag on it silently dropped every event past the edge: the
+                // selection froze at whatever character the pointer happened to
+                // be over when it crossed the boundary. That is the normal way
+                // people select text — push past the edge to extend, or flick
+                // across a trackpad and overshoot — so selection appeared to
+                // "stick" or stop halfway.
+                //
+                // Clamping into `bounds` instead keeps the drag live and makes
+                // an overshoot select to the nearest edge, which is what every
+                // other text widget does.
+                if self.is_dragging {
+                    let position = cursor.position().map(|absolute| {
+                        Point::new(
+                            (absolute.x - bounds.x).clamp(0.0, bounds.width),
+                            (absolute.y - bounds.y).clamp(0.0, bounds.height),
+                        )
+                    })?;
+                    return Some(
                         Action::publish(Message::MouseDrag(position))
-                            .and_capture()
-                    } else {
-                        // Forward hover events when not dragging to enable LSP hover.
-                        Action::publish(Message::MouseHover(position))
-                    }
+                            .and_capture(),
+                    );
+                }
+                // Hover (for LSP) is only meaningful over the editor itself.
+                cursor.position_in(bounds).map(|position| {
+                    Action::publish(Message::MouseHover(position))
                 })
             }
             mouse::Event::ButtonReleased(mouse::Button::Left) => {
-                // Only handle mouse release when cursor is within bounds
-                // This prevents capturing events meant for other widgets
-                if cursor.is_over(bounds) {
+                // A drag must be ended wherever the button is released.
+                //
+                // This used to require the pointer to still be over the editor,
+                // so releasing after dragging past the edge left `is_dragging`
+                // stuck true. The editor then kept treating plain pointer motion
+                // as an active selection drag — the selection followed the mouse
+                // with no button held — until the user clicked again. Releasing
+                // outside is in fact the *common* case when selecting to the end
+                // of a long body.
+                //
+                // Capture only when the release is genuinely ours (over the
+                // editor, or ending a drag we started), so an unrelated release
+                // elsewhere still reaches the widget it belongs to.
+                if cursor.is_over(bounds) || self.is_dragging {
                     Some(Action::publish(Message::MouseRelease).and_capture())
                 } else {
                     None
@@ -2095,6 +2324,14 @@ impl canvas::Program<Message> for CodeEditor {
         // This keeps selection dragging and cursor blinking smooth by avoiding
         // invalidation of the text layer on every overlay update.
         let visual_lines_for_content = visual_lines.clone();
+        // A previous frame ran out of highlight budget with lines still to parse.
+        // Drop the cached content layer so this frame re-enters the closure
+        // below, refills the budget and advances the sequential parse further.
+        // Repeated over a few frames this converges on a fully highlighted
+        // document, instead of stopping dead at the first budget exhaustion.
+        if self.highlight_catch_up_pending.replace(false) {
+            self.content_cache.clear();
+        }
         let content_geometry =
             self.content_cache.draw(renderer, bounds.size(), |frame| {
                 // Bound sequential syntect catch-up work for this frame. This
@@ -2265,6 +2502,21 @@ impl canvas::Program<Message> for CodeEditor {
         bounds: Rectangle,
         cursor: mouse::Cursor,
     ) -> Option<Action<Message>> {
+        // Keep sequential syntax-highlight catch-up going.
+        //
+        // `draw` can only parse `HIGHLIGHT_LINES_PER_FRAME` new lines per frame,
+        // and highlighting line N requires lines 0..=N. A large document
+        // therefore needs several frames to finish colouring — but nothing was
+        // asking for those frames, so the work stopped at the first budget
+        // exhaustion and everything past it stayed plain text. Requesting a
+        // redraw on the window's own redraw event pumps the catch-up until the
+        // parse has caught up, then goes quiet again.
+        if matches!(event, Event::Window(iced::window::Event::RedrawRequested(_)))
+            && self.highlight_catch_up_pending.get()
+        {
+            return Some(Action::request_redraw());
+        }
+
         match event {
             Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
                 self.modifiers.set(*modifiers);
@@ -2380,6 +2632,522 @@ mod tests {
             bounds,
             cursor,
         )
+    }
+
+    /// Regression: selecting a huge range must not emit geometry per selected
+    /// line.
+    ///
+    /// Ctrl+A on a large body used to queue one rectangle per selected visual
+    /// line — ~90,000 of them — in the *overlay* layer, which redraws on every
+    /// cursor blink and mouse move. Copy itself is fast (~6ms); it was drawing
+    /// the selection that froze the window. The drawn range must stay bounded by
+    /// the viewport.
+    #[test]
+    fn test_selection_drawing_is_bounded_by_the_viewport() {
+        let line_count = 90_000;
+        let content = (0..line_count)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut editor = CodeEditor::new(&content, "txt");
+        editor.set_line_height(18.5);
+
+        // A realistic panel: a few dozen rows on screen.
+        let visual_lines = editor.visual_lines_cached(1200.0);
+        assert_eq!(visual_lines.len(), line_count);
+
+        let ctx = RenderContext {
+            visual_lines: visual_lines.as_ref(),
+            bounds_width: 1200.0,
+            gutter_width: editor.gutter_width(),
+            line_height: editor.line_height(),
+            font_size: editor.font_size(),
+            full_char_width: editor.full_char_width(),
+            char_width: editor.char_width(),
+            font: iced::Font::MONOSPACE,
+            horizontal_scroll_offset: 0.0,
+        };
+
+        let (start, end) = editor.visible_line_window(&ctx);
+        let drawn = end.saturating_sub(start);
+
+        assert!(
+            drawn < 1_000,
+            "the drawn window should cover a screenful, not the document: \
+             {drawn} of {line_count} lines"
+        );
+        assert!(drawn > 0, "something must still be drawn");
+    }
+
+    /// Regression: pasted content must be highlighted, not left plain.
+    ///
+    /// Paste replaces the buffer through the command/undo path, which truncates
+    /// the highlight cache. If that truncation (or the cache's syntax bookkeeping)
+    /// is wrong, the pasted text renders in a single flat colour — the classic
+    /// "paste JSON and it stops highlighting" symptom.
+    #[test]
+    fn test_pasted_content_is_highlighted() {
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let theme_set = ThemeSet::load_defaults();
+        let syntax = syntax_set.find_syntax_by_extension("json").expect("json");
+        let theme = &theme_set.themes["base16-mocha.dark"];
+
+        let json = r#"{"name": "value", "n": 42, "ok": true}"#;
+
+        let mut editor = CodeEditor::new("", "json");
+        let _ = editor.update(&Message::Paste(json.to_owned()));
+
+        assert_eq!(editor.content(), json, "paste must reproduce the text");
+
+        let spans = editor.highlighted_line_cached(0, syntax, theme, &syntax_set);
+        let distinct: std::collections::HashSet<(u32, u32, u32)> = spans
+            .iter()
+            .map(|(c, _)| {
+                ((c.r * 255.0) as u32, (c.g * 255.0) as u32, (c.b * 255.0) as u32)
+            })
+            .collect();
+
+        assert!(
+            distinct.len() > 1,
+            "pasted JSON should be syntax highlighted, got {} span(s) in {} \
+             colour(s) (a single colour means the plain-text fallback)",
+            spans.len(),
+            distinct.len(),
+        );
+    }
+
+    /// Select-all + paste (the Format path, and Ctrl+A/Ctrl+V) must also keep
+    /// highlighting for the replaced content.
+    #[test]
+    fn test_select_all_then_paste_is_highlighted() {
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let theme_set = ThemeSet::load_defaults();
+        let syntax = syntax_set.find_syntax_by_extension("json").expect("json");
+        let theme = &theme_set.themes["base16-mocha.dark"];
+
+        let mut editor = CodeEditor::new("{\"old\": 1}", "json");
+        // Warm the cache so the replacement has to invalidate it.
+        let _ = editor.highlighted_line_cached(0, syntax, theme, &syntax_set);
+
+        let replacement = "{\n  \"name\": \"value\",\n  \"n\": 42\n}";
+        let _ = editor.update(&Message::SelectAll);
+        let _ = editor.update(&Message::Paste(replacement.to_owned()));
+
+        assert_eq!(editor.content(), replacement);
+
+        // Check a line with real tokens (a key and a string value).
+        let spans = editor.highlighted_line_cached(1, syntax, theme, &syntax_set);
+        let distinct: std::collections::HashSet<(u32, u32, u32)> = spans
+            .iter()
+            .map(|(c, _)| {
+                ((c.r * 255.0) as u32, (c.g * 255.0) as u32, (c.b * 255.0) as u32)
+            })
+            .collect();
+
+        assert!(
+            distinct.len() > 1,
+            "replaced content should stay highlighted, got {} span(s) in {} colour(s)",
+            spans.len(),
+            distinct.len(),
+        );
+    }
+
+    /// Regression: a large document must end up fully highlighted.
+    ///
+    /// Highlighting is sequential (line N needs 0..=N parsed) and each draw may
+    /// only parse `HIGHLIGHT_LINES_PER_FRAME` new lines. A document longer than
+    /// that budget therefore needs multiple frames — and the budget is only
+    /// refilled inside `content_cache.draw`, which runs only when the content
+    /// layer is dirty. Nothing re-dirtied it, so catch-up stopped at the budget
+    /// and every deeper line fell back to plain text forever.
+    #[test]
+    fn test_large_document_highlight_catches_up_across_frames() {
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let theme_set = ThemeSet::load_defaults();
+        let syntax = syntax_set.find_syntax_by_extension("json").expect("json");
+        let theme = &theme_set.themes["base16-mocha.dark"];
+
+        // Comfortably more lines than one frame's budget allows.
+        let line_count = super::super::HIGHLIGHT_LINES_PER_FRAME * 2 + 500;
+        let content = (0..line_count)
+            .map(|i| format!("{{\"key{i}\": {i}}}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let editor = CodeEditor::new(&content, "json");
+
+        let deep_line = line_count - 1;
+
+        // One frame's worth of budget: the deep line cannot be reached yet, and
+        // the editor must flag that catch-up is still pending.
+        editor
+            .highlight_lines_remaining
+            .set(super::super::HIGHLIGHT_LINES_PER_FRAME);
+        let _ = editor.highlighted_line_cached(deep_line, syntax, theme, &syntax_set);
+        assert!(
+            editor.highlight_catch_up_pending.get(),
+            "a budget-limited frame must record that work is still pending, \
+             otherwise nothing ever schedules the next one"
+        );
+
+        // Simulate the follow-up frames the pending flag drives, until the
+        // editor stops asking for more. Each pass is bounded by
+        // `HIGHLIGHT_TIME_PER_FRAME` as well as the line budget, so the number of
+        // passes needed depends on machine speed and build profile — loop until
+        // it converges rather than assuming a fixed count.
+        let mut passes = 0;
+        while editor.highlight_catch_up_pending.replace(false) {
+            editor
+                .highlight_lines_remaining
+                .set(super::super::HIGHLIGHT_LINES_PER_FRAME);
+            let _ = editor.highlighted_line_cached(deep_line, syntax, theme, &syntax_set);
+            passes += 1;
+            assert!(passes < 10_000, "catch-up should converge, not spin forever");
+        }
+
+        // The deep line is now genuinely highlighted, not the plain-text
+        // fallback (which is a single span in the editor's text colour).
+        let spans = editor.highlighted_line_cached(deep_line, syntax, theme, &syntax_set);
+        let distinct: std::collections::HashSet<(u32, u32, u32)> = spans
+            .iter()
+            .map(|(c, _)| {
+                ((c.r * 255.0) as u32, (c.g * 255.0) as u32, (c.b * 255.0) as u32)
+            })
+            .collect();
+        assert!(
+            spans.len() > 1 && distinct.len() > 1,
+            "line {deep_line} of a {line_count}-line document should be syntax \
+             highlighted after catch-up, got {} span(s) in {} colour(s)",
+            spans.len(),
+            distinct.len(),
+        );
+    }
+
+    /// Regression: invalid/incomplete syntax must never render as invisible text.
+    ///
+    /// base16 themes style `invalid.illegal` as a *background* highlight with the
+    /// foreground knocked out to the theme's background colour. Using only
+    /// `style.foreground` meant a half-typed JSON string (very common — it is
+    /// every intermediate keystroke) drew text in the background colour and
+    /// appeared to delete itself until the JSON became valid again.
+    #[test]
+    fn test_invalid_syntax_never_renders_invisible_text() {
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let theme_set = ThemeSet::load_defaults();
+        let syntax = syntax_set
+            .find_syntax_by_extension("json")
+            .expect("json syntax");
+
+        // Every theme the host app can select.
+        for theme_name in [
+            "base16-mocha.dark",
+            "base16-eighties.dark",
+            "base16-ocean.dark",
+            "Solarized (dark)",
+            "InspiredGitHub",
+        ] {
+            let theme = &theme_set.themes[theme_name];
+            let bg = theme.settings.background.expect("theme background");
+            let editor_bg = Color::from_rgb(
+                f32::from(bg.r) / 255.0,
+                f32::from(bg.g) / 255.0,
+                f32::from(bg.b) / 255.0,
+            );
+
+            // Deliberately broken JSON, i.e. what the buffer holds mid-typing.
+            for line in [
+                "{\"name\": \"unterminated",
+                "{\"a\": 1,,}",
+                "{\"a\" 1}",
+                "{\"a\": @@@}",
+                "]]]",
+            ] {
+                let spans =
+                    highlight_line_spans(line, syntax, theme, &syntax_set);
+
+                for (color, text) in &spans {
+                    if text.trim().is_empty() {
+                        continue;
+                    }
+                    let contrast =
+                        (luminance(*color) - luminance(editor_bg)).abs();
+                    assert!(
+                        contrast >= MIN_CONTRAST,
+                        "{theme_name}: {text:?} in {line:?} would be                          unreadable (contrast {contrast:.3} < {MIN_CONTRAST})"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Valid syntax must keep its real theme colours — the contrast guard is a
+    /// safety net, not a recolouring of everything.
+    #[test]
+    fn test_valid_syntax_keeps_distinct_theme_colors() {
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let theme_set = ThemeSet::load_defaults();
+        let syntax = syntax_set
+            .find_syntax_by_extension("json")
+            .expect("json syntax");
+        let theme = &theme_set.themes["base16-mocha.dark"];
+
+        let spans = highlight_line_spans(
+            r#"{"name": "value", "n": 42, "ok": true}"#,
+            syntax,
+            theme,
+            &syntax_set,
+        );
+
+        let distinct: std::collections::HashSet<(u32, u32, u32)> = spans
+            .iter()
+            .map(|(c, _)| {
+                (
+                    (c.r * 255.0) as u32,
+                    (c.g * 255.0) as u32,
+                    (c.b * 255.0) as u32,
+                )
+            })
+            .collect();
+
+        assert!(
+            distinct.len() > 2,
+            "valid JSON should keep multiple token colours, got {distinct:?}"
+        );
+    }
+
+    /// The chosen fallback ordering: an unreadable foreground defers to the
+    /// style's background colour (which the theme picked to stand out), and only
+    /// then to the editor's plain text colour.
+    #[test]
+    fn test_readable_color_fallback_order() {
+        let editor_bg = Color::BLACK;
+        let text_color = Color::WHITE;
+
+        // A style whose foreground matches the background, with a bright
+        // "highlight" background: the highlight colour should win.
+        let mut knocked_out = Style::default();
+        knocked_out.foreground = syntect::highlighting::Color { r: 0, g: 0, b: 0, a: 255 };
+        knocked_out.background =
+            syntect::highlighting::Color { r: 240, g: 100, b: 100, a: 255 };
+        let resolved =
+            readable_color_from_style(knocked_out, editor_bg, text_color);
+        assert!(resolved.r > 0.5, "expected the bright highlight colour");
+
+        // Both foreground and background indistinguishable from the editor
+        // background: must fall back to the plain text colour, never vanish.
+        let mut invisible = Style::default();
+        invisible.foreground = syntect::highlighting::Color { r: 0, g: 0, b: 0, a: 255 };
+        invisible.background = syntect::highlighting::Color { r: 0, g: 0, b: 0, a: 255 };
+        assert_eq!(
+            readable_color_from_style(invisible, editor_bg, text_color),
+            text_color
+        );
+
+        // A perfectly readable foreground is passed through untouched.
+        let mut fine = Style::default();
+        fine.foreground = syntect::highlighting::Color { r: 100, g: 200, b: 255, a: 255 };
+        let kept = readable_color_from_style(fine, editor_bg, text_color);
+        assert!((kept.b - 1.0).abs() < 0.01 && kept.r < 0.5);
+    }
+
+    fn editor_update(
+        editor: &CodeEditor,
+        event: &iced::Event,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Option<Action<Message>> {
+        canvas::Program::<Message>::update(editor, &mut (), event, bounds, cursor)
+    }
+
+    /// Regression: iced 0.14 delivers keyboard events to every widget in the
+    /// tree, so an editor that stays "focused" after the user clicks some other
+    /// widget will *also* consume that widget's keystrokes and clipboard keys.
+    /// A press outside the editor's bounds must therefore relinquish focus.
+    #[test]
+    fn test_click_outside_bounds_releases_focus() {
+        let mut editor = CodeEditor::new("hello", "txt");
+        let bounds = Rectangle::new(Point::ORIGIN, Size::new(400.0, 300.0));
+
+        // Focus the editor the way a real click would.
+        editor.request_focus();
+        editor.has_canvas_focus = true;
+        editor.focus_locked = false;
+        assert!(editor.has_focus(), "editor should start focused");
+
+        // A press far outside its bounds (e.g. a sidebar text input).
+        let outside = mouse::Cursor::Available(Point::new(900.0, 500.0));
+        let press = iced::Event::Mouse(mouse::Event::ButtonPressed(
+            mouse::Button::Left,
+        ));
+        let action = editor_update(&editor, &press, bounds, outside);
+
+        let message = action.expect("a focus-lost action").into_inner().0;
+        assert!(
+            matches!(message, Some(Message::CanvasFocusLost)),
+            "an outside press must publish CanvasFocusLost"
+        );
+
+        let _ = editor.update(&Message::CanvasFocusLost);
+        assert!(
+            !editor.has_focus(),
+            "editor must not report focus after an outside click"
+        );
+    }
+
+    /// The outside press is observed, not consumed: the widget actually being
+    /// clicked still has to receive it.
+    #[test]
+    fn test_click_outside_bounds_does_not_capture_event() {
+        let mut editor = CodeEditor::new("hello", "txt");
+        let bounds = Rectangle::new(Point::ORIGIN, Size::new(400.0, 300.0));
+        editor.request_focus();
+        editor.has_canvas_focus = true;
+        editor.focus_locked = false;
+
+        let press = iced::Event::Mouse(mouse::Event::ButtonPressed(
+            mouse::Button::Left,
+        ));
+        let action = editor_update(
+            &editor,
+            &press,
+            bounds,
+            mouse::Cursor::Available(Point::new(900.0, 500.0)),
+        )
+        .expect("a focus-lost action");
+
+        assert_eq!(
+            action.into_inner().2,
+            iced::event::Status::Ignored,
+            "the click belongs to another widget and must keep bubbling"
+        );
+    }
+
+    /// An unfocused editor must stay silent on an outside click rather than
+    /// emitting a focus-lost message on every stray click in the window.
+    #[test]
+    fn test_click_outside_bounds_is_silent_when_not_focused() {
+        let editor = CodeEditor::new("hello", "txt");
+        let bounds = Rectangle::new(Point::ORIGIN, Size::new(400.0, 300.0));
+
+        let press = iced::Event::Mouse(mouse::Event::ButtonPressed(
+            mouse::Button::Left,
+        ));
+        assert!(
+            editor_update(
+                &editor,
+                &press,
+                bounds,
+                mouse::Cursor::Available(Point::new(900.0, 500.0)),
+            )
+            .is_none(),
+            "an unfocused editor should not react to an outside click"
+        );
+    }
+
+    /// Once focus has been lost, clicking back into the editor must restore it.
+    /// `CanvasFocusLost` sets `focus_locked`, so the click handlers have to
+    /// clear that or the editor would be permanently deaf to the keyboard.
+    #[test]
+    fn test_click_inside_after_focus_loss_regains_focus() {
+        let mut editor = CodeEditor::new("hello", "txt");
+
+        editor.request_focus();
+        editor.has_canvas_focus = true;
+        let _ = editor.update(&Message::CanvasFocusLost);
+        assert!(!editor.has_focus());
+        assert!(editor.focus_locked, "focus-lost is expected to lock");
+
+        let _ = editor.update(&Message::MouseClick(Point::new(10.0, 10.0)));
+
+        assert!(
+            editor.has_focus(),
+            "clicking back into the editor must restore keyboard focus"
+        );
+    }
+
+    /// A keystroke aimed at another widget must not reach an unfocused editor.
+    #[test]
+    fn test_unfocused_editor_ignores_key_presses() {
+        let mut editor = CodeEditor::new("", "txt");
+        editor.request_focus();
+        editor.has_canvas_focus = true;
+        let _ = editor.update(&Message::CanvasFocusLost);
+
+        let key = keyboard::Key::Character("x".into());
+        assert!(
+            editor
+                .handle_keyboard_event(
+                    &key,
+                    &key,
+                    &keyboard::Modifiers::default(),
+                    &Some("x".into()),
+                    Rectangle::new(Point::ORIGIN, Size::new(400.0, 300.0)),
+                    &mouse::Cursor::Unavailable,
+                )
+                .is_none(),
+            "an unfocused editor must ignore character input"
+        );
+    }
+
+    /// Ctrl/Cmd+C is claimed by both `text_input` and this editor under iced's
+    /// broadcast dispatch. An unfocused editor must not answer it, or it would
+    /// overwrite the clipboard the focused input just wrote.
+    #[test]
+    fn test_unfocused_editor_ignores_copy_shortcut() {
+        let mut editor = CodeEditor::new("hello", "txt");
+        editor.request_focus();
+        editor.has_canvas_focus = true;
+        let _ = editor.update(&Message::CanvasFocusLost);
+
+        let key = keyboard::Key::Character("c".into());
+        assert!(
+            editor
+                .handle_keyboard_event(
+                    &key,
+                    &key,
+                    &keyboard::Modifiers::CTRL,
+                    &None,
+                    Rectangle::new(Point::ORIGIN, Size::new(400.0, 300.0)),
+                    &mouse::Cursor::Unavailable,
+                )
+                .is_none(),
+            "an unfocused editor must not steal the copy shortcut"
+        );
+    }
+
+    /// `lose_focus()` is the host-facing API for moving focus away; it must
+    /// leave no trace in the process-wide focused-editor slot.
+    #[test]
+    fn test_lose_focus_clears_global_focus_slot() {
+        let mut editor = CodeEditor::new("hello", "txt");
+        editor.request_focus();
+        editor.has_canvas_focus = true;
+        assert!(editor.is_focused());
+
+        editor.lose_focus();
+
+        assert!(!editor.is_focused(), "global focus slot must be released");
+        assert!(!editor.has_focus());
+    }
+
+    /// Two editors must never both claim the keyboard.
+    #[test]
+    fn test_only_one_editor_holds_focus_at_a_time() {
+        let mut first = CodeEditor::new("first", "txt");
+        let mut second = CodeEditor::new("second", "txt");
+
+        first.request_focus();
+        first.has_canvas_focus = true;
+        first.focus_locked = false;
+
+        second.request_focus();
+        second.has_canvas_focus = true;
+        second.focus_locked = false;
+
+        assert!(second.has_focus(), "the last editor focused wins");
+        assert!(
+            !first.has_focus(),
+            "the previously focused editor must yield the keyboard"
+        );
     }
 
     #[test]

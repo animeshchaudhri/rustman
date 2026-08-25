@@ -35,10 +35,22 @@ pub(crate) fn subscription(state: &AppState) -> Subscription<Message> {
         .map(|t| Subscription::run_with(WsConn { tab_id: t.id.clone(), url: t.ws.url.clone() }, ws_stream))
         .collect();
 
-    let autosave = iced::time::every(std::time::Duration::from_secs(3))
-        .map(|_| Message::App(crate::message::AppMsg::AutoSaveSession));
+    let mut all = vec![kbd];
 
-    let mut all = vec![kbd, autosave];
+    // Autosave only while there is actually something new to save.
+    //
+    // This timer used to run unconditionally and `persist_session` re-serialised
+    // every tab on each tick — including a full `content()` copy of all four
+    // code editors per tab — plus a SQLite write, every 3 seconds forever, even
+    // with the app sitting completely idle. Gating on the dirty flag lets a
+    // quiescent app go genuinely idle. `AppMsg::WindowCloseRequested` still
+    // persists on exit, so nothing is lost by not polling.
+    if state.session_dirty {
+        all.push(
+            iced::time::every(std::time::Duration::from_secs(3))
+                .map(|_| Message::App(crate::message::AppMsg::AutoSaveSession)),
+        );
+    }
     if !code_editor_focused {
         all.push(event::listen_with(tab_key));
     }

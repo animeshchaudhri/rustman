@@ -46,6 +46,23 @@ fn method_chip(method: &crate::domain::request::HttpMethod) -> Element<'static, 
         .into()
 }
 
+/// Marks a tab as a WebSocket connection, in place of an HTTP method chip.
+fn ws_chip() -> Element<'static, Message> {
+    let color = Palette::accent();
+    container(text("WS").size(9).color(color).font(MONO))
+        .padding([2, 5])
+        .style(move |_| iced::widget::container::Style {
+            background: Some(Background::Color(iced::Color { a: 0.15, ..color })),
+            border: Border {
+                color: iced::Color { a: 0.35, ..color },
+                width: 1.0,
+                radius: 5.0.into(),
+            },
+            ..Default::default()
+        })
+        .into()
+}
+
 /// The rounded "card" each tab lives in. Active tabs are raised with an accent
 /// top edge; inactive tabs are flat until hovered.
 fn tab_card(active: bool, dragging: bool) -> impl Fn(&iced::Theme) -> iced::widget::container::Style {
@@ -80,10 +97,14 @@ pub(super) fn multi_tab_bar(state: &AppState) -> Element<'_, Message> {
         let active = i == state.tabs.active;
         let dragging = state.dragging_tab == Some(i);
         let title = if tab.url.is_empty() { tab.title.as_str() } else { &tab.url };
-        let short_title: String = if title.len() > 22 {
-            format!("{}…", &title[..20])
-        } else {
-            title.to_owned()
+        // Truncate by characters, never by byte index: `&title[..20]` panics
+        // when byte 20 falls inside a multi-byte UTF-8 sequence (a URL with
+        // percent-decoded non-ASCII, or a renamed tab), and `panic = "abort"`
+        // makes that a hard crash while merely drawing the tab strip.
+        let short_title: String = {
+            let mut chars = title.chars();
+            let head: String = chars.by_ref().take(20).collect();
+            if chars.next().is_some() { format!("{head}…") } else { head }
         };
 
         let modified_dot = if tab.modified && tab.saved_as.is_some() {
@@ -114,7 +135,15 @@ pub(super) fn multi_tab_bar(state: &AppState) -> Element<'_, Message> {
             })
             .width(Length::Fill);
 
-        let mut label_row = row![method_chip(&tab.method)].spacing(7).align_y(Alignment::Center);
+        // A ws:// or wss:// tab has no HTTP method — showing "GET" there is
+        // simply wrong (the method is never sent, and the URL bar hides its
+        // picker in this mode for the same reason).
+        let leading_chip = if tab.is_websocket() {
+            ws_chip()
+        } else {
+            method_chip(&tab.method)
+        };
+        let mut label_row = row![leading_chip].spacing(7).align_y(Alignment::Center);
         if let Some(c) = modified_dot {
             label_row = label_row.push(icons::dot(c));
         }
@@ -207,4 +236,73 @@ pub(super) fn multi_tab_bar(state: &AppState) -> Element<'_, Message> {
     .width(Length::Fill);
 
     mouse_area(bar).on_release(Message::Request(RequestMsg::TabDragEnd)).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::state::tabs::RequestTabState;
+
+    fn tab_with_url(url: &str) -> RequestTabState {
+        let mut tab = RequestTabState::new();
+        tab.url = url.to_owned();
+        tab
+    }
+
+    /// A ws:// or wss:// tab must not be labelled with an HTTP method: the
+    /// method is never sent, so showing "GET" is simply wrong.
+    #[test]
+    fn websocket_urls_are_detected_for_the_tab_chip() {
+        for url in [
+            "ws://localhost:8080",
+            "wss://echo.example.com",
+            "WSS://UPPER.example.com",
+            "  wss://leading-space.example.com",
+        ] {
+            assert!(
+                tab_with_url(url).is_websocket(),
+                "{url} should be treated as a WebSocket tab"
+            );
+        }
+    }
+
+    #[test]
+    fn http_urls_still_use_a_method_chip() {
+        for url in [
+            "https://api.example.com",
+            "http://localhost:3000",
+            "",
+            // Not a scheme match: must not be mistaken for a socket.
+            "https://example.com/wss://nested",
+        ] {
+            assert!(
+                !tab_with_url(url).is_websocket(),
+                "{url} should keep its HTTP method chip"
+            );
+        }
+    }
+
+    /// The tab title is truncated by characters, not bytes. Slicing a `str` at a
+    /// byte index inside a multi-byte sequence panics, and `panic = "abort"`
+    /// turns that into a hard crash just from drawing the tab strip.
+    #[test]
+    fn tab_title_truncation_never_splits_a_character() {
+        fn short_title(title: &str) -> String {
+            let mut chars = title.chars();
+            let head: String = chars.by_ref().take(20).collect();
+            if chars.next().is_some() { format!("{head}…") } else { head }
+        }
+
+        for title in [
+            "🎉".repeat(30),
+            "日本語のタブタイトルです".repeat(3),
+            "https://example.com/café/ünïcödé/path/that/is/long".to_owned(),
+            "short".to_owned(),
+        ] {
+            let out = short_title(&title);
+            assert!(out.chars().count() <= 21, "got {out:?}");
+        }
+
+        assert_eq!(short_title("short"), "short");
+        assert!(short_title(&"a".repeat(50)).ends_with('…'));
+    }
 }

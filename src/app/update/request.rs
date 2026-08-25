@@ -8,7 +8,7 @@ use crate::domain::request::{sync_params_from_url, sync_url_from_params};
 use crate::jobs::JobKind;
 use crate::message::{AppMsg, FormatTarget, Message, RequestMsg};
 use crate::services::curl;
-use crate::state::tabs::{EditKind, RequestTabState};
+use crate::state::tabs::{body_syntax, EditKind, RequestTabState};
 
 /// Tab drag-to-reorder is implemented but turned off for now — flip to
 /// `true` to re-enable.
@@ -35,8 +35,12 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             }
         }
         RequestMsg::UrlChanged(v) => {
-            tab.body_editor.lose_focus();
-            tab.response_editor.lose_focus();
+            // No manual `lose_focus()` needed here any more: the code editor
+            // now relinquishes focus itself when a click lands outside its
+            // bounds (see `handle_mouse_event` in the vendored editor), so
+            // focusing the URL bar already defocuses the body/response editors.
+            // Doing it per-keystroke here was a workaround for that missing
+            // behaviour, and only ever covered this one field.
             tab.url = v;
             tab.params = sync_params_from_url(&tab.url, &tab.params);
             tab.modified = true;
@@ -46,11 +50,32 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
         }
         RequestMsg::TabSelected(t) => tab.active_request_tab = t,
         RequestMsg::BodyEdited(msg) => {
-            if is_body_edit(&msg) {
+            let content_changed = is_body_edit(&msg);
+            if content_changed {
                 tab.modified = true;
             }
-            return tab.body_editor.update(&msg)
-                .map(|m| Message::Request(RequestMsg::BodyEdited(m)));
+            let task = tab.body_editor.update(&msg);
+            // Keep the editor's language in step with what the buffer now holds.
+            //
+            // The syntax is otherwise fixed at construction, so pasting or typing
+            // JSON into a body that was created as plain text (a new tab whose
+            // type is still None, or a restored non-JSON request) left it
+            // tokenized as text — the "paste JSON and it isn't highlighted"
+            // report. `set_syntax` is a no-op when nothing changes, so this only
+            // does work on the transition.
+            if content_changed {
+                // Only the first and last non-space characters decide this, so
+                // ask the editor for those rather than calling `content()`
+                // (a full buffer copy) on every keystroke.
+                let looks_json = tab.body_editor.looks_structural();
+                let syntax = if body_syntax(&tab.body_type) == "json" || looks_json {
+                    "json"
+                } else {
+                    "txt"
+                };
+                tab.body_editor.set_syntax(syntax);
+            }
+            return task.map(|m| Message::Request(RequestMsg::BodyEdited(m)));
         }
         RequestMsg::PreRequestScriptEdited(msg) => {
             if is_body_edit(&msg) {
@@ -326,6 +351,16 @@ pub(super) fn handle(state: &mut AppState, msg: RequestMsg) -> Task<Message> {
             if let Ok(b) = v.parse() {
                 if tab.body_type != b {
                     tab.body_type = b;
+                    // Re-language the editor to match.
+                    //
+                    // The editor's syntax is fixed at construction, so switching
+                    // the body type used to change only `body_type` and leave the
+                    // editor tokenizing as whatever it was built with. A request
+                    // restored from disk with a non-JSON body type got "txt", and
+                    // then selecting JSON here did nothing — pasted JSON stayed
+                    // completely unhighlighted. `set_syntax` keeps the buffer,
+                    // cursor and undo history intact.
+                    tab.body_editor.set_syntax(body_syntax(&tab.body_type));
                     tab.modified = true;
                 }
             }

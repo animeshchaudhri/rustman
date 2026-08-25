@@ -20,7 +20,19 @@ impl WsHandle {
     }
 }
 
+
+fn ensure_crypto_provider() {
+    static INSTALL: std::sync::Once = std::sync::Once::new();
+    INSTALL.call_once(|| {
+        // Fails only if a provider was already installed, which is fine: the
+        // goal is just that *some* provider is in place before a handshake.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
+
 pub async fn connect(url: String) -> Result<(WsHandle, mpsc::Receiver<WsEvent>), String> {
+    ensure_crypto_provider();
+
     let (stream, _) = connect_async(&url).await.map_err(|e| e.to_string())?;
     let (mut write, mut read) = stream.split();
 

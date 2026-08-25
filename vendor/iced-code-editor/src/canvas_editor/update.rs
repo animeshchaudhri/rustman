@@ -1720,6 +1720,12 @@ impl CodeEditor {
 
         // Set internal canvas focus state
         self.has_canvas_focus = true;
+        // Clicking into the editor is an explicit, user-driven focus gain, so
+        // any lock left by an earlier focus-lost must be released here.
+        // Without this, the defocus-on-outside-click path (see
+        // `handle_mouse_event`) would set `focus_locked` and nothing would ever
+        // clear it, leaving the editor permanently unable to accept keys.
+        self.focus_locked = false;
 
         // End grouping on mouse click
         self.end_grouping_if_active();
@@ -1750,18 +1756,41 @@ impl CodeEditor {
     ///
     /// # Returns
     ///
-    /// A `Task<Message>` (currently Task::none() as no scrolling is needed)
+    /// A `Task<Message>` that scrolls when the drag reaches a viewport edge.
     fn handle_mouse_drag_msg(&mut self, point: iced::Point) -> Task<Message> {
-        if self.is_dragging {
-            let before_pos = self.cursors.primary_position();
-            self.handle_mouse_drag(point);
-            if self.cursors.primary_position() != before_pos {
-                // Mouse move events can be very frequent. Only invalidate the
-                // overlay cache if the drag actually changed selection/cursor.
-                self.overlay_cache.clear();
-            }
+        if !self.is_dragging {
+            return Task::none();
         }
-        Task::none()
+
+        let before_pos = self.cursors.primary_position();
+        self.handle_mouse_drag(point);
+        let moved = self.cursors.primary_position() != before_pos;
+        if moved {
+            // Mouse move events can be very frequent. Only invalidate the
+            // overlay cache if the drag actually changed selection/cursor.
+            self.overlay_cache.clear();
+        }
+
+        // Auto-scroll while selecting at (or past) an edge.
+        //
+        // Drag positions are clamped into the editor's bounds by the caller, so
+        // holding the pointer beyond the edge parks the caret on the first or
+        // last visible line and the selection stops growing — the user drags
+        // further and further with nothing happening. Scrolling to follow the
+        // caret is what lets a selection continue past one screenful, which is
+        // exactly what people do to select a large response body.
+        let edge_margin = (self.line_height * 1.5).min(self.viewport_height / 4.0);
+        let at_top_edge = point.y <= edge_margin;
+        let at_bottom_edge = point.y >= self.viewport_height - edge_margin;
+
+        if at_top_edge || at_bottom_edge {
+            // `scroll_to_cursor` keeps a two-line margin around the caret, so
+            // each drag event advances the view by a line or so while the
+            // pointer is held at the edge — a smooth crawl rather than a jump.
+            self.scroll_to_cursor()
+        } else {
+            Task::none()
+        }
     }
 
     /// Handles mouse release operations.
@@ -1803,6 +1832,7 @@ impl CodeEditor {
     fn handle_double_click_msg(&mut self, point: iced::Point) -> Task<Message> {
         self.request_focus();
         self.has_canvas_focus = true;
+        self.focus_locked = false;
         self.end_grouping_if_active();
         self.cursors.remove_all_but_primary();
         if let Some((line, col)) = self.calculate_cursor_from_point(point) {
@@ -1830,6 +1860,7 @@ impl CodeEditor {
     fn handle_triple_click_msg(&mut self, point: iced::Point) -> Task<Message> {
         self.request_focus();
         self.has_canvas_focus = true;
+        self.focus_locked = false;
         self.end_grouping_if_active();
         self.cursors.remove_all_but_primary();
         if let Some((line, _col)) = self.calculate_cursor_from_point(point) {
@@ -2373,6 +2404,21 @@ impl CodeEditor {
         self.focus_locked = true; // Lock focus when lost to prevent focus stealing
         self.show_cursor = false;
         self.ime_preedit = None;
+        // Release the process-wide "focused editor" slot as well. `has_focus()`
+        // is `FOCUSED_EDITOR_ID == self.editor_id && has_canvas_focus &&
+        // !focus_locked`, so clearing the two local flags is already enough to
+        // stop *this* editor consuming keys. But leaving the global pointing at
+        // a no-longer-focused editor keeps a stale identity around that other
+        // code reads (`is_focused()`, used for the IME layer in view.rs), so
+        // stand it down here to keep the global honest.
+        super::FOCUSED_EDITOR_ID
+            .compare_exchange(
+                self.editor_id,
+                0,
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+            )
+            .ok();
         self.overlay_cache.clear();
         Task::none()
     }
