@@ -5452,7 +5452,7 @@ dependencies = [
 
 [[package]]
 name = "rustman"
-version = "0.3.11"
+version = "0.3.12"
 dependencies = [
  "base64 0.23.0",
  "calamine",
